@@ -1,0 +1,24 @@
+{
+  "expo": {
+    "name": "Meetapp",
+    "slug": "meetapp",
+    "scheme": "meetapp",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.meetapp.social"
+    },
+    "android": {
+      "package": "com.meetapp.social",
+      "adaptiveIcon": {
+        "backgroundColor": "#090B12"
+      }
+    },
+    "plugins": [
+      "expo-router"
+    ]
+  }
+}
