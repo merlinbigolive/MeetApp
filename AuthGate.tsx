@@ -66,7 +66,7 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
     const client = supabase;
     if (!client) return;
     const cleanEmail = email.trim().toLowerCase();
-    if (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(cleanEmail)) {
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
       setMessage('Please enter a valid email address.');
       return;
     }
@@ -89,7 +89,7 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
     const client = supabase;
     if (!client) return;
     const token = code.trim();
-    if (!/^\\d{6}$/.test(token)) {
+    if (!/^\d{6}$/.test(token)) {
       setMessage('Enter the 6-digit code from your email.');
       return;
     }
