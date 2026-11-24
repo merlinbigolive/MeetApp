@@ -115,7 +115,7 @@ export default function App() {
 
   const Profile = () => (
     <ScrollView contentContainerStyle={s.profileScroll} showsVerticalScrollIndicator={false}>
-      <View style={s.top}><Text style={s.pageTitle}>MeetApp</Text></View>
+      <View style={s.top}><Text style={s.pageTitle}>ꂵꏂꏂ꓄ꋬꉣꉣ</Text></View>
       <View style={s.identity}>
         <View style={s.coverBackdrop}>
           {covers[0]?.type === 'image' ? <Image source={{uri:covers[0].uri}} style={s.coverBackdropImage}/> :
@@ -235,7 +235,7 @@ const s = StyleSheet.create({
   coverViewer:{flex:1,backgroundColor:'#03050A',justifyContent:'center'},
   coverViewerClose:{position:'absolute',top:48,right:18,zIndex:3,width:42,height:42,borderRadius:22,backgroundColor:'#263442',alignItems:'center',justifyContent:'center'},
   top:{height:76,flexDirection:'row',alignItems:'center',justifyContent:'center',paddingHorizontal:16},
-  pageTitle:{color:C.text,fontSize:25,fontWeight:'700',fontFamily:'serif',letterSpacing:2.2},switchText:{color:C.cyan,fontSize:11,fontWeight:'700'},
+  pageTitle:{color:C.text,fontSize:30,fontWeight:'900',fontFamily:'serif',letterSpacing:2.8},switchText:{color:C.cyan,fontSize:11,fontWeight:'700'},
   card:{backgroundColor:C.panel,borderRadius:22,borderWidth:1,borderColor:C.border,padding:15,gap:12},
   coverHeader:{flexDirection:'row',alignItems:'center',justifyContent:'space-between'},
   eyebrow:{color:C.cyan,fontSize:9,fontWeight:'900',letterSpacing:1.5},sectionTitle:{color:C.text,fontSize:16,fontWeight:'900'},
