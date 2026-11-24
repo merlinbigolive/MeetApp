@@ -56,6 +56,7 @@ export default function App() {
   const [posts, setPosts] = useState<Media[]>([]);
   const [followingCount, setFollowingCount] = useState(0);
   const [followerCount, setFollowerCount] = useState(0);
+  const [likesCount, setLikesCount] = useState(0);
   const [publicProfiles, setPublicProfiles] = useState<PublicProfile[]>([]);
   const [discoverAvatars, setDiscoverAvatars] = useState<Record<string, Media>>({});
   const [followedUserIds, setFollowedUserIds] = useState<string[]>([]);
@@ -70,6 +71,7 @@ export default function App() {
   const [otherProfileMedia, setOtherProfileMedia] = useState<{ avatar: Media | null; covers: Media[]; posts: Media[] }>({ avatar: null, covers: [], posts: [] });
   const [otherFollowingCount, setOtherFollowingCount] = useState(0);
   const [otherFollowerCount, setOtherFollowerCount] = useState(0);
+  const [otherLikesCount, setOtherLikesCount] = useState(0);
   const [loadingOtherProfile, setLoadingOtherProfile] = useState(false);
   const [otherCoverExpanded, setOtherCoverExpanded] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -139,13 +141,16 @@ export default function App() {
       setWebsite(data.website_url || '');
       setOccupation(data.profession_category || '');
 
-      const [followingResult, followerResult] = await Promise.all([
+      const [followingResult, followerResult, likesResult] = await Promise.all([
         supabase.from('follows').select('*', { count: 'exact', head: true }).eq('follower_id', userId),
         supabase.from('follows').select('*', { count: 'exact', head: true }).eq('followed_id', userId),
+      ,
+        supabase.rpc('get_profile_likes_count', { target_user_id: userId }),
       ]);
       if (!active) return;
       if (!followingResult.error) setFollowingCount(followingResult.count ?? 0);
       if (!followerResult.error) setFollowerCount(followerResult.count ?? 0);
+      if (!likesResult.error) setLikesCount(Number(likesResult.data || 0));
 
       if (data.activity_status) {
         const status = data.activity_status.toLowerCase();
@@ -269,9 +274,10 @@ export default function App() {
     let active = true;
     const loadOtherProfile = async () => {
       setLoadingOtherProfile(true);
-      const [mediaResult, countsResult] = await Promise.all([
+      const [mediaResult, countsResult, likesResult] = await Promise.all([
         supabase!.from('profile_media').select('id, kind, position, storage_path, media_type, original_name').eq('user_id', selectedProfile.id).order('position', { ascending: true }),
         supabase!.rpc('get_profile_follow_counts', { target_user_id: selectedProfile.id }).maybeSingle(),
+        supabase!.rpc('get_profile_likes_count', { target_user_id: selectedProfile.id }),
       ]);
       if (!active) return;
       if (mediaResult.error) Alert.alert('Could not load profile media', mediaResult.error.message);
@@ -292,6 +298,8 @@ export default function App() {
       const followCounts = countsResult.data as { following_count?: number; follower_count?: number } | null;
       setOtherFollowingCount(Number(followCounts?.following_count || 0));
       setOtherFollowerCount(Number(followCounts?.follower_count || 0));
+      if (likesResult.error) Alert.alert('Could not load profile likes', likesResult.error.message);
+      setOtherLikesCount(Number(likesResult.data || 0));
       setLoadingOtherProfile(false);
     };
     loadOtherProfile();
@@ -543,7 +551,7 @@ export default function App() {
         <View style={s.stats}>
           <View style={s.stat}><Text style={s.statNum}>{followingCount.toLocaleString()}</Text><Text style={s.statLabel}>Following</Text></View>
           <View style={s.stat}><Text style={s.statNum}>{followerCount.toLocaleString()}</Text><Text style={s.statLabel}>Followers</Text></View>
-          <View style={s.stat}><Text style={s.statNum}>—</Text><Text style={s.statLabel}>Likes</Text></View>
+          <View style={s.stat}><Text style={s.statNum}>{likesCount.toLocaleString()}</Text><Text style={s.statLabel}>Likes</Text></View>
         </View>
         <View style={s.actions}>
           {isOwnProfile ? <>
@@ -613,7 +621,7 @@ export default function App() {
         <View style={s.stats}>
           <View style={s.stat}><Text style={s.statNum}>{otherFollowingCount.toLocaleString()}</Text><Text style={s.statLabel}>Following</Text></View>
           <View style={s.stat}><Text style={s.statNum}>{otherFollowerCount.toLocaleString()}</Text><Text style={s.statLabel}>Followers</Text></View>
-          <View style={s.stat}><Text style={s.statNum}>—</Text><Text style={s.statLabel}>Likes</Text></View>
+          <View style={s.stat}><Text style={s.statNum}>{otherLikesCount.toLocaleString()}</Text><Text style={s.statLabel}>Likes</Text></View>
         </View>
         <View style={s.actions}>
           <Pressable disabled={busy} style={[s.primary, following && s.followingButton]} onPress={() => toggleFollow(selectedProfile)}><Ionicons name={following ? 'checkmark' : 'person-add-outline'} color={following ? C.cyan : '#fff'} size={17}/><Text style={[s.primaryText, following && { color: C.cyan }]}>{busy ? 'Please wait…' : following ? 'Following' : 'Follow'}</Text></Pressable>
