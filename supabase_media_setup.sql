@@ -18,9 +18,25 @@ create table if not exists public.profile_media (
 alter table public.profile_media enable row level security;
 
 drop policy if exists "profile_media_read_self" on public.profile_media;
-create policy "profile_media_read_self" on public.profile_media
+drop policy if exists "profile_media_read_visible" on public.profile_media;
+create policy "profile_media_read_visible" on public.profile_media
 for select to authenticated
-using (user_id = auth.uid());
+using (
+  user_id = auth.uid()
+  or exists (
+    select 1
+    from public.profiles p
+    where p.id = profile_media.user_id
+      and (
+        p.is_private = false
+        or exists (
+          select 1 from public.follows f
+          where f.follower_id = auth.uid()
+            and f.followed_id = profile_media.user_id
+        )
+      )
+  )
+);
 
 drop policy if exists "profile_media_insert_self" on public.profile_media;
 create policy "profile_media_insert_self" on public.profile_media
@@ -52,11 +68,28 @@ on conflict (id) do update set
   allowed_mime_types = excluded.allowed_mime_types;
 
 drop policy if exists "usay_media_read_own" on storage.objects;
-create policy "usay_media_read_own" on storage.objects
+drop policy if exists "usay_media_read_visible" on storage.objects;
+create policy "usay_media_read_visible" on storage.objects
 for select to authenticated
 using (
   bucket_id = 'usay-media'
-  and (storage.foldername(name))[1] = auth.uid()::text
+  and (
+    (storage.foldername(name))[1] = auth.uid()::text
+    or exists (
+      select 1
+      from public.profile_media pm
+      join public.profiles p on p.id = pm.user_id
+      where pm.storage_path = name
+        and (
+          p.is_private = false
+          or exists (
+            select 1 from public.follows f
+            where f.follower_id = auth.uid()
+              and f.followed_id = pm.user_id
+          )
+        )
+    )
+  )
 );
 
 drop policy if exists "usay_media_upload_own" on storage.objects;
