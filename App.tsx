@@ -1301,11 +1301,9 @@ export default function App() {
             chatMessages.map(message => {
               const mine = message.sender_id === currentUserId;
               return <View key={message.id} style={{ alignSelf: mine ? 'flex-end' : 'flex-start', maxWidth: '84%', backgroundColor: mine ? '#E5F4FF' : '#F3F6F8', borderRadius: 16, paddingHorizontal: 13, paddingVertical: 9, gap: 5 }}>
-                {message.message_type === 'voice' ? (message.audio_url ? <VoiceMessageBubble uri={message.audio_url} transcript={message.transcript || message.body} mine={mine}/> : <Text style={{ color: C.muted, fontSize: 12 }}>Voice message unavailable</Text>) : <>
-                  <Text style={{ color: C.text, fontSize: 14 }}>{message.body}</Text>
-                  <Pressable disabled={translatingMessageIds.includes(message.id)} onPress={() => void translateMessage(message)} style={{ alignSelf: 'flex-start', paddingVertical: 3 }}><Text style={{ color: C.cyan, fontSize: 11, fontWeight: '700' }}>{translatingMessageIds.includes(message.id) ? 'Translating…' : visibleTranslations.includes(message.id) ? 'Hide translation' : 'Translate to ' + (translationLanguage === 'hi' ? 'Hindi' : 'English')}</Text></Pressable>
-                  {visibleTranslations.includes(message.id) && !!translatedMessages[message.id] && <Text style={{ color: C.text, fontSize: 14, borderTopWidth: 1, borderTopColor: C.border, paddingTop: 6 }}>{translatedMessages[message.id]}</Text>}
-                </>}
+                {message.message_type === 'voice' ? (message.audio_url ? <VoiceMessageBubble uri={message.audio_url} transcript={message.transcript || message.body} mine={mine}/> : <Text style={{ color: C.muted, fontSize: 12 }}>Voice message unavailable</Text>) : <Text style={{ color: C.text, fontSize: 14 }}>{message.body}</Text>}
+                <Pressable disabled={translatingMessageIds.includes(message.id)} onPress={() => void translateMessage({ ...message, body: message.message_type === 'voice' ? (message.transcript || message.body) : message.body })} style={{ alignSelf: 'flex-start', paddingVertical: 3 }}><Text style={{ color: C.cyan, fontSize: 11, fontWeight: '700' }}>{translatingMessageIds.includes(message.id) ? 'Translating…' : visibleTranslations.includes(message.id) ? 'Hide translation' : 'Translate to ' + (translationLanguage === 'hi' ? 'Hindi' : 'English')}</Text></Pressable>
+                {visibleTranslations.includes(message.id) && !!translatedMessages[message.id] && <Text style={{ color: C.text, fontSize: 14, borderTopWidth: 1, borderTopColor: C.border, paddingTop: 6 }}>{translatedMessages[message.id]}</Text>}
                 <Text style={{ color: C.muted, fontSize: 9, marginTop: 4, textAlign: 'right' }}>{new Date(message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}{mine && message.read_at ? ' · Seen' : ''}</Text>
               </View>;
             })}
