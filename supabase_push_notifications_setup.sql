@@ -94,3 +94,8 @@ create trigger send_cuckoo_push_after_message_insert
 after insert on public.messages
 for each row execute function public.notify_cuckoo_message_push();
 
+-- Copy this value into the GitHub Actions secret CUCKOO_PUSH_WEBHOOK_SECRET.
+select decrypted_secret as cuckoo_push_webhook_secret
+from vault.decrypted_secrets
+where name = 'cuckoo_push_webhook_secret'
+limit 1;
