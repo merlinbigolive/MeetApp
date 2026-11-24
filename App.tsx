@@ -11,8 +11,8 @@ type Media = { uri: string; type: 'image' | 'video'; name?: string; size?: numbe
 type Tab = 'Home' | 'Public' | 'Create' | 'Inbox' | 'Profile';
 
 const C = {
-  bg: '#F5FAFF', panel: '#FFFFFF', panel2: '#EAF5FF', text: '#172B3A',
-  muted: '#688398', pink: '#258FEA', cyan: '#43B8E8', border: '#D8EAF7'
+  bg: '#FFFFFF', panel: '#FFFFFF', panel2: '#FFFFFF', text: '#172B3A',
+  muted: '#777777', pink: '#258FEA', cyan: '#43B8E8', border: '#EEEEEE'
 };
 
 function CoverMediaSlide({ media }: { media: Media }) {
@@ -234,8 +234,8 @@ const s = StyleSheet.create({
   sectionHeading:{flexDirection:'row',alignItems:'center',justifyContent:'space-between'},
   coverViewer:{flex:1,backgroundColor:'#03050A',justifyContent:'center'},
   coverViewerClose:{position:'absolute',top:48,right:18,zIndex:3,width:42,height:42,borderRadius:22,backgroundColor:'#263442',alignItems:'center',justifyContent:'center'},
-  top:{height:48,flexDirection:'row',alignItems:'center',justifyContent:'flex-start',paddingHorizontal:16},
-  pageTitle:{color:C.text,fontSize:22,fontWeight:'900'},switchText:{color:C.cyan,fontSize:11,fontWeight:'700'},
+  top:{height:76,flexDirection:'row',alignItems:'center',justifyContent:'center',paddingHorizontal:16},
+  pageTitle:{color:C.text,fontSize:25,fontWeight:'700',fontFamily:'serif',letterSpacing:2.2},switchText:{color:C.cyan,fontSize:11,fontWeight:'700'},
   card:{backgroundColor:C.panel,borderRadius:22,borderWidth:1,borderColor:C.border,padding:15,gap:12},
   coverHeader:{flexDirection:'row',alignItems:'center',justifyContent:'space-between'},
   eyebrow:{color:C.cyan,fontSize:9,fontWeight:'900',letterSpacing:1.5},sectionTitle:{color:C.text,fontSize:16,fontWeight:'900'},
@@ -264,7 +264,7 @@ const s = StyleSheet.create({
   actions:{flexDirection:'row',gap:9},primary:{flex:1,minHeight:44,borderRadius:13,backgroundColor:C.pink,alignItems:'center',justifyContent:'center',flexDirection:'row',gap:7},
   primaryText:{color:'#fff',fontWeight:'800',fontSize:13},secondary:{flex:1,minHeight:44,borderRadius:13,backgroundColor:C.panel2,borderWidth:1,borderColor:C.border,alignItems:'center',justifyContent:'center',flexDirection:'row',gap:7},
   secondaryText:{color:C.text,fontSize:13,fontWeight:'800'},infoLine:{flexDirection:'row',alignItems:'center',gap:10},infoText:{color:'#526B7D',fontSize:12},
-  footerNote:{color:C.muted,fontSize:10,lineHeight:15,paddingHorizontal:3},nav:{height:78,backgroundColor:C.panel,borderTopWidth:1,borderColor:C.border,flexDirection:'row',alignItems:'center',justifyContent:'space-around',paddingTop:5,paddingBottom:28},
+  footerNote:{color:C.muted,fontSize:10,lineHeight:15,paddingHorizontal:3},nav:{height:82,backgroundColor:C.panel,borderTopWidth:1,borderColor:C.border,flexDirection:'row',alignItems:'center',justifyContent:'space-around',paddingTop:5,paddingBottom:40},
   navItem:{flex:1,alignItems:'center',justifyContent:'center',gap:3},navLabel:{fontSize:9,color:C.muted,fontWeight:'700'},
   simple:{flex:1,backgroundColor:C.bg,padding:20,paddingTop:55,gap:18},modalShade:{flex:1,backgroundColor:'#000B',justifyContent:'flex-end'},
   editSheet:{maxHeight:'90%',backgroundColor:C.panel,borderTopLeftRadius:24,borderTopRightRadius:24,padding:20},
