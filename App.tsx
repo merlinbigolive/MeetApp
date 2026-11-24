@@ -8,7 +8,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { supabase } from './supabase';
 
-type Media = { uri: string; type: 'image' | 'video'; name?: string; size?: number; storagePath?: string };
+type Media = { uri: string; type: 'image' | 'video'; name?: string; size?: number; mimeType?: string; storagePath?: string };
 type CloudMediaRow = { id: string; kind: 'avatar' | 'cover' | 'post'; position: number; storage_path: string; media_type: 'image' | 'video'; original_name: string | null; };
 type Tab = 'Home' | 'Public' | 'Create' | 'Inbox' | 'Profile';
 type SearchCategory = 'People' | 'Videos' | 'Reels' | 'Trending' | 'Funny' | 'Vlogs' | 'Cinema' | 'Creators';
