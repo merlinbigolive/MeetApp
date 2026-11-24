@@ -53,6 +53,57 @@ export default function App() {
   const [isOwnProfile, setIsOwnProfile] = useState(true);
   const { width } = useWindowDimensions();
 
+  useEffect(() => {
+    let active = true;
+    const loadCloudProfile = async () => {
+      if (!supabase) return;
+      const { data: authData } = await supabase.auth.getSession();
+      const userId = authData.session?.user.id;
+      if (!userId) return;
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('username, display_name, bio, website_url, profession_category, activity_status')
+        .eq('id', userId)
+        .maybeSingle();
+      if (!active || error || !data) return;
+      setName(data.display_name || 'USay User');
+      setUsername(data.username || 'your_username');
+      setBio(data.bio || '');
+      setWebsite(data.website_url || '');
+      setOccupation(data.profession_category || '');
+      if (data.activity_status) {
+        const status = data.activity_status.toLowerCase();
+        setActivity(status.charAt(0).toUpperCase() + status.slice(1));
+      }
+    };
+    loadCloudProfile();
+    return () => { active = false; };
+  }, []);
+
+  const saveProfile = async () => {
+    if (supabase) {
+      const { data: authData } = await supabase.auth.getSession();
+      const userId = authData.session?.user.id;
+      if (userId) {
+        const { error } = await supabase.from('profiles').update({
+          display_name: name.trim(),
+          username: username.trim().replace(/^@/, ''),
+          bio: bio.trim(),
+          website_url: website.trim() || null,
+          profession_category: occupation.trim() || null,
+          activity_status: activity.toLowerCase(),
+          updated_at: new Date().toISOString(),
+        }).eq('id', userId);
+        if (error) {
+          Alert.alert('Profile not saved', error.message);
+          return;
+        }
+      }
+    }
+    setEditing(false);
+    Alert.alert('Profile saved', 'Your profile details have been saved.');
+  };
+
   const chooseMedia = async (kind: 'avatar' | 'cover' | 'post', index?: number) => {
     if (kind === 'cover' && covers.length >= 3 && index === undefined) {
       Alert.alert('Cover gallery full', 'You can add up to 3 cover photos/videos.');
