@@ -252,3 +252,47 @@ using (
       )
   )
 );
+
+
+-- Let signed-in users discover private accounts without exposing their private profile details.
+-- Private profiles reveal only identity basics needed to send a follow request.
+create or replace function public.get_discover_profiles()
+returns table (
+  id uuid,
+  username text,
+  display_name text,
+  bio text,
+  profession_category text,
+  website_url text,
+  activity_status text,
+  is_private boolean,
+  account_type text,
+  business_name text,
+  business_category text,
+  business_description text
+)
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select
+    p.id,
+    p.username,
+    p.display_name,
+    case when p.is_private = false then p.bio else null end,
+    case when p.is_private = false then p.profession_category else null end,
+    case when p.is_private = false then p.website_url else null end,
+    case when p.is_private = false then p.activity_status else null end,
+    p.is_private,
+    case when p.is_private = false then p.account_type else 'personal' end,
+    case when p.is_private = false then p.business_name else null end,
+    case when p.is_private = false then p.business_category else null end,
+    case when p.is_private = false then p.business_description else null end
+  from public.profiles p
+  where auth.uid() is not null and p.id <> auth.uid()
+  order by p.created_at desc
+  limit 100;
+$$;
+revoke all on function public.get_discover_profiles() from public;
+grant execute on function public.get_discover_profiles() to authenticated;
