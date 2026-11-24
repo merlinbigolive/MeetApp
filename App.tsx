@@ -144,7 +144,6 @@ export default function App() {
       const [followingResult, followerResult, likesResult] = await Promise.all([
         supabase.from('follows').select('*', { count: 'exact', head: true }).eq('follower_id', userId),
         supabase.from('follows').select('*', { count: 'exact', head: true }).eq('followed_id', userId),
-      ,
         supabase.rpc('get_profile_likes_count', { target_user_id: userId }),
       ]);
       if (!active) return;
