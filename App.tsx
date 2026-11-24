@@ -249,7 +249,7 @@ export default function App() {
           )}
           <Text style={s.fieldLabel}>Activity status</Text>
           <View style={s.activityGrid}>{['Available','Busy','Work','Drive','Gym','School','College'].map(x=><Pressable key={x} onPress={()=>setActivity(x)} style={[s.activityChip,activity===x&&s.activityActive]}><Text style={[s.activityText,activity===x&&{color:C.cyan}]}>{x}</Text></Pressable>)}</View>
-          <Pressable style={s.primary} onPress={()=>setEditing(false)}><Text style={s.primaryText}>Save on this device</Text></Pressable>
+          <Pressable style={s.primary} onPress={saveProfile}><Text style={s.primaryText}>Save profile</Text></Pressable>
         </ScrollView></View>
       </Modal>
       <Modal visible={coverExpanded} transparent animationType="fade" onRequestClose={()=>setCoverExpanded(false)}>
