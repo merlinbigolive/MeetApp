@@ -1,10 +1,10 @@
 import { ScrollView, Text, View, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { theme } from '../../src/constants/theme';
+import { theme } from './theme';
 export default function PublicFeed() {
   return <ScrollView style={s.page} contentContainerStyle={s.content}>
-    <Text style={s.title}>Public Feed</Text><Text style={s.muted}>Discover what the Meetapp community is sharing.</Text>
-    <View style={s.post}><View style={s.row}><View style={s.avatar}><Text style={s.avatarText}>M</Text></View><View style={{flex:1}}><Text style={s.name}>Meetapp Community <Text style={{color:theme.cyan}}>✓</Text></Text><Text style={s.muted}>@meetapp · Sample post</Text></View><Ionicons name="ellipsis-horizontal" color={theme.muted} size={22}/></View>
+    <Text style={s.title}>Public Feed</Text><Text style={s.muted}>Discover what the USay community is sharing.</Text>
+    <View style={s.post}><View style={s.row}><View style={s.avatar}><Text style={s.avatarText}>M</Text></View><View style={{flex:1}}><Text style={s.name}>USay Community <Text style={{color:theme.cyan}}>✓</Text></Text><Text style={s.muted}>@meetapp · Sample post</Text></View><Ionicons name="ellipsis-horizontal" color={theme.muted} size={22}/></View>
     <View style={s.media}><Ionicons name="image-outline" color={theme.muted} size={42}/><Text style={s.muted}>Photo or video post preview</Text></View>
     <Text style={s.body}>Your public posts will appear here. Follow creators, react and join conversations.</Text>
     <View style={s.actions}><Text style={s.action}>♡  Like</Text><Text style={s.action}>◯  Comment</Text><Text style={s.action}>↗  Share</Text></View></View>
