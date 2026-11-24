@@ -38,8 +38,9 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!session || !supabase) return;
+    const client = supabase;
     const createProfileIfMissing = async () => {
-      const { data, error } = await supabase
+      const { data, error } = await client
         .from('profiles').select('id').eq('id', session.user.id).maybeSingle();
       if (error) {
         setMessage('Login successful, but profile setup needs the database security SQL to be applied.');
@@ -50,7 +51,7 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
           .toLowerCase().replace(/[^a-z0-9_]/g, '').slice(0, 18) || 'usayuser';
         const username = emailName + '_' + session.user.id.slice(0, 6);
         const displayName = session.user.user_metadata?.display_name || emailName;
-        const { error: insertError } = await supabase.from('profiles').insert({
+        const { error: insertError } = await client.from('profiles').insert({
           id: session.user.id,
           username,
           display_name: displayName,
@@ -62,7 +63,8 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
   }, [session]);
 
   const sendCode = async () => {
-    if (!supabase) return;
+    const client = supabase;
+    if (!client) return;
     const cleanEmail = email.trim().toLowerCase();
     if (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(cleanEmail)) {
       setMessage('Please enter a valid email address.');
@@ -70,7 +72,7 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
     }
     setBusy(true);
     setMessage('');
-    const { error } = await supabase.auth.signInWithOtp({
+    const { error } = await client.auth.signInWithOtp({
       email: cleanEmail,
       options: { shouldCreateUser: true },
     });
@@ -84,7 +86,8 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
   };
 
   const verifyCode = async () => {
-    if (!supabase) return;
+    const client = supabase;
+    if (!client) return;
     const token = code.trim();
     if (!/^\\d{6}$/.test(token)) {
       setMessage('Enter the 6-digit code from your email.');
@@ -92,7 +95,7 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
     }
     setBusy(true);
     setMessage('');
-    const { error } = await supabase.auth.verifyOtp({
+    const { error } = await client.auth.verifyOtp({
       email: email.trim().toLowerCase(),
       token,
       type: 'email',
