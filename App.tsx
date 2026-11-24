@@ -6,6 +6,8 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { useVideoPlayer, VideoView } from 'expo-video';
+import { useAudioPlayer, useAudioPlayerStatus } from 'expo-audio';
+import { ExpoSpeechRecognitionModule, useSpeechRecognitionEvent } from 'expo-speech-recognition';
 import { supabase } from './supabase';
 
 type Media = { uri: string; type: 'image' | 'video'; name?: string; size?: number; mimeType?: string; storagePath?: string };
@@ -16,7 +18,7 @@ type SearchVideo = { id: string; caption: string | null; media_path: string; cre
 type PublishedPost = { id: string; post_type: 'photo' | 'video' | 'text'; caption: string | null; media_path: string | null; created_at: string; visibility: string; content_category: string | null; media: Media };
 type PublicProfile = { id: string; username: string; display_name: string; bio: string | null; profession_category: string | null; website_url?: string | null; activity_status?: string | null; is_private?: boolean; account_type?: 'personal' | 'business'; business_name?: string | null; business_category?: string | null; business_description?: string | null };
 type FollowRequest = { follower_id: string; username: string; display_name: string; requested_at: string };
-type ChatMessage = { id: string; conversation_id: string; sender_id: string; body: string; created_at: string; read_at?: string | null };
+type ChatMessage = { id: string; conversation_id: string; sender_id: string; body: string; created_at: string; read_at?: string | null; message_type?: 'text' | 'voice'; audio_path?: string | null; audio_url?: string | null; transcript?: string | null };
 type ChatThread = { id: string; user_one_id: string; user_two_id: string; updated_at: string; unread_count?: number; otherUser: PublicProfile };
 
 const C = {
@@ -34,6 +36,19 @@ function ProfileCoverVideo({ uri }: { uri: string }) {
     return () => player.pause();
   }, [player]);
   return <VideoView player={player} style={s.coverBackdropVideo} contentFit="cover" nativeControls={false} />;
+}
+
+function VoiceMessageBubble({ uri, transcript, mine }: { uri: string; transcript: string | null; mine: boolean }) {
+  const player = useAudioPlayer(uri);
+  const status = useAudioPlayerStatus(player);
+  const [showTranscript, setShowTranscript] = useState(false);
+  return <View style={{ gap: 7, minWidth: 170 }}>
+    <Pressable onPress={() => status.playing ? player.pause() : player.play()} onPressIn={() => setShowTranscript(true)} onPressOut={() => setShowTranscript(false)} style={{ flexDirection: 'row', alignItems: 'center', gap: 9, paddingVertical: 5 }}>
+      <Ionicons name={status.playing ? 'pause-circle' : 'play-circle'} size={27} color={mine ? C.pink : C.cyan}/>
+      <View style={{ flex: 1 }}><Text style={{ color: C.text, fontSize: 13, fontWeight: '600' }}>Voice message</Text><Text style={{ color: C.muted, fontSize: 10 }}>Hold to read transcript</Text></View>
+    </Pressable>
+    {showTranscript && <View style={{ borderTopWidth: 1, borderTopColor: C.border, paddingTop: 7 }}><Text style={{ color: C.text, fontSize: 13 }}>{transcript || 'Transcript unavailable for this voice message.'}</Text></View>}
+  </View>;
 }
 
 function CoverMediaSlide({ media }: { media: Media }) {
@@ -91,7 +106,21 @@ export default function App() {
   const [chatDraft, setChatDraft] = useState('');
   const [chatLoading, setChatLoading] = useState(false);
   const [chatSending, setChatSending] = useState(false);
+  const [voiceRecording, setVoiceRecording] = useState(false);
+  const [voiceStopPending, setVoiceStopPending] = useState(false);
+  const [voiceLocalUri, setVoiceLocalUri] = useState<string | null>(null);
+  const [voiceTranscript, setVoiceTranscript] = useState('');
+  const [voiceSending, setVoiceSending] = useState(false);
+  const [voiceLanguage, setVoiceLanguage] = useState('hi-IN');
+  const [translationLanguage, setTranslationLanguage] = useState<'hi' | 'en'>('hi');
+  const [translatedMessages, setTranslatedMessages] = useState<Record<string, string>>({});
+  const [visibleTranslations, setVisibleTranslations] = useState<string[]>([]);
+  const [translatingMessageIds, setTranslatingMessageIds] = useState<string[]>([]);
   const [currentUserId, setCurrentUserId] = useState('');
+  useSpeechRecognitionEvent('result', event => { const recognized = event.results?.[0]?.transcript; if (recognized) setVoiceTranscript(old => event.isFinal && old && !old.endsWith(recognized) ? old + ' ' + recognized : recognized); });
+  useSpeechRecognitionEvent('audioend', event => { if (event.uri) setVoiceLocalUri(event.uri); });
+  useSpeechRecognitionEvent('end', () => setVoiceRecording(false));
+  useSpeechRecognitionEvent('error', event => { setVoiceRecording(false); setVoiceStopPending(false); Alert.alert('Voice message error', event.message || event.error || 'Speech recognition could not start.'); });
   const [createMedia, setCreateMedia] = useState<Media | null>(null);
   const [createCaption, setCreateCaption] = useState('');
   const [createCategory, setCreateCategory] = useState<'videos' | 'reels' | 'funny' | 'vlogs' | 'cinema'>('videos');
@@ -638,13 +667,18 @@ export default function App() {
     setChatLoading(true);
     setChatMessages([]);
     const messagesResult = await supabase.from('messages')
-       .select('id, conversation_id, sender_id, body, created_at, read_at')
+       .select('id, conversation_id, sender_id, body, created_at, read_at, message_type, audio_path, transcript')
       .eq('conversation_id', thread.id).order('created_at', { ascending: true }).limit(200);
     setChatLoading(false);
     if (messagesResult.error) {
       Alert.alert('Could not load messages', messagesResult.error.message);
     } else {
-      setChatMessages((messagesResult.data || []) as ChatMessage[]);
+      const hydratedMessages = await Promise.all(((messagesResult.data || []) as ChatMessage[]).map(async message => {
+        if (!message.audio_path) return message;
+        const { data: signed } = await supabase.storage.from('usay-chat-audio').createSignedUrl(message.audio_path, 3600);
+        return { ...message, audio_url: signed?.signedUrl || null };
+      }));
+      setChatMessages(hydratedMessages);
       const { error: readError } = await supabase.rpc('mark_conversation_read', { target_conversation_id: thread.id });
       if (readError) Alert.alert('Read status could not update', readError.message);
       else {
@@ -686,6 +720,51 @@ export default function App() {
     void loadInbox();
   };
 
+  const translateMessage = async (message: ChatMessage) => {
+    if (visibleTranslations.includes(message.id)) { setVisibleTranslations(old => old.filter(id => id !== message.id)); return; }
+    if (translatedMessages[message.id]) { setVisibleTranslations(old => [...old, message.id]); return; }
+    setTranslatingMessageIds(old => [...old, message.id]);
+    try {
+      const endpoint = 'https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=' + translationLanguage + '&dt=t&q=' + encodeURIComponent(message.body);
+      const response = await fetch(endpoint);
+      if (!response.ok) throw new Error('Translation service is unavailable.');
+      const result = await response.json();
+      const translated = Array.isArray(result?.[0]) ? result[0].map((part: any) => part?.[0] || '').join('') : '';
+      if (!translated) throw new Error('No translation was returned.');
+      setTranslatedMessages(old => ({ ...old, [message.id]: translated })); setVisibleTranslations(old => [...old, message.id]);
+    } catch (error: any) { Alert.alert('Translation failed', error?.message || 'Please try again.'); }
+    finally { setTranslatingMessageIds(old => old.filter(id => id !== message.id)); }
+  };
+
+  const startVoiceRecording = async () => {
+    if (!activeChat || voiceRecording || voiceSending) return;
+    try {
+      const permission = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
+      if (!permission.granted) { Alert.alert('Microphone permission needed', 'Allow microphone and speech recognition to send voice messages.'); return; }
+      setVoiceLocalUri(null); setVoiceTranscript(''); setVoiceStopPending(false); setVoiceRecording(true);
+      ExpoSpeechRecognitionModule.start({ lang: voiceLanguage, interimResults: true, continuous: true, maxAlternatives: 1, recordingOptions: { persist: true, outputFileName: 'cuckoo-voice-' + Date.now() + '.wav' } });
+    } catch (error: any) { setVoiceRecording(false); Alert.alert('Could not start recording', error?.message || 'Please try again.'); }
+  };
+
+  const sendVoiceMessage = async (uri: string, transcript: string) => {
+    if (!supabase || !activeChat || !currentUserId) { setVoiceStopPending(false); return; }
+    setVoiceSending(true);
+    try {
+      const fileResponse = await fetch(uri); if (!fileResponse.ok) throw new Error('Recorded audio file could not be read.');
+      const audioBytes = await fileResponse.arrayBuffer();
+      const audioPath = currentUserId + '/' + activeChat.id + '/' + Date.now() + '.wav';
+      const uploaded = await supabase.storage.from('usay-chat-audio').upload(audioPath, audioBytes, { contentType: 'audio/wav', upsert: false });
+      if (uploaded.error) throw uploaded.error;
+      const { data, error } = await supabase.from('messages').insert({ conversation_id: activeChat.id, sender_id: currentUserId, body: transcript.trim() || '🎤 Voice message', message_type: 'voice', audio_path: audioPath, transcript: transcript.trim() || null }).select('id, conversation_id, sender_id, body, created_at, read_at, message_type, audio_path, transcript').single();
+      if (error) throw error;
+      const { data: signed } = await supabase.storage.from('usay-chat-audio').createSignedUrl(audioPath, 3600);
+      setChatMessages(old => [...old, { ...data, audio_url: signed?.signedUrl || null } as ChatMessage]); void loadInbox();
+    } catch (error: any) { Alert.alert('Voice message not sent', error?.message || 'Please try again.'); }
+    finally { setVoiceSending(false); setVoiceStopPending(false); setVoiceLocalUri(null); }
+  };
+  const stopVoiceRecording = () => { if (!voiceRecording) return; setVoiceStopPending(true); ExpoSpeechRecognitionModule.stop(); };
+  useEffect(() => { if (voiceStopPending && voiceLocalUri) void sendVoiceMessage(voiceLocalUri, voiceTranscript); }, [voiceStopPending, voiceLocalUri]);
+
   useEffect(() => {
     if (tab === 'Inbox') void loadInbox();
     if (tab === 'Profile') void loadFollowRequests();
@@ -708,6 +787,7 @@ export default function App() {
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, payload => {
         const incoming = payload.new as ChatMessage;
         if (activeChat?.id === incoming.conversation_id) {
+          if (incoming.audio_path) { const { data: signed } = await supabase!.storage.from('usay-chat-audio').createSignedUrl(incoming.audio_path, 3600); incoming.audio_url = signed?.signedUrl || null; }
           setChatMessages(old => old.some(message => message.id === incoming.id) ? old : [...old, incoming]);
           if (incoming.sender_id !== currentUserId) {
             void supabase!.rpc('mark_conversation_read', { target_conversation_id: incoming.conversation_id });
@@ -1212,6 +1292,7 @@ export default function App() {
             <Text style={s.sectionTitle}>{activeChat.otherUser.display_name}</Text>
             <Text style={s.personUsername}>@{activeChat.otherUser.username}</Text>
           </View>
+          <Pressable onPress={() => Alert.alert('Translate messages to', 'Choose your reading language.', [{ text: 'Hindi', onPress: () => { setTranslationLanguage('hi'); setTranslatedMessages({}); setVisibleTranslations([]); } }, { text: 'English', onPress: () => { setTranslationLanguage('en'); setTranslatedMessages({}); setVisibleTranslations([]); } }, { text: 'Cancel', style: 'cancel' }])}><Ionicons name="language-outline" size={21} color={C.cyan}/></Pressable>
           <Pressable onPress={() => setActiveChat(null)}><Ionicons name="close" size={21} color={C.muted}/></Pressable>
         </View>
         <ScrollView style={{ flex: 1 }} contentContainerStyle={{ gap: 10, paddingVertical: 12 }} keyboardShouldPersistTaps="handled">
@@ -1219,18 +1300,24 @@ export default function App() {
             chatMessages.length === 0 ? <Text style={[s.hint, { textAlign: 'center', marginTop: 30 }]}>Say hello and start the conversation.</Text> :
             chatMessages.map(message => {
               const mine = message.sender_id === currentUserId;
-              return <View key={message.id} style={{ alignSelf: mine ? 'flex-end' : 'flex-start', maxWidth: '84%', backgroundColor: mine ? '#E5F4FF' : '#F3F6F8', borderRadius: 16, paddingHorizontal: 13, paddingVertical: 9 }}>
-                <Text style={{ color: C.text, fontSize: 14 }}>{message.body}</Text>
+              return <View key={message.id} style={{ alignSelf: mine ? 'flex-end' : 'flex-start', maxWidth: '84%', backgroundColor: mine ? '#E5F4FF' : '#F3F6F8', borderRadius: 16, paddingHorizontal: 13, paddingVertical: 9, gap: 5 }}>
+                {message.message_type === 'voice' ? (message.audio_url ? <VoiceMessageBubble uri={message.audio_url} transcript={message.transcript || message.body} mine={mine}/> : <Text style={{ color: C.muted, fontSize: 12 }}>Voice message unavailable</Text>) : <>
+                  <Text style={{ color: C.text, fontSize: 14 }}>{message.body}</Text>
+                  <Pressable disabled={translatingMessageIds.includes(message.id)} onPress={() => void translateMessage(message)} style={{ alignSelf: 'flex-start', paddingVertical: 3 }}><Text style={{ color: C.cyan, fontSize: 11, fontWeight: '700' }}>{translatingMessageIds.includes(message.id) ? 'Translating…' : visibleTranslations.includes(message.id) ? 'Hide translation' : 'Translate to ' + (translationLanguage === 'hi' ? 'Hindi' : 'English')}</Text></Pressable>
+                  {visibleTranslations.includes(message.id) && !!translatedMessages[message.id] && <Text style={{ color: C.text, fontSize: 14, borderTopWidth: 1, borderTopColor: C.border, paddingTop: 6 }}>{translatedMessages[message.id]}</Text>}
+                </>}
                 <Text style={{ color: C.muted, fontSize: 9, marginTop: 4, textAlign: 'right' }}>{new Date(message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}{mine && message.read_at ? ' · Seen' : ''}</Text>
               </View>;
             })}
         </ScrollView>
         <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 8, paddingTop: 10, borderTopWidth: 1, borderColor: C.border }}>
           <TextInput value={chatDraft} onChangeText={setChatDraft} placeholder="Write a message…" placeholderTextColor={C.muted} multiline style={[s.input, { flex: 1, maxHeight: 110, minHeight: 44, paddingVertical: 10 }]}/>
+          <Pressable disabled={voiceSending} onPress={() => voiceRecording ? stopVoiceRecording() : void startVoiceRecording()} style={[s.secondary, { width: 44, minHeight: 44, padding: 0, opacity: voiceSending ? 0.55 : 1 }]}><Ionicons name={voiceRecording ? 'stop-circle' : 'mic-outline'} size={19} color={voiceRecording ? '#D33' : C.cyan}/></Pressable>
           <Pressable disabled={!chatDraft.trim() || chatSending} onPress={() => void sendChatMessage()} style={[s.primary, { flex: 0, width: 48, minHeight: 44, opacity: !chatDraft.trim() || chatSending ? 0.55 : 1 }]}>
             <Ionicons name="send" size={18} color="#FFFFFF"/>
           </Pressable>
         </View>
+        {(voiceRecording || voiceStopPending || voiceSending) && <Text style={[s.hint, { paddingTop: 6 }]}>{voiceRecording ? 'Recording… ' + (voiceTranscript || 'Speak now') : voiceSending ? 'Sending voice message…' : 'Finishing recording…'}</Text>}
       </> : <>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
           <Text style={s.pageTitle}>Inbox</Text>
