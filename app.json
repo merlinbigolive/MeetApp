@@ -33,6 +33,14 @@
         }
       ],
       [
+        "expo-notifications",
+        {
+          "sounds": [
+            "./assets/cuckoo_default_natural.wav"
+          ]
+        }
+      ],
+      [
         "expo-speech-recognition",
         {
           "microphonePermission": "Allow CUCKOO to record voice messages.",
