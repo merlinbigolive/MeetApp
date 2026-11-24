@@ -14,7 +14,8 @@ type Tab = 'Home' | 'Public' | 'Create' | 'Inbox' | 'Profile';
 type SearchCategory = 'People' | 'Videos' | 'Reels' | 'Trending' | 'Funny' | 'Vlogs' | 'Cinema' | 'Creators';
 type SearchVideo = { id: string; caption: string | null; media_path: string; created_at: string; user_id: string; content_category: string; like_count: number; view_count: number };
 type PublishedPost = { id: string; post_type: 'photo' | 'video' | 'text'; caption: string | null; media_path: string | null; created_at: string; visibility: string; content_category: string | null; media: Media };
-type PublicProfile = { id: string; username: string; display_name: string; bio: string | null; profession_category: string | null; website_url?: string | null; activity_status?: string | null; account_type?: 'personal' | 'business'; business_name?: string | null; business_category?: string | null; business_description?: string | null };
+type PublicProfile = { id: string; username: string; display_name: string; bio: string | null; profession_category: string | null; website_url?: string | null; activity_status?: string | null; is_private?: boolean; account_type?: 'personal' | 'business'; business_name?: string | null; business_category?: string | null; business_description?: string | null };
+type FollowRequest = { follower_id: string; username: string; display_name: string; requested_at: string };
 type ChatMessage = { id: string; conversation_id: string; sender_id: string; body: string; created_at: string };
 type ChatThread = { id: string; user_one_id: string; user_two_id: string; updated_at: string; otherUser: PublicProfile };
 
@@ -67,6 +68,10 @@ export default function App() {
   const [publicProfiles, setPublicProfiles] = useState<PublicProfile[]>([]);
   const [discoverAvatars, setDiscoverAvatars] = useState<Record<string, Media>>({});
   const [followedUserIds, setFollowedUserIds] = useState<string[]>([]);
+  const [pendingFollowIds, setPendingFollowIds] = useState<string[]>([]);
+  const [followRequests, setFollowRequests] = useState<FollowRequest[]>([]);
+  const [isPrivateAccount, setIsPrivateAccount] = useState(false);
+  const [followRequestBusyIds, setFollowRequestBusyIds] = useState<string[]>([]);
   const [profileSearch, setProfileSearch] = useState('');
   const [searchCategory, setSearchCategory] = useState<SearchCategory>('People');
   const [publicVideos, setPublicVideos] = useState<SearchVideo[]>([]);
@@ -155,7 +160,7 @@ export default function App() {
       if (!userId) return;
       const { data, error } = await supabase
         .from('profiles')
-        .select('username, display_name, bio, website_url, profession_category, activity_status, account_type, business_name, business_category, business_description')
+        .select('username, display_name, bio, website_url, profession_category, activity_status, is_private, account_type, business_name, business_category, business_description')
         .eq('id', userId)
         .maybeSingle();
       if (!active || error || !data) return;
@@ -168,10 +173,11 @@ export default function App() {
       setBusinessName(data.business_name || '');
       setBusinessCategory(data.business_category || '');
       setBusinessDescription(data.business_description || '');
+      setIsPrivateAccount(!!data.is_private);
 
       const [followingResult, followerResult, likesResult] = await Promise.all([
-        supabase.from('follows').select('*', { count: 'exact', head: true }).eq('follower_id', userId),
-        supabase.from('follows').select('*', { count: 'exact', head: true }).eq('followed_id', userId),
+        supabase.from('follows').select('*', { count: 'exact', head: true }).eq('follower_id', userId).eq('status', 'accepted'),
+        supabase.from('follows').select('*', { count: 'exact', head: true }).eq('followed_id', userId).eq('status', 'accepted'),
         supabase.rpc('get_profile_likes_count', { target_user_id: userId }),
       ]);
       if (!active) return;
@@ -253,8 +259,8 @@ export default function App() {
         return;
       }
       const [profilesResult, followsResult] = await Promise.all([
-        supabase!.from('profiles').select('id, username, display_name, bio, profession_category, website_url, activity_status, account_type, business_name, business_category, business_description').neq('id', userId).order('created_at', { ascending: false }).limit(50),
-        supabase!.from('follows').select('followed_id').eq('follower_id', userId),
+        supabase!.rpc('get_discover_profiles'),
+        supabase!.from('follows').select('followed_id, status').eq('follower_id', userId),
       ]);
       if (!active) return;
       if (profilesResult.error) Alert.alert('Could not load people', profilesResult.error.message);
@@ -285,7 +291,10 @@ export default function App() {
         }
       }
       if (followsResult.error) Alert.alert('Could not load follows', followsResult.error.message);
-      else setFollowedUserIds((followsResult.data || []).map(row => row.followed_id));
+      else {
+        setFollowedUserIds((followsResult.data || []).filter(row => row.status === 'accepted').map(row => row.followed_id));
+        setPendingFollowIds((followsResult.data || []).filter(row => row.status === 'pending').map(row => row.followed_id));
+      }
       setLoadingProfiles(false);
     };
     loadDiscoverProfiles();
@@ -387,26 +396,45 @@ export default function App() {
     if (!supabase || followBusyIds.includes(profile.id)) return;
     const { data: authData, error: authError } = await supabase.auth.getSession();
     const userId = authData.session?.user.id;
-    if (authError || !userId) {
-      Alert.alert('Sign in required', 'Please sign in again to follow people.');
-      return;
-    }
+    if (authError || !userId) { Alert.alert('Sign in required', 'Please sign in again to follow people.'); return; }
     setFollowBusyIds(old => [...old, profile.id]);
     const isFollowing = followedUserIds.includes(profile.id);
-    const result = isFollowing
-      ? await supabase.from('follows').delete().eq('follower_id', userId).eq('followed_id', profile.id)
-      : await supabase.from('follows').insert({ follower_id: userId, followed_id: profile.id });
-    setFollowBusyIds(old => old.filter(id => id !== profile.id));
-    if (result.error) {
-      Alert.alert(isFollowing ? 'Unfollow failed' : 'Follow failed', result.error.message);
+    if (isFollowing || pendingFollowIds.includes(profile.id)) {
+      const { error } = await supabase.from('follows').delete().eq('follower_id', userId).eq('followed_id', profile.id);
+      setFollowBusyIds(old => old.filter(id => id !== profile.id));
+      if (error) { Alert.alert('Follow update failed', error.message); return; }
+      if (isFollowing) {
+        setFollowedUserIds(old => old.filter(id => id !== profile.id));
+        setFollowingCount(count => Math.max(0, count - 1));
+        if (selectedProfile?.id === profile.id) setOtherFollowerCount(count => Math.max(0, count - 1));
+      } else setPendingFollowIds(old => old.filter(id => id !== profile.id));
       return;
     }
-    setFollowedUserIds(old => isFollowing ? old.filter(id => id !== profile.id) : [...old, profile.id]);
-    const countDelta = isFollowing ? -1 : 1;
-    setFollowingCount(count => Math.max(0, count + countDelta));
-    if (selectedProfile?.id === profile.id) {
-      setOtherFollowerCount(count => Math.max(0, count + countDelta));
-    }
+    const { data, error } = await supabase.rpc('request_profile_follow', { target_user_id: profile.id });
+    setFollowBusyIds(old => old.filter(id => id !== profile.id));
+    if (error) { Alert.alert('Follow failed', error.message); return; }
+    if (data === 'accepted') {
+      setFollowedUserIds(old => old.includes(profile.id) ? old : [...old, profile.id]);
+      setFollowingCount(count => count + 1);
+      if (selectedProfile?.id === profile.id) setOtherFollowerCount(count => count + 1);
+    } else setPendingFollowIds(old => old.includes(profile.id) ? old : [...old, profile.id]);
+  };
+
+  const loadFollowRequests = async () => {
+    if (!supabase) return;
+    const { data, error } = await supabase.rpc('get_my_follow_requests');
+    if (error) { Alert.alert('Could not load follow requests', error.message); return; }
+    setFollowRequests((data || []) as FollowRequest[]);
+  };
+
+  const respondToFollowRequest = async (followerId: string, approve: boolean) => {
+    if (!supabase || followRequestBusyIds.includes(followerId)) return;
+    setFollowRequestBusyIds(old => [...old, followerId]);
+    const { data, error } = await supabase.rpc('respond_to_follow_request', { target_follower_id: followerId, approve });
+    setFollowRequestBusyIds(old => old.filter(id => id !== followerId));
+    if (error || !data) { Alert.alert('Request update failed', error?.message || 'This request is no longer available.'); return; }
+    setFollowRequests(old => old.filter(item => item.follower_id !== followerId));
+    if (approve) setFollowerCount(count => count + 1);
   };
 
   const chooseCreateMedia = async () => {
@@ -637,6 +665,7 @@ export default function App() {
 
   useEffect(() => {
     if (tab === 'Inbox') void loadInbox();
+    if (tab === 'Profile') void loadFollowRequests();
   }, [tab]);
 
   const saveProfile = async () => {
@@ -694,6 +723,7 @@ export default function App() {
       business_name: accountType === 'business' ? cleanBusinessName : null,
       business_category: accountType === 'business' ? cleanBusinessCategory : null,
       business_description: accountType === 'business' ? businessDescription.trim() || null : null,
+      is_private: isPrivateAccount,
       activity_status: activity.toLowerCase(),
       updated_at: new Date().toISOString(),
     }).eq('id', userId);
@@ -885,6 +915,14 @@ export default function App() {
          
       </Animated.View>
       <View style={s.profileBody}>
+        {!!followRequests.length && <View style={s.section}>
+          <View style={s.sectionHeading}><Text style={s.sectionTitle}>Follow Requests</Text><Text style={s.coverCount}>{followRequests.length}</Text></View>
+          {followRequests.map(request => <View key={request.follower_id} style={s.personRow}>
+            <View style={s.personDetails}><Text style={s.personName}>{request.display_name}</Text><Text style={s.personUsername}>@{request.username}</Text></View>
+            <Pressable disabled={followRequestBusyIds.includes(request.follower_id)} onPress={() => void respondToFollowRequest(request.follower_id, false)} style={[s.followButton, s.followingButton]}><Text style={s.followingButtonText}>Decline</Text></Pressable>
+            <Pressable disabled={followRequestBusyIds.includes(request.follower_id)} onPress={() => void respondToFollowRequest(request.follower_id, true)} style={s.followButton}><Text style={s.followButtonText}>Accept</Text></Pressable>
+          </View>)}
+        </View>}
         <View style={s.stats}>
           <View style={s.stat}><Text style={s.statNum}>{followingCount.toLocaleString()}</Text><Text style={s.statLabel}>Following</Text></View>
           <View style={s.stat}><Text style={s.statNum}>{followerCount.toLocaleString()}</Text><Text style={s.statLabel}>Followers</Text></View>
@@ -927,6 +965,7 @@ export default function App() {
   const OtherProfileScreen = () => {
     if (!selectedProfile) return null;
     const following = followedUserIds.includes(selectedProfile.id);
+    const pending = pendingFollowIds.includes(selectedProfile.id);
     const busy = followBusyIds.includes(selectedProfile.id);
     const openOtherWebsite = () => {
       const raw = selectedProfile.website_url || '';
@@ -969,7 +1008,7 @@ export default function App() {
           <View style={s.stat}><Text style={s.statNum}>{otherLikesCount.toLocaleString()}</Text><Text style={s.statLabel}>Likes</Text></View>
         </View>
         <View style={s.actions}>
-          <Pressable disabled={busy} style={[s.primary, following && s.followingButton]} onPress={() => toggleFollow(selectedProfile)}><Ionicons name={following ? 'checkmark' : 'person-add-outline'} color={following ? C.cyan : '#fff'} size={17}/><Text style={[s.primaryText, following && { color: C.cyan }]}>{busy ? 'Please wait…' : following ? 'Following' : 'Follow'}</Text></Pressable>
+          <Pressable disabled={busy} style={[s.primary, (following || pending) && s.followingButton]} onPress={() => toggleFollow(selectedProfile)}><Ionicons name={following ? 'checkmark' : pending ? 'time-outline' : 'person-add-outline'} color={following || pending ? C.cyan : '#fff'} size={17}/><Text style={[s.primaryText, (following || pending) && { color: C.cyan }]}>{busy ? 'Please wait…' : following ? 'Following' : pending ? 'Requested · Cancel' : 'Follow'</Text></Pressable>
           <Pressable style={s.secondary} onPress={() => void openChat(selectedProfile)}><Ionicons name="chatbubble-ellipses-outline" color={C.text} size={17}/><Text style={s.secondaryText}>Message</Text></Pressable>
         </View>
         <View style={s.section}>
@@ -1034,7 +1073,7 @@ export default function App() {
               <View style={s.personAvatar}>{discoverAvatars[profile.id]?.type === 'image' ? <Image source={{ uri: discoverAvatars[profile.id].uri }} style={{ width: '100%', height: '100%', borderRadius: 24 }} /> : <Ionicons name="person" size={22} color={C.cyan}/>}</View>
               <View style={s.personDetails}><Text style={s.personName}>{profile.display_name}</Text><Text style={s.personUsername}>@{profile.username}</Text>{!!profile.profession_category && <Text style={s.personBio}>{profile.profession_category}</Text>}</View>
             </Pressable>
-            <Pressable disabled={busy} onPress={() => toggleFollow(profile)} style={[s.followButton, following && s.followingButton]}><Text style={[s.followButtonText, following && s.followingButtonText]}>{busy ? '...' : following ? 'Following' : 'Follow'}</Text></Pressable>
+            <Pressable disabled={busy} onPress={() => toggleFollow(profile)} style={[s.followButton, (following || pendingFollowIds.includes(profile.id)) && s.followingButton]}><Text style={[s.followButtonText, (following || pendingFollowIds.includes(profile.id)) && s.followingButtonText]}>{busy ? '...' : following ? 'Following' : pendingFollowIds.includes(profile.id) ? 'Requested' : 'Follow'}</Text></Pressable>
           </View>;
         })}
       </> : <>
