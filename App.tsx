@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Notifications from 'expo-notifications';
 import {
-  Alert, Image, Modal, Pressable, ScrollView, StatusBar, StyleSheet,
+  Alert, Image, Modal, Pressable, ScrollView, StatusBar, StyleSheet, Platform,
   Text, TextInput, View, useWindowDimensions, Animated, PanResponder
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -21,6 +23,15 @@ type PublicProfile = { id: string; username: string; display_name: string; bio: 
 type FollowRequest = { follower_id: string; username: string; display_name: string; requested_at: string };
 type ChatMessage = { id: string; conversation_id: string; sender_id: string; body: string; created_at: string; read_at?: string | null; message_type?: 'text' | 'voice'; audio_path?: string | null; audio_url?: string | null; transcript?: string | null };
 type ChatThread = { id: string; user_one_id: string; user_two_id: string; updated_at: string; unread_count?: number; otherUser: PublicProfile };
+
+const CUCKOO_SOUND_FILE = 'cuckoo_default_natural.wav';
+const CUCKOO_SOUND_CHANNEL = 'messages-cuckoo-sound';
+const SILENT_MESSAGE_CHANNEL = 'messages-silent';
+const NOTIFICATION_SOUND_KEY = '@cuckoo/message_notification_sound';
+
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({ shouldShowBanner: true, shouldShowList: true, shouldPlaySound: true, shouldSetBadge: false }),
+});
 
 const C = {
   bg: '#FFFFFF', panel: '#FFFFFF', panel2: '#FFFFFF', text: '#172B3A',
@@ -123,6 +134,52 @@ export default function App() {
   const [visibleTranslations, setVisibleTranslations] = useState<string[]>([]);
   const [translatingMessageIds, setTranslatingMessageIds] = useState<string[]>([]);
   const [currentUserId, setCurrentUserId] = useState('');
+  const [messageSoundEnabled, setMessageSoundEnabled] = useState(true);
+  useEffect(() => {
+    let active = true;
+    const setupMessageNotifications = async () => {
+      try {
+        const saved = await AsyncStorage.getItem(NOTIFICATION_SOUND_KEY);
+        const enabled = saved === null ? true : saved === 'true';
+        if (active) setMessageSoundEnabled(enabled);
+        const permission = await Notifications.getPermissionsAsync();
+        if (!permission.granted) await Notifications.requestPermissionsAsync();
+        await Notifications.setNotificationChannelAsync(CUCKOO_SOUND_CHANNEL, {
+          name: 'Messages - Cuckoo sound', importance: Notifications.AndroidImportance.HIGH,
+          sound: CUCKOO_SOUND_FILE, vibrationPattern: [0, 180, 100, 180],
+        });
+        await Notifications.setNotificationChannelAsync(SILENT_MESSAGE_CHANNEL, {
+          name: 'Messages - Silent', importance: Notifications.AndroidImportance.DEFAULT,
+          sound: null, vibrationPattern: [0],
+        });
+      } catch (error) {
+        console.warn('Message notification setup failed:', error);
+      }
+    };
+    void setupMessageNotifications();
+    return () => { active = false; };
+  }, []);
+
+  const setMessageNotificationSound = async (enabled: boolean) => {
+    setMessageSoundEnabled(enabled);
+    try {
+      await AsyncStorage.setItem(NOTIFICATION_SOUND_KEY, String(enabled));
+      if (enabled) {
+        const permission = await Notifications.getPermissionsAsync();
+        if (!permission.granted) {
+          const requested = await Notifications.requestPermissionsAsync();
+          if (!requested.granted) {
+            setMessageSoundEnabled(false);
+            await AsyncStorage.setItem(NOTIFICATION_SOUND_KEY, 'false');
+            Alert.alert('Notifications disabled', 'Allow notifications in your phone settings to hear the Cuckoo sound.');
+          }
+        }
+      }
+    } catch (error: any) {
+      Alert.alert('Setting not saved', error?.message || 'Please try again.');
+    }
+  };
+
   useSpeechRecognitionEvent('result', event => { const recognized = event.results?.[0]?.transcript; if (recognized) setVoiceTranscript(old => event.isFinal && old && !old.endsWith(recognized) ? old + ' ' + recognized : recognized); });
   useSpeechRecognitionEvent('audioend', event => { if (event.uri) setVoiceLocalUri(event.uri); });
   useSpeechRecognitionEvent('end', () => setVoiceRecording(false));
@@ -915,10 +972,22 @@ export default function App() {
   }, [tab, currentUserId]);
 
   useEffect(() => {
-    if (!supabase || tab !== 'Inbox' || !currentUserId) return;
+    if (!supabase || !currentUserId) return;
     const channel = supabase.channel('inbox-live-' + currentUserId)
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, async payload => {
         const incoming = payload.new as ChatMessage;
+        if (incoming.sender_id !== currentUserId && activeChat?.id !== incoming.conversation_id) {
+          void Notifications.scheduleNotificationAsync({
+            content: {
+              title: 'New message',
+              body: incoming.message_type === 'voice' ? 'You received a voice message.' : (incoming.body || 'You received a message.'),
+              sound: messageSoundEnabled ? CUCKOO_SOUND_FILE : false,
+              ...(Platform.OS === 'android' ? { channelId: messageSoundEnabled ? CUCKOO_SOUND_CHANNEL : SILENT_MESSAGE_CHANNEL } : {}),
+              data: { conversationId: incoming.conversation_id },
+            },
+            trigger: null,
+          }).catch(error => console.warn('Could not show message notification:', error));
+        }
         if (activeChat?.id === incoming.conversation_id) {
           if (incoming.audio_path) { const { data: signed } = await supabase!.storage.from('usay-chat-audio').createSignedUrl(incoming.audio_path, 3600); incoming.audio_url = signed?.signedUrl || null; }
           setChatMessages(old => old.some(message => message.id === incoming.id) ? old : [...old, incoming]);
@@ -936,7 +1005,7 @@ export default function App() {
       })
       .subscribe();
     return () => { void supabase!.removeChannel(channel); };
-  }, [tab, currentUserId, activeChat?.id]);
+  }, [currentUserId, activeChat?.id, messageSoundEnabled]);
 
   const saveProfile = async () => {
     const client = supabase;
@@ -1213,12 +1282,14 @@ export default function App() {
         <View style={s.actions}>
           {isOwnProfile ? <>
             <Pressable style={s.primary} onPress={() => setEditing(true)}><Ionicons name="create-outline" color="#fff" size={17}/><Text style={s.primaryText}>Edit Profile</Text></Pressable>
-            <Pressable style={s.secondary} onPress={() => Alert.alert('Account settings', 'Choose an account action.', [
-              { text: 'Cancel', style: 'cancel' },
+            <Pressable style={s.secondary} onPress={() => Alert.alert('Message notification sound', 'Choose whether new messages play your natural Cuckoo sound.', [
+              { text: 'Sound On', onPress: () => { void setMessageNotificationSound(true); } },
+              { text: 'Sound Off', onPress: () => { void setMessageNotificationSound(false); } },
               { text: 'Sign out', style: 'destructive', onPress: () => {
                 if (supabase) supabase.auth.signOut().catch(error => Alert.alert('Sign out failed', error.message));
               }},
-            ])}><Ionicons name="settings-outline" color={C.text} size={17}/><Text style={s.secondaryText}>Settings</Text></Pressable>
+              { text: 'Cancel', style: 'cancel' },
+            ])}><Ionicons name="settings-outline" color={C.text} size={17}/><Text style={s.secondaryText}>Settings · Sound {messageSoundEnabled ? 'On' : 'Off'}</Text></Pressable>
           </> : <>
             <Pressable style={s.primary} onPress={() => Alert.alert('Follow', 'Follow action will work after account and backend connection.')}><Ionicons name="person-add-outline" color="#fff" size={17}/><Text style={s.primaryText}>Follow</Text></Pressable>
             <Pressable style={s.secondary} onPress={() => Alert.alert('Message', 'Messaging will work after chat backend connection.')}><Ionicons name="chatbubble-ellipses-outline" color={C.text} size={17}/><Text style={s.secondaryText}>Message</Text></Pressable>
