@@ -15,8 +15,20 @@ const C = {
   muted: '#688398', pink: '#258FEA', cyan: '#43B8E8', border: '#D8EAF7'
 };
 
-export default function CoverMediaSlide({ media }: { media: Media }) {
-  const player = useVideoPlayer(media.type === 'video' ? media.uri : null, p => { p.loop = true; });
+function CoverBackdropVideo({ uri }: { uri: string }) {
+  const player = useVideoPlayer(uri, p => {
+    p.loop = true;
+    p.muted = true;
+    p.play();
+  });
+  return <VideoView player={player} style={{ width: '100%', height: '100%' }} contentFit="cover" nativeControls={false} />;
+}
+
+export function CoverMediaSlide({ media }: { media: Media }) {
+  const player = useVideoPlayer(media.type === 'video' ? media.uri : null, p => {
+    p.loop = true;
+    p.muted = true;
+  });
   useEffect(() => {
     if (media.type === 'video') player.play();
     return () => { if (media.type === 'video') player.pause(); };
@@ -119,7 +131,7 @@ function App() {
       <View style={s.identity}>
         <View style={s.coverBackdrop}>
           {covers[0]?.type === 'image' ? <Image source={{uri:covers[0].uri}} style={s.coverBackdropImage}/> :
-            covers[0]?.type === 'video' ? <View style={s.coverBackdropVideo}><Ionicons name="play-circle" size={28} color="#FFFFFF"/></View> :
+            covers[0]?.type === 'video' ? <CoverBackdropVideo uri={covers[0].uri} /> :
             <View style={s.coverBackdropEmpty}/>}
           <View style={s.coverBackdropShade}/>
           {isOwnProfile && <Pressable onPress={() => chooseMedia('cover')} style={s.coverEdit}><Ionicons name="camera" size={15} color="#FFFFFF"/></Pressable>}
