@@ -78,10 +78,11 @@ function CoverMediaSlide({ media }: { media: Media }) {
 function CuckooOpeningExperience() {
   const [visible, setVisible] = useState(true);
   const [welcome, setWelcome] = useState(false);
-  const mascotY = useRef(new Animated.Value(34)).current;
-  const mascotScale = useRef(new Animated.Value(0.82)).current;
+  const [mascotVisible, setMascotVisible] = useState(false);
+  const mascotY = useRef(new Animated.Value(42)).current;
+  const mascotScale = useRef(new Animated.Value(0.72)).current;
   const mascotOpacity = useRef(new Animated.Value(0)).current;
-  const armWave = useRef(new Animated.Value(0)).current;
+  const mascotFloat = useRef(new Animated.Value(0)).current;
   const blink = useRef(new Animated.Value(1)).current;
   const blush = useRef(new Animated.Value(0)).current;
   const welcomeOpacity = useRef(new Animated.Value(0)).current;
@@ -89,104 +90,97 @@ function CuckooOpeningExperience() {
 
   useEffect(() => {
     let alive = true;
-    Animated.parallel([
-      Animated.spring(mascotY, { toValue: 0, useNativeDriver: true, damping: 13, stiffness: 105 }),
-      Animated.spring(mascotScale, { toValue: 1, useNativeDriver: true, damping: 12, stiffness: 100 }),
-      Animated.timing(mascotOpacity, { toValue: 1, duration: 650, useNativeDriver: true }),
-    ]).start();
+    const entryTimer = setTimeout(() => {
+      if (!alive) return;
+      setMascotVisible(true);
+      Animated.parallel([
+        Animated.spring(mascotY, { toValue: 0, useNativeDriver: true, damping: 12, stiffness: 105 }),
+        Animated.spring(mascotScale, { toValue: 1, useNativeDriver: true, damping: 12, stiffness: 100 }),
+        Animated.timing(mascotOpacity, { toValue: 1, duration: 520, useNativeDriver: true }),
+      ]).start();
+    }, 420);
 
-    const wave = Animated.loop(Animated.sequence([
-      Animated.timing(armWave, { toValue: 1, duration: 230, useNativeDriver: true }),
-      Animated.timing(armWave, { toValue: -0.45, duration: 230, useNativeDriver: true }),
-      Animated.timing(armWave, { toValue: 0.72, duration: 210, useNativeDriver: true }),
-      Animated.timing(armWave, { toValue: 0, duration: 220, useNativeDriver: true }),
-      Animated.delay(650),
+    const floatLoop = Animated.loop(Animated.sequence([
+      Animated.timing(mascotFloat, { toValue: -7, duration: 1050, useNativeDriver: true }),
+      Animated.timing(mascotFloat, { toValue: 0, duration: 1050, useNativeDriver: true }),
     ]));
     const blinkLoop = Animated.loop(Animated.sequence([
-      Animated.delay(1050),
-      Animated.timing(blink, { toValue: 0.08, duration: 90, useNativeDriver: true }),
-      Animated.timing(blink, { toValue: 1, duration: 130, useNativeDriver: true }),
       Animated.delay(1250),
-      Animated.timing(blink, { toValue: 0.08, duration: 90, useNativeDriver: true }),
-      Animated.timing(blink, { toValue: 1, duration: 130, useNativeDriver: true }),
+      Animated.timing(blink, { toValue: 0, duration: 85, useNativeDriver: true }),
+      Animated.timing(blink, { toValue: 1, duration: 125, useNativeDriver: true }),
+      Animated.delay(1850),
+      Animated.timing(blink, { toValue: 0, duration: 85, useNativeDriver: true }),
+      Animated.timing(blink, { toValue: 1, duration: 125, useNativeDriver: true }),
     ]));
-    wave.start();
+    floatLoop.start();
     blinkLoop.start();
-    Animated.sequence([
-      Animated.delay(700),
-      Animated.timing(blush, { toValue: 1, duration: 420, useNativeDriver: true }),
-      Animated.delay(700),
-      Animated.timing(blush, { toValue: 0, duration: 350, useNativeDriver: true }),
-    ]).start();
+
+    const blushLoop = Animated.sequence([
+      Animated.delay(900),
+      Animated.timing(blush, { toValue: 1, duration: 400, useNativeDriver: true }),
+      Animated.delay(850),
+      Animated.timing(blush, { toValue: 0.35, duration: 450, useNativeDriver: true }),
+    ]);
+    blushLoop.start();
 
     const welcomeTimer = setTimeout(() => {
       if (!alive) return;
       setWelcome(true);
-      Animated.timing(welcomeOpacity, { toValue: 1, duration: 650, useNativeDriver: true }).start();
-    }, 2450);
+      Animated.timing(welcomeOpacity, { toValue: 1, duration: 760, useNativeDriver: true }).start();
+    }, 3900);
 
     return () => {
       alive = false;
+      clearTimeout(entryTimer);
       clearTimeout(welcomeTimer);
-      wave.stop();
+      floatLoop.stop();
       blinkLoop.stop();
+      blushLoop.stop();
     };
-  }, [armWave, blink, blush, mascotOpacity, mascotScale, mascotY, welcomeOpacity]);
+  }, [blink, blush, mascotFloat, mascotOpacity, mascotScale, mascotY, welcomeOpacity]);
 
   const continueIntoApp = () => {
-    Animated.timing(exitOpacity, { toValue: 0, duration: 380, useNativeDriver: true }).start(() => setVisible(false));
+    Animated.timing(exitOpacity, { toValue: 0, duration: 420, useNativeDriver: true }).start(() => setVisible(false));
   };
   if (!visible) return null;
 
-  const armRotation = armWave.interpolate({ inputRange: [-1, 1], outputRange: ['-24deg', '34deg'] });
+  const { width, height } = useWindowDimensions();
+  const openingMascotWidth = Math.min(width * 0.64, 270);
+  const welcomeMascotWidth = Math.min(width * 0.48, 190);
+  const blinkLineOpacity = blink.interpolate({ inputRange: [0, 1], outputRange: [1, 0] });
+  const blinkLineY = openingMascotWidth * 0.40;
+
   return (
     <Animated.View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 1000, opacity: exitOpacity }}>
-      <View style={{ flex: 1, backgroundColor: welcome ? '#F7FCFF' : '#78C8F2', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
-        <View style={{ position: 'absolute', width: 330, height: 330, borderRadius: 165, backgroundColor: '#FFFFFF22', top: -115, right: -110 }} />
-        <View style={{ position: 'absolute', width: 260, height: 260, borderRadius: 130, backgroundColor: '#FFFFFF30', bottom: -100, left: -90 }} />
+      <View style={{ flex: 1, backgroundColor: welcome ? '#F8FCFF' : '#0789F5', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+        <View style={{ position: 'absolute', width: width * 1.2, height: width * 1.2, borderRadius: width, backgroundColor: welcome ? '#E6F5FF' : '#159BFF', top: -width * 0.68, right: -width * 0.42 }} />
+        <View style={{ position: 'absolute', width: width * 0.92, height: width * 0.92, borderRadius: width, backgroundColor: welcome ? '#EFF9FF' : '#0075E9', bottom: -width * 0.48, left: -width * 0.35 }} />
         {!welcome ? (
-          <Animated.View style={{ alignItems: 'center', transform: [{ translateY: mascotY }, { scale: mascotScale }], opacity: mascotOpacity }}>
-            <View style={{ width: 178, height: 154, borderRadius: 78, backgroundColor: '#9B79E8', borderWidth: 5, borderColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center', shadowColor: '#3D2A75', shadowOpacity: 0.22, shadowRadius: 18, shadowOffset: { width: 0, height: 10 }, elevation: 8 }}>
-              <View style={{ flexDirection: 'row', gap: 23, marginTop: 4 }}>
-                {[0, 1].map((eye) => (
-                  <View key={eye} style={{ width: 37, height: 43, borderRadius: 22, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
-                    <Animated.View style={{ width: 14, height: 19, borderRadius: 9, backgroundColor: '#27334D', transform: [{ scaleY: blink }] }}>
-                      <View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: '#FFFFFF', marginTop: 3, marginLeft: 3 }} />
-                    </Animated.View>
-                  </View>
-                ))}
+          <View style={{ alignItems: 'center', justifyContent: 'center', flex: 1, width: '100%' }}>
+            <Animated.View style={{ alignItems: 'center', opacity: mascotVisible ? mascotOpacity : 0, transform: [{ translateY: Animated.add(mascotY, mascotFloat) }, { scale: mascotScale }] }}>
+              <View style={{ width: openingMascotWidth, height: openingMascotWidth * 1.245, alignItems: 'center', justifyContent: 'center' }}>
+                <Animated.Image source={require('./assets/cuckoo_mascot.webp')} resizeMode="contain" style={{ width: '100%', height: '100%' }} />
+                <Animated.View pointerEvents="none" style={{ position: 'absolute', left: '37%', top: '35%', width: '13%', height: 7, borderRadius: 8, backgroundColor: '#A77CEB', opacity: blinkLineOpacity }} />
+                <Animated.View pointerEvents="none" style={{ position: 'absolute', left: '65%', top: '37%', width: '13%', height: 7, borderRadius: 8, backgroundColor: '#A77CEB', opacity: blinkLineOpacity }} />
+                <Animated.View pointerEvents="none" style={{ position: 'absolute', left: '29%', top: '43%', width: '12%', height: 9, borderRadius: 10, backgroundColor: '#FF7DAA', opacity: blush }} />
+                <Animated.View pointerEvents="none" style={{ position: 'absolute', right: '27%', top: '44%', width: '12%', height: 9, borderRadius: 10, backgroundColor: '#FF7DAA', opacity: blush }} />
               </View>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', width: 116, marginTop: 10 }}>
-                <Animated.View style={{ width: 25, height: 12, borderRadius: 12, backgroundColor: '#FF9CB8', opacity: blush }} />
-                <View style={{ width: 17, height: 9, borderBottomWidth: 3, borderColor: '#503B82', borderRadius: 12, marginTop: -1 }} />
-                <Animated.View style={{ width: 25, height: 12, borderRadius: 12, backgroundColor: '#FF9CB8', opacity: blush }} />
-              </View>
-            </View>
-            <Animated.View style={{ position: 'absolute', right: -22, top: 36, width: 29, height: 64, borderRadius: 18, backgroundColor: '#9B79E8', borderWidth: 4, borderColor: '#FFFFFF', transform: [{ rotate: armRotation }] }} />
-            <View style={{ flexDirection: 'row', gap: 34, marginTop: -2 }}>
-              <View style={{ width: 28, height: 17, borderRadius: 12, backgroundColor: '#8060D0' }} />
-              <View style={{ width: 28, height: 17, borderRadius: 12, backgroundColor: '#8060D0' }} />
-            </View>
-            <Text style={{ color: '#FFFFFF', fontSize: 13, fontWeight: '800', letterSpacing: 2.2, marginTop: 27 }}>HELLO THERE!</Text>
-          </Animated.View>
-        ) : (
-          <Animated.View style={{ alignItems: 'center', paddingHorizontal: 30, opacity: welcomeOpacity }}>
-            <Animated.View style={{ transform: [{ scale: mascotScale }, { translateY: mascotY }] }}>
-              <View style={{ width: 112, height: 98, borderRadius: 52, backgroundColor: '#9B79E8', borderWidth: 4, borderColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center', shadowColor: '#66509B', shadowOpacity: 0.18, shadowRadius: 15, elevation: 5 }}>
-                <View style={{ flexDirection: 'row', gap: 15 }}>
-                  {[0, 1].map(eye => <View key={eye} style={{ width: 24, height: 29, borderRadius: 15, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center' }}><View style={{ width: 9, height: 13, borderRadius: 7, backgroundColor: '#27334D' }} /></View>)}
-                </View>
-                <View style={{ flexDirection: 'row', gap: 34, marginTop: 7 }}>
-                  <View style={{ width: 16, height: 8, borderRadius: 8, backgroundColor: '#FF9CB8' }} />
-                  <View style={{ width: 16, height: 8, borderRadius: 8, backgroundColor: '#FF9CB8' }} />
-                </View>
-              </View>
+              <Text style={{ color: '#FFFFFF', fontSize: 14, fontWeight: '900', letterSpacing: 2.4, marginTop: 12 }}>HELLO THERE!</Text>
             </Animated.View>
-            <Text style={{ color: '#19384F', fontSize: 30, fontWeight: '900', letterSpacing: 3, marginTop: 28 }}>CUCKOO</Text>
-            <Text style={{ color: '#52758B', fontSize: 16, fontWeight: '600', marginTop: 10 }}>Welcome to CUCKOO</Text>
-            <Text style={{ color: '#6B8798', fontSize: 13, textAlign: 'center', lineHeight: 20, marginTop: 8 }}>Meet people. Share moments. Feel connected.</Text>
-            <Pressable onPress={continueIntoApp} style={{ marginTop: 34, minWidth: 190, paddingHorizontal: 30, paddingVertical: 15, borderRadius: 28, backgroundColor: '#258FEA', alignItems: 'center', shadowColor: '#258FEA', shadowOpacity: 0.22, shadowRadius: 12, elevation: 4 }}>
-              <Text style={{ color: '#FFFFFF', fontSize: 15, fontWeight: '800', letterSpacing: 0.4 }}>Continue</Text>
+            {!mascotVisible && <View style={{ alignItems: 'center' }}><Text style={{ color: '#FFFFFF', fontSize: 34, fontWeight: '900', letterSpacing: 4 }}>CUCKOO</Text><Text style={{ color: '#EAF7FF', fontSize: 13, marginTop: 8 }}>Connect · Chat · Make Friends</Text></View>}
+          </View>
+        ) : (
+          <Animated.View style={{ alignItems: 'center', justifyContent: 'center', paddingHorizontal: 26, width: '100%', opacity: welcomeOpacity }}>
+            <View style={{ width: welcomeMascotWidth, height: welcomeMascotWidth * 1.245, alignItems: 'center', justifyContent: 'center' }}>
+              <Animated.Image source={require('./assets/cuckoo_mascot.webp')} resizeMode="contain" style={{ width: '100%', height: '100%', transform: [{ translateY: mascotFloat }] }} />
+              <Animated.View pointerEvents="none" style={{ position: 'absolute', left: '37%', top: '35%', width: '13%', height: 6, borderRadius: 8, backgroundColor: '#A77CEB', opacity: blinkLineOpacity }} />
+              <Animated.View pointerEvents="none" style={{ position: 'absolute', left: '65%', top: '37%', width: '13%', height: 6, borderRadius: 8, backgroundColor: '#A77CEB', opacity: blinkLineOpacity }} />
+            </View>
+            <Text style={{ color: '#087FEA', fontSize: 36, fontWeight: '900', letterSpacing: 1.5, marginTop: 8 }}>CUCKOO</Text>
+            <Text style={{ color: '#142E49', fontSize: 18, fontWeight: '800', marginTop: 8 }}>Welcome to CUCKOO</Text>
+            <Text style={{ color: '#71879A', fontSize: 14, textAlign: 'center', lineHeight: 21, marginTop: 10 }}>Connect with amazing people{ '\n' }around the world!</Text>
+            <Pressable onPress={continueIntoApp} style={{ marginTop: 34, width: Math.min(width - 64, 300), paddingVertical: 15, borderRadius: 28, backgroundColor: '#0789F5', alignItems: 'center', shadowColor: '#0789F5', shadowOpacity: 0.22, shadowRadius: 12, elevation: 4 }}>
+              <Text style={{ color: '#FFFFFF', fontSize: 16, fontWeight: '800' }}>Continue →</Text>
             </Pressable>
           </Animated.View>
         )}
