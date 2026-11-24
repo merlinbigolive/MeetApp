@@ -675,7 +675,7 @@ export default function App() {
     } else {
       const hydratedMessages = await Promise.all(((messagesResult.data || []) as ChatMessage[]).map(async message => {
         if (!message.audio_path) return message;
-        const { data: signed } = await supabase.storage.from('usay-chat-audio').createSignedUrl(message.audio_path, 3600);
+        const { data: signed } = await supabase!.storage.from('usay-chat-audio').createSignedUrl(message.audio_path, 3600);
         return { ...message, audio_url: signed?.signedUrl || null };
       }));
       setChatMessages(hydratedMessages);
@@ -784,7 +784,7 @@ export default function App() {
   useEffect(() => {
     if (!supabase || tab !== 'Inbox' || !currentUserId) return;
     const channel = supabase.channel('inbox-live-' + currentUserId)
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, payload => {
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, async payload => {
         const incoming = payload.new as ChatMessage;
         if (activeChat?.id === incoming.conversation_id) {
           if (incoming.audio_path) { const { data: signed } = await supabase!.storage.from('usay-chat-audio').createSignedUrl(incoming.audio_path, 3600); incoming.audio_url = signed?.signedUrl || null; }
