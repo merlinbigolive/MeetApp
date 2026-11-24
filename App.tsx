@@ -546,13 +546,12 @@ export default function App() {
       return !query ||
         profile.username.toLowerCase().includes(query) ||
         profile.display_name.toLowerCase().includes(query) ||
-        (profile.bio || '').toLowerCase().includes(query) ||
         (profile.profession_category || '').toLowerCase().includes(query);
     });
     return <ScrollView contentContainerStyle={s.discoverScroll} keyboardShouldPersistTaps="handled">
       <Text style={s.pageTitle}>Discover</Text>
       <Text style={s.hint}>Find people and connect with the USay community.</Text>
-      <TextInput value={profileSearch} onChangeText={setProfileSearch} placeholder="Search name or username" placeholderTextColor={C.muted} style={s.input}/>
+      <TextInput value={profileSearch} onChangeText={setProfileSearch} placeholder="Search username, nickname or profession" placeholderTextColor={C.muted} style={s.input}/>
       {loadingProfiles ? <Text style={s.hint}>Loading people…</Text> : filteredProfiles.length === 0 ? <Text style={s.hint}>No profiles found. Try another search or check back later.</Text> : filteredProfiles.map(profile => {
         const following = followedUserIds.includes(profile.id);
         const busy = followBusyIds.includes(profile.id);
