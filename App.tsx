@@ -77,6 +77,11 @@ export default function App() {
   const [chatLoading, setChatLoading] = useState(false);
   const [chatSending, setChatSending] = useState(false);
   const [currentUserId, setCurrentUserId] = useState('');
+  const [createMedia, setCreateMedia] = useState<Media | null>(null);
+  const [createCaption, setCreateCaption] = useState('');
+  const [createCategory, setCreateCategory] = useState<'videos' | 'reels' | 'funny' | 'vlogs' | 'cinema'>('videos');
+  const [createVisibility, setCreateVisibility] = useState<'public' | 'followers' | 'private'>('public');
+  const [publishingPost, setPublishingPost] = useState(false);
   const [otherProfileMedia, setOtherProfileMedia] = useState<{ avatar: Media | null; covers: Media[]; posts: Media[] }>({ avatar: null, covers: [], posts: [] });
   const [otherFollowingCount, setOtherFollowingCount] = useState(0);
   const [otherFollowerCount, setOtherFollowerCount] = useState(0);
@@ -333,6 +338,80 @@ export default function App() {
       return;
     }
     setFollowedUserIds(old => isFollowing ? old.filter(id => id !== profile.id) : [...old, profile.id]);
+  };
+
+  const chooseCreateMedia = async () => {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      Alert.alert('Permission needed', 'Allow USay to access your phone gallery.');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images', 'videos'],
+      allowsEditing: false,
+      quality: 0.85,
+      videoMaxDuration: 60,
+    });
+    if (result.canceled || !result.assets?.[0]) return;
+    const asset = result.assets[0];
+    const type = asset.type === 'video' ? 'video' : 'image';
+    if (typeof asset.fileSize === 'number' && asset.fileSize > 50 * 1024 * 1024) {
+      Alert.alert('File size limit', 'Please choose a photo or video that is 50 MB or smaller.');
+      return;
+    }
+    setCreateMedia({ uri: asset.uri, type, name: asset.fileName || undefined, size: asset.fileSize || undefined, mimeType: asset.mimeType || (type === 'video' ? 'video/mp4' : 'image/jpeg') });
+  };
+
+  const publishPost = async () => {
+    const client = supabase;
+    if (!client || !createMedia || publishingPost) return;
+    const caption = createCaption.trim();
+    if (caption.length > 2000) {
+      Alert.alert('Caption too long', 'Captions can contain up to 2,000 characters.');
+      return;
+    }
+    const { data: authData, error: authError } = await client.auth.getSession();
+    const userId = authData.session?.user.id;
+    if (authError || !userId) {
+      Alert.alert('Sign in required', 'Please sign in again before publishing.');
+      return;
+    }
+    setPublishingPost(true);
+    let storagePath = '';
+    try {
+      const mimeType = createMedia.mimeType || (createMedia.type === 'video' ? 'video/mp4' : 'image/jpeg');
+      const extension = createMedia.name?.split('.').pop()?.toLowerCase().replace(/[^a-z0-9]/g, '') ||
+        (createMedia.type === 'video' ? 'mp4' : 'jpg');
+      const response = await fetch(createMedia.uri);
+      if (!response.ok) throw new Error('Could not read the selected media from this device.');
+      const fileData = await response.arrayBuffer();
+      if (fileData.byteLength > 50 * 1024 * 1024) throw new Error('Media must be 50 MB or smaller.');
+      storagePath = `${userId}/posts/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${extension}`;
+      const { error: uploadError } = await client.storage.from('usay-media').upload(storagePath, fileData, {
+        contentType: mimeType,
+        upsert: false,
+      });
+      if (uploadError) throw uploadError;
+      const { error: postError } = await client.from('posts').insert({
+        user_id: userId,
+        post_type: createMedia.type === 'video' ? 'video' : 'photo',
+        caption: caption || null,
+        media_path: storagePath,
+        visibility: createVisibility,
+        content_category: createMedia.type === 'video' ? createCategory : 'videos',
+      });
+      if (postError) throw postError;
+      setCreateMedia(null);
+      setCreateCaption('');
+      setCreateCategory('videos');
+      setCreateVisibility('public');
+      Alert.alert('Published', 'Your post has been published to USay.');
+    } catch (error: any) {
+      if (storagePath) await client.storage.from('usay-media').remove([storagePath]);
+      Alert.alert('Could not publish', error?.message || 'Please try again.');
+    } finally {
+      setPublishingPost(false);
+    }
   };
 
   const loadInbox = async () => {
@@ -835,6 +914,46 @@ export default function App() {
     </ScrollView>;
   };
 
+  const CreateScreen = () => (
+    <ScrollView contentContainerStyle={s.discoverScroll} keyboardShouldPersistTaps="handled">
+      <Text style={s.pageTitle}>Create</Text>
+      <Text style={s.hint}>Share a photo or video with your USay community.</Text>
+      <Pressable onPress={() => void chooseCreateMedia()} style={s.createPicker}>
+        {createMedia?.type === 'image' ? <Image source={{ uri: createMedia.uri }} style={s.createPreview} resizeMode="cover" /> :
+          createMedia?.type === 'video' ? <View style={s.createVideoPreview}><Ionicons name="play-circle" size={48} color="#FFFFFF"/><Text style={s.primaryText}>VIDEO SELECTED</Text></View> :
+          <><Ionicons name="cloud-upload-outline" size={34} color={C.cyan}/><Text style={s.sectionTitle}>Choose photo or video</Text><Text style={s.hint}>Up to 50 MB · Videos up to 60 seconds</Text></>}
+      </Pressable>
+      {createMedia && <Pressable onPress={() => setCreateMedia(null)} style={s.createRemove}><Ionicons name="close-circle" size={18} color={C.muted}/><Text style={s.personUsername}>Remove selected media</Text></Pressable>}
+      <View style={s.field}>
+        <Text style={s.fieldLabel}>Caption</Text>
+        <TextInput value={createCaption} onChangeText={setCreateCaption} placeholder="Write something about your post…" placeholderTextColor={C.muted} style={[s.input, { minHeight: 100, textAlignVertical: 'top' }]} multiline maxLength={2000}/>
+        <Text style={s.hint}>{createCaption.length}/2000</Text>
+      </View>
+      {createMedia?.type === 'video' && <>
+        <Text style={s.fieldLabel}>Video category</Text>
+        <View style={s.activityGrid}>
+          {([{label:'Videos',value:'videos'},{label:'Reels',value:'reels'},{label:'Funny',value:'funny'},{label:'Vlogs',value:'vlogs'},{label:'Cinema',value:'cinema'}] as const).map(item =>
+            <Pressable key={item.value} onPress={() => setCreateCategory(item.value)} style={[s.activityChip, createCategory === item.value && s.activityActive]}>
+              <Text style={[s.activityText, createCategory === item.value && { color: C.cyan }]}>{item.label}</Text>
+            </Pressable>
+          )}
+        </View>
+      </>}
+      <Text style={s.fieldLabel}>Who can see this post?</Text>
+      <View style={s.activityGrid}>
+        {([{label:'Public',value:'public'},{label:'Followers',value:'followers'},{label:'Only me',value:'private'}] as const).map(item =>
+          <Pressable key={item.value} onPress={() => setCreateVisibility(item.value)} style={[s.activityChip, createVisibility === item.value && s.activityActive]}>
+            <Text style={[s.activityText, createVisibility === item.value && { color: C.cyan }]}>{item.label}</Text>
+          </Pressable>
+        )}
+      </View>
+      <Pressable disabled={!createMedia || publishingPost} onPress={() => void publishPost()} style={[s.primary, { opacity: !createMedia || publishingPost ? 0.55 : 1 }]}>
+        {publishingPost ? <Text style={s.primaryText}>Publishing…</Text> : <Text style={s.primaryText}>Publish post</Text>}
+      </Pressable>
+      <Text style={s.hint}>Public videos can appear in Search categories. Your profile privacy and post visibility rules still apply.</Text>
+    </ScrollView>
+  );
+
   const InboxScreen = () => (
     <View style={s.simple}>
       {activeChat ? <>
@@ -900,7 +1019,7 @@ export default function App() {
         {selectedProfile ? <OtherProfileScreen/> : tab === 'Profile' ? <Profile/> :
           tab === 'Home' ? <SimpleScreen title="USay" subtitle="Your people, one place."/> :
           tab === 'Public' ? <DiscoverScreen/> :
-          tab === 'Create' ? <SimpleScreen title="Create" subtitle="Share a photo, video or update."/> :
+          tab === 'Create' ? <CreateScreen/> :
           <InboxScreen/>}
       </View>
       <View style={s.nav}>
@@ -1021,5 +1140,8 @@ const s = StyleSheet.create({
   activityActive:{borderColor:C.cyan},activityText:{color:C.muted,fontSize:11,fontWeight:'700'},
   viewer:{flex:1,backgroundColor:'#03050A',alignItems:'center',justifyContent:'center',padding:18},
   viewerClose:{position:'absolute',top:48,right:20,zIndex:2,width:42,height:42,borderRadius:22,backgroundColor:C.panel,alignItems:'center',justifyContent:'center'},
-  videoPreview:{alignItems:'center',gap:12,padding:25}, 
+  videoPreview:{alignItems:'center',gap:12,padding:25},
+  createPicker:{minHeight:220,borderWidth:1,borderColor:'#B9DDF3',borderStyle:'dashed',borderRadius:18,backgroundColor:'#F4FAFF',alignItems:'center',justifyContent:'center',gap:9,overflow:'hidden'},
+  createPreview:{width:'100%',height:260},createVideoPreview:{width:'100%',height:220,backgroundColor:'#6FAFD0',alignItems:'center',justifyContent:'center',gap:8},
+  createRemove:{flexDirection:'row',alignItems:'center',gap:6,alignSelf:'flex-end'}, 
 });
