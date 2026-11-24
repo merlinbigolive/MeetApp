@@ -71,3 +71,127 @@ alter table public.posts enable row level security;
 alter table public.post_comments enable row level security;
 alter table public.verification_plans enable row level security;
 alter table public.subscriptions enable row level security;
+
+
+-- USay security policies (safe to re-run).
+-- Profiles: signed-in users can discover public profiles; private profiles are
+-- visible only to their owner and approved followers.
+drop policy if exists "profiles_read_visible" on public.profiles;
+create policy "profiles_read_visible" on public.profiles
+for select to authenticated
+using (
+  id = auth.uid()
+  or is_private = false
+  or exists (
+    select 1 from public.follows f
+    where f.follower_id = auth.uid() and f.followed_id = profiles.id
+  )
+);
+
+drop policy if exists "profiles_insert_self" on public.profiles;
+create policy "profiles_insert_self" on public.profiles
+for insert to authenticated
+with check (id = auth.uid());
+
+drop policy if exists "profiles_update_self" on public.profiles;
+create policy "profiles_update_self" on public.profiles
+for update to authenticated
+using (id = auth.uid())
+with check (id = auth.uid());
+
+-- Follow relationships can only be created/removed by the follower.
+drop policy if exists "follows_read_related" on public.follows;
+create policy "follows_read_related" on public.follows
+for select to authenticated
+using (follower_id = auth.uid() or followed_id = auth.uid());
+
+drop policy if exists "follows_insert_self" on public.follows;
+create policy "follows_insert_self" on public.follows
+for insert to authenticated
+with check (follower_id = auth.uid() and followed_id <> auth.uid());
+
+drop policy if exists "follows_delete_self" on public.follows;
+create policy "follows_delete_self" on public.follows
+for delete to authenticated
+using (follower_id = auth.uid());
+
+-- Posts respect public/follower/private visibility.
+drop policy if exists "posts_read_visible" on public.posts;
+create policy "posts_read_visible" on public.posts
+for select to authenticated
+using (
+  user_id = auth.uid()
+  or (visibility = 'public' and exists (
+    select 1 from public.profiles p where p.id = posts.user_id and p.is_private = false
+  ))
+  or (visibility = 'followers' and exists (
+    select 1 from public.follows f
+    where f.follower_id = auth.uid() and f.followed_id = posts.user_id
+  ))
+);
+
+drop policy if exists "posts_insert_self" on public.posts;
+create policy "posts_insert_self" on public.posts
+for insert to authenticated
+with check (user_id = auth.uid());
+
+drop policy if exists "posts_update_self" on public.posts;
+create policy "posts_update_self" on public.posts
+for update to authenticated
+using (user_id = auth.uid())
+with check (user_id = auth.uid());
+
+drop policy if exists "posts_delete_self" on public.posts;
+create policy "posts_delete_self" on public.posts
+for delete to authenticated
+using (user_id = auth.uid());
+
+-- Comments are visible only when the parent post is visible to the user.
+drop policy if exists "comments_read_visible_posts" on public.post_comments;
+create policy "comments_read_visible_posts" on public.post_comments
+for select to authenticated
+using (
+  exists (
+    select 1 from public.posts p
+    where p.id = post_comments.post_id
+      and (
+        p.user_id = auth.uid()
+        or (p.visibility = 'public' and exists (
+          select 1 from public.profiles pr where pr.id = p.user_id and pr.is_private = false
+        ))
+        or (p.visibility = 'followers' and exists (
+          select 1 from public.follows f
+          where f.follower_id = auth.uid() and f.followed_id = p.user_id
+        ))
+      )
+  )
+);
+
+drop policy if exists "comments_insert_self" on public.post_comments;
+create policy "comments_insert_self" on public.post_comments
+for insert to authenticated
+with check (user_id = auth.uid());
+
+drop policy if exists "comments_delete_self" on public.post_comments;
+create policy "comments_delete_self" on public.post_comments
+for delete to authenticated
+using (user_id = auth.uid());
+
+-- Plans are readable by signed-in users; subscriptions are private to each user.
+drop policy if exists "plans_read_authenticated" on public.verification_plans;
+create policy "plans_read_authenticated" on public.verification_plans
+for select to authenticated
+using (true);
+
+drop policy if exists "subscriptions_read_self" on public.subscriptions;
+create policy "subscriptions_read_self" on public.subscriptions
+for select to authenticated
+using (user_id = auth.uid());
+
+drop policy if exists "subscriptions_insert_pending_self" on public.subscriptions;
+create policy "subscriptions_insert_pending_self" on public.subscriptions
+for insert to authenticated
+with check (user_id = auth.uid() and status = 'pending');
+
+-- Clients cannot activate, approve, or modify subscriptions. Trusted server-side
+-- code using a service-role key must handle status transitions.
