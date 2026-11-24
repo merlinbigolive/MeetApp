@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import {
   Alert, Image, Modal, Pressable, ScrollView, StatusBar, StyleSheet,
-  Text, TextInput, View, useWindowDimensions
+  Text, TextInput, View, useWindowDimensions, Animated, PanResponder
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
@@ -27,6 +27,16 @@ export default function App() {
   const [posts, setPosts] = useState<Media[]>([]);
   const [editing, setEditing] = useState(false);
   const [viewer, setViewer] = useState<Media | null>(null);
+  const [coverExpanded, setCoverExpanded] = useState(false);
+  const avatarDrag = useRef(new Animated.Value(0)).current;
+  const avatarPan = useMemo(() => PanResponder.create({
+    onMoveShouldSetPanResponder: (_: any, g: any) => g.dy > 8,
+    onPanResponderMove: (_: any, g: any) => avatarDrag.setValue(Math.max(0, Math.min(g.dy, 120))),
+    onPanResponderRelease: (_: any, g: any) => {
+      Animated.spring(avatarDrag, { toValue: 0, useNativeDriver: true }).start();
+      if (g.dy > 55 && covers.length) setCoverExpanded(true);
+    },
+  }), [avatarDrag, covers.length]);
   const [isOwnProfile, setIsOwnProfile] = useState(true);
   const { width } = useWindowDimensions();
 
@@ -92,27 +102,37 @@ export default function App() {
   );
 
   const Profile = () => (
-    <ScrollView contentContainerStyle={s.scroll} showsVerticalScrollIndicator={false}>
+    <ScrollView contentContainerStyle={s.profileScroll} showsVerticalScrollIndicator={false}>
       <View style={s.top}><Text style={s.pageTitle}>Profile</Text><Pressable onPress={() => setIsOwnProfile(v => !v)}><Text style={s.switchText}>{isOwnProfile ? 'Preview public view' : 'My profile'}</Text></Pressable></View>
-      <View style={s.card}>
-        <View style={s.coverHeader}>
-          <View><Text style={s.eyebrow}>YOUR SPACE</Text><Text style={s.sectionTitle}>Cover gallery</Text><Text style={s.mutedSmall}>Up to 3 photos or videos</Text></View>
-          <Text style={s.coverCount}>{covers.length}/3</Text>
-        </View>
-        <View style={s.mediaRow}>
-          {[0,1,2].map(i => <MediaTile key={i} label={`Cover ${i+1}`} media={covers[i]} onPress={() => chooseMedia('cover', i)} onRemove={covers[i] ? () => removeMedia('cover', i) : undefined} />)}
-        </View>
-        <Text style={s.hint}>Tap an empty slot to choose media from your phone gallery. Tap an added item to preview.</Text>
-        <View style={s.identity}>
-          <Pressable onPress={() => chooseMedia('avatar')} style={s.avatarWrap}>
-            {avatar ? <Image source={{uri:avatar.uri}} style={s.avatar} /> : <View style={s.avatarFallback}><Ionicons name="person" size={38} color={C.cyan}/></View>}
-            <View style={s.camera}><Ionicons name="camera" size={13} color="#fff"/></View>
-          </Pressable>
-          <View style={s.nameLine}><Text style={s.name}>{name}</Text><View style={s.verified}><Ionicons name="checkmark" size={12} color="#081015"/></View></View>
-          <Text style={s.username}>@{username.replace(/^@/, '')}</Text>
-          <Text style={s.bio}>{bio}</Text>
-          {!!website && <Pressable onPress={openWebsite} style={s.websiteLine}><Ionicons name="link" color={C.cyan} size={15}/><Text style={s.website}>{website}</Text><Ionicons name="open-outline" color={C.muted} size={12}/></Pressable>}
-        </View>
+      <View style={s.coverCarousel}>
+        <ScrollView horizontal pagingEnabled showsHorizontalScrollIndicator={false}>
+          {covers.map((media, i) => (
+            <Pressable key={i} onPress={() => setCoverExpanded(true)} style={[s.coverSlide, { width }]}>
+              {media.type === 'image' ? <Image source={{ uri: media.uri }} style={s.coverImage} /> :
+                <View style={s.coverVideo}><Ionicons name="play-circle" size={38} color="#FFFFFF" /><Text style={s.coverVideoText}>VIDEO COVER</Text></View>}
+              {isOwnProfile && <Pressable onPress={() => removeMedia('cover', i)} style={s.coverRemove}><Ionicons name="close" size={16} color="#FFFFFF" /></Pressable>}
+            </Pressable>
+          ))}
+          {isOwnProfile && covers.length < 3 && (
+            <Pressable onPress={() => chooseMedia('cover')} style={[s.coverSlide, s.coverEmpty, { width }]}>
+              <Ionicons name="image-outline" size={25} color={C.cyan} />
+              <Text style={s.coverEmptyText}>{covers.length ? 'Add another cover' : 'Add cover photo or video'}</Text>
+            </Pressable>
+          )}
+        </ScrollView>
+      </View>
+      <Animated.View {...avatarPan.panHandlers} style={[s.identity, { transform: [{ translateY: avatarDrag }] }]}>
+        <Pressable onPress={() => isOwnProfile ? chooseMedia('avatar') : undefined} style={s.avatarWrap}>
+          {avatar ? <Image source={{uri:avatar.uri}} style={s.avatar} /> : <View style={s.avatarFallback}><Ionicons name="person" size={38} color={C.cyan}/></View>}
+          {isOwnProfile && <View style={s.camera}><Ionicons name="camera" size={13} color="#fff"/></View>}
+        </Pressable>
+        <View style={s.nameLine}><Text style={s.name}>{name}</Text><View style={s.verified}><Ionicons name="checkmark" size={12} color="#FFFFFF"/></View></View>
+        <Text style={s.username}>@{username.replace(/^@/, '')}</Text>
+        <Text style={s.bio}>{bio}</Text>
+        {!!website && <Pressable onPress={openWebsite} style={s.websiteLine}><Ionicons name="link" color={C.cyan} size={15}/><Text style={s.website}>{website}</Text></Pressable>}
+        <Text style={s.dragHint}>{covers.length ? 'Pull avatar down to view cover' : 'Add a cover photo or video'}</Text>
+      </Animated.View>
+      <View style={s.profileBody}>
         <View style={s.stats}>
           <View style={s.stat}><Text style={s.statNum}>128</Text><Text style={s.statLabel}>Following</Text></View>
           <View style={s.stat}><Text style={s.statNum}>2,450</Text><Text style={s.statLabel}>Followers</Text></View>
@@ -127,18 +147,17 @@ export default function App() {
             <Pressable style={s.secondary} onPress={() => Alert.alert('Message', 'Messaging will work after chat backend connection.')}><Ionicons name="chatbubble-ellipses-outline" color={C.text} size={17}/><Text style={s.secondaryText}>Message</Text></Pressable>
           </>}
         </View>
+        <View style={s.section}>
+          <View style={s.sectionHeading}><Text style={s.sectionTitle}>Posts</Text><Text style={s.coverCount}>{posts.length}/3</Text></View>
+          <View style={s.mediaRow}>{[0,1,2].map(i => <MediaTile key={i} label="Add post" media={posts[i]} onPress={() => chooseMedia('post', i)} onRemove={posts[i] ? () => removeMedia('post', i) : undefined}/>)}</View>
+        </View>
+        <View style={s.section}>
+          <Text style={s.sectionTitle}>About</Text>
+          {!!occupation && <View style={s.infoLine}><Ionicons name="briefcase-outline" color={C.cyan} size={18}/><Text style={s.infoText}>{occupation}</Text></View>}
+          <View style={s.infoLine}><Ionicons name="time-outline" color={C.cyan} size={18}/><Text style={s.infoText}>{activity}</Text></View>
+        </View>
+        <Text style={s.footerNote}>Profile edits and media are currently stored on this device only. Cloud sync will be connected in the backend step.</Text>
       </View>
-      <View style={s.card}>
-        <View style={s.coverHeader}><Text style={s.sectionTitle}>Posts gallery</Text><Text style={s.coverCount}>{posts.length}/3</Text></View>
-        <View style={s.mediaRow}>{[0,1,2].map(i => <MediaTile key={i} label={`Post ${i+1}`} media={posts[i]} onPress={() => chooseMedia('post', i)} onRemove={posts[i] ? () => removeMedia('post', i) : undefined}/>)}</View>
-        <Text style={s.hint}>Photos and videos are selected from your phone. Videos are limited to 1 MB.</Text>
-      </View>
-      <View style={s.card}>
-        <Text style={s.sectionTitle}>About</Text>
-        <View style={s.infoLine}><Ionicons name="briefcase-outline" color={C.cyan} size={18}/><Text style={s.infoText}>{occupation || 'Occupation not added'}</Text></View>
-        <View style={s.infoLine}><Ionicons name="time-outline" color={C.cyan} size={18}/><Text style={s.infoText}>Activity: {activity}</Text></View>
-      </View>
-      <Text style={s.footerNote}>Media and profile edits are currently stored on this device screen only. Account sync and permanent cloud uploads require the backend connection.</Text>
     </ScrollView>
   );
 
@@ -148,7 +167,7 @@ export default function App() {
 
   return (
     <View style={s.root}>
-      <StatusBar barStyle="light-content" backgroundColor={C.bg}/>
+      <StatusBar barStyle="dark-content" backgroundColor={C.bg}/>
       <View style={{flex:1}}>
         {tab === 'Profile' ? <Profile/> :
           tab === 'Home' ? <SimpleScreen title="MeetApp" subtitle="Your people, one place."/> :
@@ -176,6 +195,17 @@ export default function App() {
           <Pressable style={s.primary} onPress={()=>setEditing(false)}><Text style={s.primaryText}>Save on this device</Text></Pressable>
         </ScrollView></View>
       </Modal>
+      <Modal visible={coverExpanded} transparent animationType="fade" onRequestClose={()=>setCoverExpanded(false)}>
+        <View style={s.coverViewer}>
+          <Pressable style={s.coverViewerClose} onPress={() => setCoverExpanded(false)}><Ionicons name="close" size={26} color="#FFFFFF"/></Pressable>
+          <ScrollView horizontal pagingEnabled showsHorizontalScrollIndicator={false}>
+            {covers.map((m, i) => <View key={i} style={{width, height:'100%', alignItems:'center', justifyContent:'center'}}>
+              {m.type === 'image' ? <Image source={{uri:m.uri}} resizeMode="contain" style={{width:'100%',height:'85%'}}/> :
+                <View style={s.videoPreview}><Ionicons name="play-circle" size={60} color={C.cyan}/><Text style={s.sectionTitle}>Video cover</Text></View>}
+            </View>)}
+          </ScrollView>
+        </View>
+      </Modal>
       <Modal visible={!!viewer} transparent animationType="fade" onRequestClose={()=>setViewer(null)}>
         <View style={s.viewer}><Pressable style={s.viewerClose} onPress={()=>setViewer(null)}><Ionicons name="close" size={26} color="#fff"/></Pressable>
           {viewer?.type === 'image' ? <Image source={{uri:viewer.uri}} resizeMode="contain" style={{width:'100%',height:'82%'}}/> :
@@ -188,6 +218,18 @@ export default function App() {
 
 const s = StyleSheet.create({
   root:{flex:1,backgroundColor:C.bg}, scroll:{padding:16,paddingBottom:22,gap:14},
+  profileScroll:{paddingBottom:24,gap:0}, profileBody:{paddingHorizontal:16,gap:16},
+  coverCarousel:{height:190,width:'100%',backgroundColor:C.panel2},
+  coverSlide:{height:190,alignItems:'center',justifyContent:'center',backgroundColor:C.panel2,overflow:'hidden'},
+  coverImage:{width:'100%',height:'100%',resizeMode:'cover'},
+  coverVideo:{width:'100%',height:'100%',alignItems:'center',justifyContent:'center',backgroundColor:'#6FAFD0',gap:6},
+  coverVideoText:{color:'#FFFFFF',fontSize:10,fontWeight:'900',letterSpacing:1},
+  coverEmpty:{backgroundColor:'#EAF5FF',gap:8},coverEmptyText:{color:C.cyan,fontSize:12,fontWeight:'800'},
+  coverRemove:{position:'absolute',top:12,right:14,width:30,height:30,borderRadius:15,backgroundColor:'#0008',alignItems:'center',justifyContent:'center'},
+  dragHint:{color:C.muted,fontSize:10,marginTop:9},section:{backgroundColor:C.panel,borderRadius:18,padding:14,gap:12,borderWidth:1,borderColor:C.border},
+  sectionHeading:{flexDirection:'row',alignItems:'center',justifyContent:'space-between'},
+  coverViewer:{flex:1,backgroundColor:'#03050A',justifyContent:'center'},
+  coverViewerClose:{position:'absolute',top:48,right:18,zIndex:3,width:42,height:42,borderRadius:22,backgroundColor:'#263442',alignItems:'center',justifyContent:'center'},
   top:{height:44,flexDirection:'row',alignItems:'center',justifyContent:'space-between'},
   pageTitle:{color:C.text,fontSize:22,fontWeight:'900'},switchText:{color:C.cyan,fontSize:11,fontWeight:'700'},
   card:{backgroundColor:C.panel,borderRadius:22,borderWidth:1,borderColor:C.border,padding:15,gap:12},
@@ -199,12 +241,12 @@ const s = StyleSheet.create({
   videoTile:{alignItems:'center',justifyContent:'center',gap:4},videoText:{color:C.cyan,fontSize:9,fontWeight:'900'},
   remove:{position:'absolute',top:5,right:5,width:23,height:23,borderRadius:12,backgroundColor:'#0009',alignItems:'center',justifyContent:'center'},
   hint:{color:C.muted,fontSize:10,lineHeight:15},identity:{alignItems:'center',paddingTop:8},
-  avatarWrap:{width:94,height:94,borderRadius:48,borderWidth:2,borderColor:C.pink,padding:4,marginBottom:10},
+  avatarWrap:{width:98,height:98,borderRadius:50,borderWidth:4,borderColor:C.panel,padding:2,marginBottom:10,backgroundColor:C.panel},
   avatar:{width:'100%',height:'100%',borderRadius:44},avatarFallback:{flex:1,borderRadius:44,backgroundColor:C.panel2,alignItems:'center',justifyContent:'center'},
   camera:{position:'absolute',right:-1,bottom:0,width:27,height:27,borderRadius:14,backgroundColor:C.pink,borderWidth:2,borderColor:C.panel,alignItems:'center',justifyContent:'center'},
   nameLine:{flexDirection:'row',alignItems:'center',gap:6},name:{color:C.text,fontSize:21,fontWeight:'900'},
   verified:{width:17,height:17,borderRadius:9,backgroundColor:C.cyan,alignItems:'center',justifyContent:'center'},
-  username:{color:C.muted,fontSize:12,marginTop:4},bio:{color:'#526B7D',fontSize:12,lineHeight:18,textAlign:'center',marginTop:10},
+  username:{color:C.muted,fontSize:12,marginTop:4},bio:{color:'#526B7D',fontSize:12,lineHeight:18,textAlign:'center',marginTop:8,maxWidth:310},
   websiteLine:{flexDirection:'row',alignItems:'center',gap:6,marginTop:8},website:{color:C.cyan,fontSize:12,fontWeight:'700'},
   stats:{flexDirection:'row',borderTopWidth:1,borderBottomWidth:1,borderColor:C.border,paddingVertical:14},
   stat:{flex:1,alignItems:'center'},statNum:{color:C.text,fontSize:17,fontWeight:'900'},statLabel:{color:C.muted,fontSize:10,marginTop:4},
