@@ -543,7 +543,11 @@ export default function App() {
   const DiscoverScreen = () => {
     const filteredProfiles = publicProfiles.filter(profile => {
       const query = profileSearch.trim().toLowerCase();
-      return !query || profile.username.toLowerCase().includes(query) || profile.display_name.toLowerCase().includes(query);
+      return !query ||
+        profile.username.toLowerCase().includes(query) ||
+        profile.display_name.toLowerCase().includes(query) ||
+        (profile.bio || '').toLowerCase().includes(query) ||
+        (profile.profession_category || '').toLowerCase().includes(query);
     });
     return <ScrollView contentContainerStyle={s.discoverScroll} keyboardShouldPersistTaps="handled">
       <Text style={s.pageTitle}>Discover</Text>
