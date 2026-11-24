@@ -1,11 +1,7 @@
-
 name: Build MeetApp Android APK
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - main
 
 jobs:
   build:
@@ -33,4 +29,3 @@ jobs:
 
       - name: Build Android APK
         run: eas build --platform android --profile preview --non-interactive --no-wait
-        
