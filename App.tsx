@@ -15,7 +15,7 @@ type CloudMediaRow = { id: string; kind: 'avatar' | 'cover' | 'post'; position: 
 type Tab = 'Home' | 'Public' | 'Create' | 'Inbox' | 'Profile';
 type SearchCategory = 'People' | 'Videos' | 'Reels' | 'Trending' | 'Funny' | 'Vlogs' | 'Cinema' | 'Creators';
 type SearchVideo = { id: string; caption: string | null; media_path: string; created_at: string; user_id: string; content_category: string; like_count: number; view_count: number };
-type PublishedPost = { id: string; post_type: 'photo' | 'video' | 'text'; caption: string | null; media_path: string | null; created_at: string; visibility: string; content_category: string | null; media: Media };
+type PublishedPost = { id: string; post_type: 'photo' | 'video' | 'text'; caption: string | null; media_path: string | null; created_at: string; visibility: string; content_category: string | null; like_count: number; viewer_liked: boolean; media: Media };
 type PublicProfile = { id: string; username: string; display_name: string; bio: string | null; profession_category: string | null; website_url?: string | null; activity_status?: string | null; is_private?: boolean; account_type?: 'personal' | 'business'; business_name?: string | null; business_category?: string | null; business_description?: string | null };
 type FollowRequest = { follower_id: string; username: string; display_name: string; requested_at: string };
 type ChatMessage = { id: string; conversation_id: string; sender_id: string; body: string; created_at: string; read_at?: string | null; message_type?: 'text' | 'voice'; audio_path?: string | null; audio_url?: string | null; transcript?: string | null };
@@ -271,7 +271,23 @@ export default function App() {
         if (signedError || !signed?.signedUrl) return null;
         return { ...row, media: { uri: signed.signedUrl, type: row.post_type === 'video' ? 'video' : 'image', storagePath: row.media_path } as Media } as PublishedPost;
       }));
-      if (active) setOwnPublishedPosts(hydrated.filter((post): post is PublishedPost => post !== null));
+      const validPosts = hydrated.filter((post): post is PublishedPost => post !== null);
+      if (!validPosts.length) {
+        if (active) setOwnPublishedPosts([]);
+        return;
+      }
+      const engagementResult = await supabase!.rpc('get_profile_post_engagement', { target_post_ids: validPosts.map(post => post.id) });
+      if (!active) return;
+      if (engagementResult.error) {
+        Alert.alert('Could not load post likes', engagementResult.error.message);
+        setOwnPublishedPosts(validPosts.map(post => ({ ...post, like_count: 0, viewer_liked: false })));
+      } else {
+        const engagementById = new Map((engagementResult.data || []).map((item: any) => [item.post_id, item]));
+        setOwnPublishedPosts(validPosts.map(post => {
+          const engagement = engagementById.get(post.id) as any;
+          return { ...post, like_count: Number(engagement?.like_count || 0), viewer_liked: !!engagement?.viewer_liked };
+        }));
+      }
     };
     void loadOwnPublishedPosts();
     return () => { active = false; };
@@ -419,7 +435,23 @@ export default function App() {
         return { ...row, media: { uri: signed.signedUrl, type: row.post_type === 'video' ? 'video' : 'image', storagePath: row.media_path } as Media } as PublishedPost;
       }));
       if (!active) return;
-      setOtherPublishedPosts(publishedHydrated.filter((post): post is PublishedPost => post !== null));
+      const validPublishedPosts = publishedHydrated.filter((post): post is PublishedPost => post !== null);
+      if (validPublishedPosts.length) {
+        const engagementResult = await supabase!.rpc('get_profile_post_engagement', { target_post_ids: validPublishedPosts.map(post => post.id) });
+        if (!active) return;
+        if (engagementResult.error) {
+          Alert.alert('Could not load post likes', engagementResult.error.message);
+          setOtherPublishedPosts(validPublishedPosts.map(post => ({ ...post, like_count: 0, viewer_liked: false })));
+        } else {
+          const engagementById = new Map((engagementResult.data || []).map((item: any) => [item.post_id, item]));
+          setOtherPublishedPosts(validPublishedPosts.map(post => {
+            const engagement = engagementById.get(post.id) as any;
+            return { ...post, like_count: Number(engagement?.like_count || 0), viewer_liked: !!engagement?.viewer_liked };
+          }));
+        }
+      } else {
+        setOtherPublishedPosts([]);
+      }
       if (countsResult.error) Alert.alert('Could not load profile counts', countsResult.error.message);
       const followCounts = countsResult.data as { following_count?: number; follower_count?: number } | null;
       setOtherFollowingCount(Number(followCounts?.following_count || 0));
@@ -575,6 +607,35 @@ export default function App() {
     setPublicVideos(old => old.map(item => item.id === video.id
       ? { ...item, like_count: Math.max(0, item.like_count + (isLiked ? -1 : 1)) }
       : item));
+  };
+
+  const togglePublishedPostLike = async (post: PublishedPost, isOtherProfile: boolean) => {
+    const client = supabase;
+    if (!client || likeBusyIds.includes(post.id)) return;
+    const { data: authData, error: authError } = await client.auth.getSession();
+    const userId = authData.session?.user.id;
+    if (authError || !userId) {
+      Alert.alert('Sign in required', 'Please sign in again to like posts.');
+      return;
+    }
+    const isLiked = post.viewer_liked;
+    setLikeBusyIds(old => [...old, post.id]);
+    const result = isLiked
+      ? await client.from('post_likes').delete().eq('post_id', post.id).eq('user_id', userId)
+      : await client.from('post_likes').insert({ post_id: post.id, user_id: userId });
+    setLikeBusyIds(old => old.filter(id => id !== post.id));
+    if (result.error) {
+      Alert.alert('Could not update like', result.error.message);
+      return;
+    }
+    const delta = isLiked ? -1 : 1;
+    const updatePost = (item: PublishedPost) => item.id === post.id
+      ? { ...item, viewer_liked: !isLiked, like_count: Math.max(0, item.like_count + delta) }
+      : item;
+    setOwnPublishedPosts(old => old.map(updatePost));
+    setOtherPublishedPosts(old => old.map(updatePost));
+    if (isOtherProfile) setOtherLikesCount(count => Math.max(0, count + delta));
+    else setLikesCount(count => Math.max(0, count + delta));
   };
 
   const loadInbox = async () => {
@@ -1012,13 +1073,19 @@ export default function App() {
     </Pressable>
   );
 
-  const PublishedPostTile = ({ post, onPress }: { post: PublishedPost; onPress: () => void }) => (
-    <Pressable onPress={onPress} style={s.publishedTile}>
-      {post.media.type === 'image'
-        ? <Image source={{ uri: post.media.uri }} style={s.publishedImage} />
-        : <View style={s.publishedVideo}><Ionicons name="play-circle" size={34} color="#FFFFFF"/><Text style={s.videoText}>VIDEO</Text></View>}
+  const PublishedPostTile = ({ post, onPress, onLike }: { post: PublishedPost; onPress: () => void; onLike: () => void }) => (
+    <View style={s.publishedTile}>
+      <Pressable onPress={onPress}>
+        {post.media.type === 'image'
+          ? <Image source={{ uri: post.media.uri }} style={s.publishedImage} />
+          : <View style={s.publishedVideo}><Ionicons name="play-circle" size={34} color="#FFFFFF"/><Text style={s.videoText}>VIDEO</Text></View>}
+      </Pressable>
       {!!post.caption && <Text style={s.publishedCaption} numberOfLines={2}>{post.caption}</Text>}
-    </Pressable>
+      <Pressable onPress={onLike} disabled={likeBusyIds.includes(post.id)} style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingVertical: 4, alignSelf: 'flex-start' }}>
+        <Ionicons name={post.viewer_liked ? 'heart' : 'heart-outline'} size={17} color={post.viewer_liked ? '#E34B69' : C.muted}/>
+        <Text style={{ color: C.muted, fontSize: 11, fontWeight: '700' }}>{post.like_count.toLocaleString()}</Text>
+      </Pressable>
+    </View>
   );
 
   const Profile = () => (
@@ -1082,7 +1149,7 @@ export default function App() {
         <View style={s.section}>
           <View style={s.sectionHeading}><Text style={s.sectionTitle}>Posts</Text><Text style={s.coverCount}>{ownPublishedPosts.length}</Text></View>
           {ownPublishedPosts.length ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 9 }}>
-            {ownPublishedPosts.map(post => <PublishedPostTile key={post.id} post={post} onPress={() => setViewer(post.media)}/>)}
+            {ownPublishedPosts.map(post => <PublishedPostTile key={post.id} post={post} onPress={() => setViewer(post.media)} onLike={() => void togglePublishedPostLike(post, false)}/>)}
           </ScrollView> : <Text style={s.hint}>Your published photos and videos will appear here.</Text>}
         </View>
         {!!posts.length && <View style={s.section}>
@@ -1157,7 +1224,7 @@ export default function App() {
           <View style={s.section}>
             <View style={s.sectionHeading}><Text style={s.sectionTitle}>Posts</Text><Text style={s.coverCount}>{otherPublishedPosts.length}</Text></View>
             {loadingOtherProfile ? <Text style={s.hint}>Loading posts…</Text> : otherPublishedPosts.length ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 9 }}>
-              {otherPublishedPosts.map(post => <PublishedPostTile key={post.id} post={post} onPress={() => setViewer(post.media)}/>)}
+              {otherPublishedPosts.map(post => <PublishedPostTile key={post.id} post={post} onPress={() => setViewer(post.media)} onLike={() => void togglePublishedPostLike(post, true)}/>)}
             </ScrollView> : <Text style={s.hint}>No published posts yet.</Text>}
           </View>
           {!!otherProfileMedia.posts.length && <View style={s.section}>
