@@ -11,6 +11,8 @@ import { supabase } from './supabase';
 type Media = { uri: string; type: 'image' | 'video'; name?: string; size?: number; storagePath?: string };
 type CloudMediaRow = { id: string; kind: 'avatar' | 'cover' | 'post'; position: number; storage_path: string; media_type: 'image' | 'video'; original_name: string | null; };
 type Tab = 'Home' | 'Public' | 'Create' | 'Inbox' | 'Profile';
+type SearchCategory = 'People' | 'Videos' | 'Trending' | 'Funny' | 'Reels';
+type SearchVideo = { id: string; caption: string | null; media_path: string; created_at: string; user_id: string };
 type PublicProfile = { id: string; username: string; display_name: string; bio: string | null; profession_category: string | null; website_url?: string | null; activity_status?: string | null };
 
 const C = {
@@ -46,6 +48,10 @@ export default function App() {
   const [discoverAvatars, setDiscoverAvatars] = useState<Record<string, Media>>({});
   const [followedUserIds, setFollowedUserIds] = useState<string[]>([]);
   const [profileSearch, setProfileSearch] = useState('');
+  const [searchCategory, setSearchCategory] = useState<SearchCategory>('People');
+  const [publicVideos, setPublicVideos] = useState<SearchVideo[]>([]);
+  const [videoUrls, setVideoUrls] = useState<Record<string, string>>({});
+  const [loadingVideos, setLoadingVideos] = useState(false);
   const [loadingProfiles, setLoadingProfiles] = useState(false);
   const [followBusyIds, setFollowBusyIds] = useState<string[]>([]);
   const [selectedProfile, setSelectedProfile] = useState<PublicProfile | null>(null);
@@ -181,6 +187,40 @@ export default function App() {
     loadDiscoverProfiles();
     return () => { active = false; };
   }, [tab]);
+
+  useEffect(() => {
+    if (tab !== 'Public' || searchCategory !== 'Videos' || !supabase) return;
+    let active = true;
+    const loadPublicVideos = async () => {
+      setLoadingVideos(true);
+      const { data, error } = await supabase!
+        .from('posts')
+        .select('id, caption, media_path, created_at, user_id')
+        .eq('post_type', 'video')
+        .eq('visibility', 'public')
+        .not('media_path', 'is', null)
+        .order('created_at', { ascending: false })
+        .limit(50);
+      if (!active) return;
+      if (error) {
+        Alert.alert('Could not load public videos', error.message);
+        setPublicVideos([]);
+        setVideoUrls({});
+      } else {
+        const rows = (data || []) as SearchVideo[];
+        setPublicVideos(rows);
+        const entries = await Promise.all(rows.map(async row => {
+          const { data: signed, error: signedError } = await supabase!.storage.from('usay-media').createSignedUrl(row.media_path, 60 * 60);
+          return signedError || !signed?.signedUrl ? null : [row.id, signed.signedUrl] as const;
+        }));
+        if (!active) return;
+        setVideoUrls(Object.fromEntries(entries.filter((entry): entry is NonNullable<typeof entry> => entry !== null)));
+      }
+      if (active) setLoadingVideos(false);
+    };
+    loadPublicVideos();
+    return () => { active = false; };
+  }, [tab, searchCategory]);
 
   useEffect(() => {
     if (!selectedProfile || !supabase) return;
@@ -541,28 +581,52 @@ export default function App() {
   };
 
   const DiscoverScreen = () => {
-    const filteredProfiles = publicProfiles.filter(profile => {
-      const query = profileSearch.trim().toLowerCase();
-      return !query ||
-        profile.username.toLowerCase().includes(query) ||
-        profile.display_name.toLowerCase().includes(query) ||
-        (profile.profession_category || '').toLowerCase().includes(query);
-    });
+    const query = profileSearch.trim().toLowerCase();
+    const filteredProfiles = publicProfiles.filter(profile =>
+      !query ||
+      profile.username.toLowerCase().includes(query) ||
+      profile.display_name.toLowerCase().includes(query) ||
+      (profile.profession_category || '').toLowerCase().includes(query)
+    );
+    const filteredVideos = publicVideos.filter(video => (video.caption || '').toLowerCase().includes(query));
+    const categories: SearchCategory[] = ['People', 'Videos', 'Trending', 'Funny', 'Reels'];
     return <ScrollView contentContainerStyle={s.discoverScroll} keyboardShouldPersistTaps="handled">
-      <Text style={s.pageTitle}>Discover</Text>
-      <Text style={s.hint}>Find people and connect with the USay community.</Text>
-      <TextInput value={profileSearch} onChangeText={setProfileSearch} placeholder="Search username, nickname or profession" placeholderTextColor={C.muted} style={s.input}/>
-      {loadingProfiles ? <Text style={s.hint}>Loading people…</Text> : filteredProfiles.length === 0 ? <Text style={s.hint}>No profiles found. Try another search or check back later.</Text> : filteredProfiles.map(profile => {
-        const following = followedUserIds.includes(profile.id);
-        const busy = followBusyIds.includes(profile.id);
-        return <View key={profile.id} style={s.personRow}>
-          <Pressable onPress={() => setSelectedProfile(profile)} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 }}>
-            <View style={s.personAvatar}>{discoverAvatars[profile.id]?.type === 'image' ? <Image source={{ uri: discoverAvatars[profile.id].uri }} style={{ width: '100%', height: '100%', borderRadius: 24 }} /> : <Ionicons name="person" size={22} color={C.cyan}/>}</View>
-            <View style={s.personDetails}><Text style={s.personName}>{profile.display_name}</Text><Text style={s.personUsername}>@{profile.username}</Text>{!!profile.bio && <Text style={s.personBio} numberOfLines={2}>{profile.bio}</Text>}</View>
-          </Pressable>
-          <Pressable disabled={busy} onPress={() => toggleFollow(profile)} style={[s.followButton, following && s.followingButton]}><Text style={[s.followButtonText, following && s.followingButtonText]}>{busy ? '...' : following ? 'Following' : 'Follow'}</Text></Pressable>
-        </View>;
-      })}
+      <Text style={s.pageTitle}>Search</Text>
+      <View style={s.searchBox}>
+        <Ionicons name="search" size={19} color={C.muted}/>
+        <TextInput value={profileSearch} onChangeText={setProfileSearch} placeholder={searchCategory === 'People' ? 'Search username, nickname or profession' : 'Search ' + searchCategory.toLowerCase()} placeholderTextColor={C.muted} style={s.searchInput} returnKeyType="search"/>
+        {!!profileSearch && <Pressable onPress={() => setProfileSearch('')}><Ionicons name="close-circle" size={19} color={C.muted}/></Pressable>}
+      </View>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.searchCategories}>
+        {categories.map(category => <Pressable key={category} onPress={() => { setSearchCategory(category); setProfileSearch(''); }} style={[s.searchCategory, searchCategory === category && s.searchCategoryActive]}>
+          <Text style={[s.searchCategoryText, searchCategory === category && s.searchCategoryTextActive]}>{category}</Text>
+        </Pressable>)}
+      </ScrollView>
+      {searchCategory === 'People' ? <>
+        <Text style={s.hint}>Find people by username, nickname or profession.</Text>
+        {loadingProfiles ? <Text style={s.hint}>Loading people…</Text> : filteredProfiles.length === 0 ? <Text style={s.hint}>No people found. Try another search.</Text> : filteredProfiles.map(profile => {
+          const following = followedUserIds.includes(profile.id);
+          const busy = followBusyIds.includes(profile.id);
+          return <View key={profile.id} style={s.personRow}>
+            <Pressable onPress={() => setSelectedProfile(profile)} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 }}>
+              <View style={s.personAvatar}>{discoverAvatars[profile.id]?.type === 'image' ? <Image source={{ uri: discoverAvatars[profile.id].uri }} style={{ width: '100%', height: '100%', borderRadius: 24 }} /> : <Ionicons name="person" size={22} color={C.cyan}/>}</View>
+              <View style={s.personDetails}><Text style={s.personName}>{profile.display_name}</Text><Text style={s.personUsername}>@{profile.username}</Text>{!!profile.profession_category && <Text style={s.personBio}>{profile.profession_category}</Text>}</View>
+            </Pressable>
+            <Pressable disabled={busy} onPress={() => toggleFollow(profile)} style={[s.followButton, following && s.followingButton]}><Text style={[s.followButtonText, following && s.followingButtonText]}>{busy ? '...' : following ? 'Following' : 'Follow'}</Text></Pressable>
+          </View>;
+        })}
+      </> : searchCategory === 'Videos' ? <>
+        <Text style={s.hint}>Public videos from USay.</Text>
+        {loadingVideos ? <Text style={s.hint}>Loading videos…</Text> : filteredVideos.length === 0 ? <Text style={s.hint}>No public videos found yet.</Text> : filteredVideos.map(video => <Pressable key={video.id} style={s.videoSearchRow} onPress={() => videoUrls[video.id] && setViewer({ uri: videoUrls[video.id], type: 'video', storagePath: video.media_path })}>
+          <View style={s.videoSearchThumb}><Ionicons name="play-circle" size={36} color="#FFFFFF"/></View>
+          <View style={s.personDetails}><Text style={s.personName} numberOfLines={2}>{video.caption || 'Public video'}</Text><Text style={s.personUsername}>{new Date(video.created_at).toLocaleDateString()}</Text></View>
+          <Ionicons name="chevron-forward" size={18} color={C.muted}/>
+        </Pressable>)}
+      </> : <View style={s.searchComingSoon}>
+        <Ionicons name={searchCategory === 'Trending' ? 'trending-up' : searchCategory === 'Funny' ? 'happy-outline' : 'videocam-outline'} size={32} color={C.cyan}/>
+        <Text style={s.sectionTitle}>{searchCategory} search</Text>
+        <Text style={s.hint}>{searchCategory} discovery is coming in the next content update.</Text>
+      </View>}
     </ScrollView>;
   };
 
@@ -632,6 +696,13 @@ export default function App() {
 const s = StyleSheet.create({
   root:{flex:1,backgroundColor:C.bg}, scroll:{padding:16,paddingBottom:22,gap:14},
   discoverScroll:{padding:20,paddingTop:54,paddingBottom:30,gap:14},
+  searchBox:{minHeight:48,borderWidth:1,borderColor:C.border,borderRadius:14,paddingHorizontal:13,flexDirection:'row',alignItems:'center',gap:9,backgroundColor:'#F8FCFF'},
+  searchInput:{flex:1,color:C.text,fontSize:14,paddingVertical:10},searchCategories:{gap:8,paddingVertical:3},
+  searchCategory:{paddingHorizontal:15,paddingVertical:9,borderRadius:20,borderWidth:1,borderColor:C.border,backgroundColor:'#FFFFFF'},
+  searchCategoryActive:{backgroundColor:'#EAF5FF',borderColor:'#9DD6F4'},searchCategoryText:{color:C.muted,fontSize:12,fontWeight:'700'},searchCategoryTextActive:{color:C.cyan},
+  videoSearchRow:{flexDirection:'row',alignItems:'center',gap:12,paddingVertical:10,borderBottomWidth:1,borderBottomColor:C.border},
+  videoSearchThumb:{width:78,height:88,borderRadius:12,backgroundColor:'#7BBCE0',alignItems:'center',justifyContent:'center'},
+  searchComingSoon:{alignItems:'center',justifyContent:'center',paddingVertical:45,gap:10},
   personRow:{flexDirection:'row',alignItems:'center',gap:10,paddingVertical:12,borderBottomWidth:1,borderBottomColor:C.border},
   personAvatar:{width:46,height:46,borderRadius:23,backgroundColor:'#EAF5FF',alignItems:'center',justifyContent:'center'},
   personDetails:{flex:1,gap:2},personName:{color:C.text,fontSize:14,fontWeight:'800'},personUsername:{color:C.muted,fontSize:11},personBio:{color:'#526B7D',fontSize:11},
