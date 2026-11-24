@@ -1,10 +1,11 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert, Image, Modal, Pressable, ScrollView, StatusBar, StyleSheet,
   Text, TextInput, View, useWindowDimensions, Animated, PanResponder
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
+import { useVideoPlayer, VideoView } from 'expo-video';
 
 type Media = { uri: string; type: 'image' | 'video'; name?: string; size?: number };
 type Tab = 'Home' | 'Public' | 'Create' | 'Inbox' | 'Profile';
@@ -14,7 +15,18 @@ const C = {
   muted: '#688398', pink: '#258FEA', cyan: '#43B8E8', border: '#D8EAF7'
 };
 
-export default function App() {
+export default function CoverMediaSlide({ media }: { media: Media }) {
+  const player = useVideoPlayer(media.type === 'video' ? media.uri : null, p => { p.loop = true; });
+  useEffect(() => {
+    if (media.type === 'video') player.play();
+    return () => { if (media.type === 'video') player.pause(); };
+  }, [media.type, player]);
+  return media.type === 'image'
+    ? <Image source={{ uri: media.uri }} resizeMode="contain" style={{ width: '100%', height: '85%' }} />
+    : <VideoView player={player} style={{ width: '100%', height: '85%' }} contentFit="contain" nativeControls />;
+}
+
+function App() {
   const [tab, setTab] = useState<Tab>('Profile');
   const [name, setName] = useState('MeetApp User');
   const [username, setUsername] = useState('your_username');
@@ -104,7 +116,7 @@ export default function App() {
   const Profile = () => (
     <ScrollView contentContainerStyle={s.profileScroll} showsVerticalScrollIndicator={false}>
       <View style={s.top}><Text style={s.pageTitle}>MeetApp</Text></View>
-      <Animated.View {...avatarPan.panHandlers} style={[s.identity, { transform: [{ translateY: avatarDrag }] }]}>
+      <View style={s.identity}>
         <View style={s.coverBackdrop}>
           {covers[0]?.type === 'image' ? <Image source={{uri:covers[0].uri}} style={s.coverBackdropImage}/> :
             covers[0]?.type === 'video' ? <View style={s.coverBackdropVideo}><Ionicons name="play-circle" size={28} color="#FFFFFF"/></View> :
@@ -113,16 +125,18 @@ export default function App() {
           {isOwnProfile && <Pressable onPress={() => chooseMedia('cover')} style={s.coverEdit}><Ionicons name="camera" size={15} color="#FFFFFF"/></Pressable>}
           {!!covers.length && <Pressable onPress={() => setCoverExpanded(true)} style={s.coverViewTap}/>}
         </View>
+        <Animated.View {...avatarPan.panHandlers} style={{ transform: [{ translateY: avatarDrag }] }}>
         <Pressable onPress={() => isOwnProfile ? chooseMedia('avatar') : undefined} style={s.avatarWrap}>
           {avatar ? <Image source={{uri:avatar.uri}} style={s.avatar} /> : <View style={s.avatarFallback}><Ionicons name="person" size={38} color={C.cyan}/></View>}
           {isOwnProfile && <View style={s.camera}><Ionicons name="camera" size={13} color="#fff"/></View>}
         </Pressable>
+        </Animated.View>
         <View style={s.nameLine}><Text style={s.name}>{name}</Text><View style={s.verified}><Ionicons name="checkmark" size={12} color="#FFFFFF"/></View></View>
         <Text style={s.username}>@{username.replace(/^@/, '')}</Text>
         <Text style={s.bio}>{bio}</Text>
         {!!website && <Pressable onPress={openWebsite} style={s.websiteLine}><Ionicons name="link" color={C.cyan} size={15}/><Text style={s.website}>{website}</Text></Pressable>}
          
-      </Animated.View>
+      </View>
       <View style={s.profileBody}>
         <View style={s.stats}>
           <View style={s.stat}><Text style={s.statNum}>128</Text><Text style={s.statLabel}>Following</Text></View>
@@ -191,8 +205,7 @@ export default function App() {
           <Pressable style={s.coverViewerClose} onPress={() => setCoverExpanded(false)}><Ionicons name="close" size={26} color="#FFFFFF"/></Pressable>
           <ScrollView horizontal pagingEnabled showsHorizontalScrollIndicator={false}>
             {covers.map((m, i) => <View key={i} style={{width, height:'100%', alignItems:'center', justifyContent:'center'}}>
-              {m.type === 'image' ? <Image source={{uri:m.uri}} resizeMode="contain" style={{width:'100%',height:'85%'}}/> :
-                <View style={s.videoPreview}><Ionicons name="play-circle" size={60} color={C.cyan}/><Text style={s.sectionTitle}>Video cover</Text></View>}
+              <CoverMediaSlide media={m} />
             </View>)}
           </ScrollView>
         </View>
