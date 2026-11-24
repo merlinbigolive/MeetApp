@@ -646,10 +646,10 @@ export default function App() {
       </View>
       <View style={s.nav}>
         {(['Home','Public','Create','Inbox','Profile'] as Tab[]).map((item, i) => {
-          const icons = ['home-outline','globe-outline','add-circle-outline','mail-outline','person-outline'] as const;
+          const icons = ['home-outline','search-outline','add-circle-outline','mail-outline','person-outline'] as const;
           return <Pressable key={item} style={s.navItem} onPress={() => { setSelectedProfile(null); setTab(item); }}>
             <Ionicons name={icons[i]} size={21} color={tab === item ? C.pink : C.muted}/>
-            <Text style={[s.navLabel, tab === item && {color:C.pink}]}>{item}</Text>
+            <Text style={[s.navLabel, tab === item && {color:C.pink}]}>{item === 'Public' ? 'Search' : item}</Text>
           </Pressable>;
         })}
       </View>
