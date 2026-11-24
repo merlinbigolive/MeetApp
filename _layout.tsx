@@ -1,6 +1,6 @@
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { theme } from '../../src/constants/theme';
+import { theme } from './theme';
 
 const tabs = [
   { name: 'home', title: 'Home', icon: 'home-outline' as const },
