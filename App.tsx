@@ -15,7 +15,7 @@ const C = {
   muted: '#688398', pink: '#258FEA', cyan: '#43B8E8', border: '#D8EAF7'
 };
 
-export default function CoverMediaSlide({ media }: { media: Media }) {
+function CoverMediaSlide({ media }: { media: Media }) {
   const player = useVideoPlayer(media.type === 'video' ? media.uri : null, p => { p.loop = true; });
   useEffect(() => {
     if (media.type === 'video') player.play();
@@ -26,7 +26,7 @@ export default function CoverMediaSlide({ media }: { media: Media }) {
     : <VideoView player={player} style={{ width: '100%', height: '85%' }} contentFit="contain" nativeControls />;
 }
 
-function App() {
+export default function App() {
   const [tab, setTab] = useState<Tab>('Profile');
   const [name, setName] = useState('MeetApp User');
   const [username, setUsername] = useState('your_username');
