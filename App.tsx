@@ -20,6 +20,18 @@ const C = {
   muted: '#777777', pink: '#258FEA', cyan: '#43B8E8', border: '#EEEEEE'
 };
 
+function ProfileCoverVideo({ uri }: { uri: string }) {
+  const player = useVideoPlayer(uri, p => {
+    p.loop = true;
+    p.muted = true;
+  });
+  useEffect(() => {
+    player.play();
+    return () => player.pause();
+  }, [player]);
+  return <VideoView player={player} style={s.coverBackdropVideo} contentFit="cover" nativeControls={false} />;
+}
+
 function CoverMediaSlide({ media }: { media: Media }) {
   const player = useVideoPlayer(media.type === 'video' ? media.uri : null, p => { p.loop = true; });
   useEffect(() => {
@@ -472,7 +484,7 @@ export default function App() {
       <View style={s.identity}>
         <View style={s.coverBackdrop}>
           {covers[0]?.type === 'image' ? <Image source={{uri:covers[0].uri}} style={s.coverBackdropImage}/> :
-            covers[0]?.type === 'video' ? <View style={s.coverBackdropVideo}><Ionicons name="play-circle" size={28} color="#FFFFFF"/></View> :
+            covers[0]?.type === 'video' ? <ProfileCoverVideo uri={covers[0].uri} /> :
             <View style={s.coverBackdropEmpty}/>}
           <View style={s.coverBackdropShade}/>
           {isOwnProfile && <Pressable onPress={() => chooseMedia('cover')} style={s.coverEdit}><Ionicons name="camera" size={15} color="#FFFFFF"/></Pressable>}
@@ -542,7 +554,7 @@ export default function App() {
       <View style={s.identity}>
         <View style={s.coverBackdrop}>
           {otherProfileMedia.covers[0]?.type === 'image' ? <Image source={{uri:otherProfileMedia.covers[0].uri}} style={s.coverBackdropImage}/> :
-            otherProfileMedia.covers[0]?.type === 'video' ? <View style={s.coverBackdropVideo}><Ionicons name="play-circle" size={28} color="#FFFFFF"/></View> : <View style={s.coverBackdropEmpty}/>}
+            otherProfileMedia.covers[0]?.type === 'video' ? <ProfileCoverVideo uri={otherProfileMedia.covers[0].uri} /> : <View style={s.coverBackdropEmpty}/>}
           <View style={s.coverBackdropShade}/>
           {!!otherProfileMedia.covers.length && <Pressable onPress={() => setOtherCoverExpanded(true)} style={s.coverViewTap}/>}
         </View>
