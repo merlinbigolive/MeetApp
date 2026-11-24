@@ -959,7 +959,7 @@ export default function App() {
         <Text style={s.username}>@{selectedProfile.username}</Text>
         {selectedProfile.account_type === 'business' && <View style={s.businessTag}><Ionicons name="briefcase-outline" size={13} color={C.cyan}/><Text style={s.businessTagText}>Professional Business Account</Text></View>}
         {!!selectedProfile.bio && <Text style={s.bio}>{selectedProfile.bio}</Text>}
-        {selectedProfile.account_type === 'business' && !!selectedProfile.business_name && <View style={s.businessInfo}><Text style={s.businessName}>{selectedProfile.business_name}</Text>{!!selectedProfile.business_category && <Text style={s.personBio}>{selectedProfile.business_category}</Text>}{!!selectedProfile.business_description && <Text style={s.infoText}>{selectedProfile.business_description}</Text>}</View>}}
+        {selectedProfile.account_type === 'business' && !!selectedProfile.business_name && <View style={s.businessInfo}><Text style={s.businessName}>{selectedProfile.business_name}</Text>{!!selectedProfile.business_category && <Text style={s.personBio}>{selectedProfile.business_category}</Text>}{!!selectedProfile.business_description && <Text style={s.infoText}>{selectedProfile.business_description}</Text>}</View>}
         {!!selectedProfile.website_url && <Pressable onPress={openOtherWebsite} style={s.websiteLine}><Ionicons name="link" color={C.cyan} size={15}/><Text style={s.website}>{selectedProfile.website_url}</Text></Pressable>}
       </View>
       <View style={s.profileBody}>
