@@ -75,15 +75,48 @@ export default function App() {
   const [editing, setEditing] = useState(false);
   const [viewer, setViewer] = useState<Media | null>(null);
   const [coverExpanded, setCoverExpanded] = useState(false);
+  const [coverRevealed, setCoverRevealed] = useState(false);
   const avatarDrag = useRef(new Animated.Value(0)).current;
+  const coverRevealProgress = useRef(new Animated.Value(0)).current;
+  const lastProfileScrollY = useRef(0);
+  const animateCoverReveal = (reveal: boolean) => {
+    setCoverRevealed(reveal);
+    Animated.spring(coverRevealProgress, {
+      toValue: reveal ? 1 : 0,
+      useNativeDriver: false,
+      damping: 20,
+      stiffness: 150,
+    }).start();
+    Animated.spring(avatarDrag, {
+      toValue: reveal ? 190 : 0,
+      useNativeDriver: true,
+      damping: 20,
+      stiffness: 150,
+    }).start();
+  };
   const avatarPan = useMemo(() => PanResponder.create({
-    onMoveShouldSetPanResponder: (_: any, g: any) => g.dy > 8,
-    onPanResponderMove: (_: any, g: any) => avatarDrag.setValue(Math.max(0, Math.min(g.dy, 120))),
-    onPanResponderRelease: (_: any, g: any) => {
-      Animated.spring(avatarDrag, { toValue: 0, useNativeDriver: true }).start();
-      if (g.dy > 55 && covers.length) setCoverExpanded(true);
+    onMoveShouldSetPanResponder: (_: any, g: any) =>
+      (g.dy > 8 && !coverRevealed) || (g.dy < -8 && coverRevealed),
+    onPanResponderMove: (_: any, g: any) => {
+      if (g.dy > 8 && !coverRevealed) {
+        avatarDrag.setValue(Math.max(0, Math.min(g.dy, 190)));
+        coverRevealProgress.setValue(Math.min(g.dy / 190, 1));
+      } else if (g.dy < -8 && coverRevealed) {
+        const progress = Math.max(0, 1 - Math.abs(g.dy) / 190);
+        avatarDrag.setValue(progress * 190);
+        coverRevealProgress.setValue(progress);
+      }
     },
-  }), [avatarDrag, covers.length]);
+    onPanResponderRelease: (_: any, g: any) => {
+      if (g.dy > 55) animateCoverReveal(true);
+      else if (g.dy < -45) animateCoverReveal(false);
+      else if (coverRevealed) animateCoverReveal(true);
+      else {
+        Animated.spring(avatarDrag, { toValue: 0, useNativeDriver: true }).start();
+        Animated.spring(coverRevealProgress, { toValue: 0, useNativeDriver: false }).start();
+      }
+    },
+  }), [avatarDrag, coverRevealProgress, coverRevealed]);
   const [isOwnProfile, setIsOwnProfile] = useState(true);
   const { width } = useWindowDimensions();
 
@@ -479,17 +512,21 @@ export default function App() {
   );
 
   const Profile = () => (
-    <ScrollView contentContainerStyle={s.profileScroll} showsVerticalScrollIndicator={false}>
+    <ScrollView contentContainerStyle={s.profileScroll} showsVerticalScrollIndicator={false} scrollEventThrottle={16} onScroll={(event) => {
+      const y = event.nativeEvent.contentOffset.y;
+      if (coverRevealed && y < lastProfileScrollY.current - 3) animateCoverReveal(false);
+      lastProfileScrollY.current = y;
+    }}>
       <View style={s.top}><Text style={s.pageTitle}>꒤ꇙꋬꌦ</Text></View>
       <View style={s.identity}>
-        <View style={s.coverBackdrop}>
+        <Animated.View style={[s.coverBackdrop, { height: coverRevealProgress.interpolate({ inputRange: [0, 1], outputRange: [190, 420] }) }]}>
           {covers[0]?.type === 'image' ? <Image source={{uri:covers[0].uri}} style={s.coverBackdropImage}/> :
             covers[0]?.type === 'video' ? <ProfileCoverVideo uri={covers[0].uri} /> :
             <View style={s.coverBackdropEmpty}/>}
           <View style={s.coverBackdropShade}/>
           {isOwnProfile && <Pressable onPress={() => chooseMedia('cover')} style={s.coverEdit}><Ionicons name="camera" size={15} color="#FFFFFF"/></Pressable>}
           {!!covers.length && <Pressable onPress={() => setCoverExpanded(true)} style={s.coverViewTap}/>}
-        </View>
+        </Animated.View>
         <Animated.View {...avatarPan.panHandlers} style={{ transform: [{ translateY: avatarDrag }] }}>
         <Pressable onPress={() => isOwnProfile ? chooseMedia('avatar') : undefined} style={s.avatarWrap}>
           {avatar ? <Image source={{uri:avatar.uri}} style={s.avatar} /> : <View style={s.avatarFallback}><Ionicons name="person" size={38} color={C.cyan}/></View>}
@@ -546,21 +583,27 @@ export default function App() {
       const url = raw.startsWith('http') ? raw : `https://${raw}`;
       import('react-native').then(({ Linking }) => Linking.openURL(url).catch(() => Alert.alert('Website', 'This website link could not be opened.')));
     };
-    return <ScrollView contentContainerStyle={s.profileScroll} showsVerticalScrollIndicator={false}>
+    return <ScrollView contentContainerStyle={s.profileScroll} showsVerticalScrollIndicator={false} scrollEventThrottle={16} onScroll={(event) => {
+      const y = event.nativeEvent.contentOffset.y;
+      if (coverRevealed && y < lastProfileScrollY.current - 3) animateCoverReveal(false);
+      lastProfileScrollY.current = y;
+    }}>
       <View style={[s.top, { justifyContent: 'space-between' }]}>
         <Pressable onPress={() => setSelectedProfile(null)} style={{ padding: 8 }}><Ionicons name="arrow-back" size={24} color={C.text}/></Pressable>
         <Text style={s.pageTitle}>꒤ꇙꋬꌦ</Text><View style={{ width: 40 }}/>
       </View>
       <View style={s.identity}>
-        <View style={s.coverBackdrop}>
+<Animated.View style={[s.coverBackdrop, { height: coverRevealProgress.interpolate({ inputRange: [0, 1], outputRange: [190, 420] }) }]}>
           {otherProfileMedia.covers[0]?.type === 'image' ? <Image source={{uri:otherProfileMedia.covers[0].uri}} style={s.coverBackdropImage}/> :
             otherProfileMedia.covers[0]?.type === 'video' ? <ProfileCoverVideo uri={otherProfileMedia.covers[0].uri} /> : <View style={s.coverBackdropEmpty}/>}
           <View style={s.coverBackdropShade}/>
           {!!otherProfileMedia.covers.length && <Pressable onPress={() => setOtherCoverExpanded(true)} style={s.coverViewTap}/>}
-        </View>
+        </Animated.View>
+        <Animated.View {...avatarPan.panHandlers} style={{ transform: [{ translateY: avatarDrag }] }}>
         <Pressable onPress={() => otherProfileMedia.avatar && setViewer(otherProfileMedia.avatar)} style={s.avatarWrap}>
           {otherProfileMedia.avatar ? <Image source={{uri:otherProfileMedia.avatar.uri}} style={s.avatar}/> : <View style={s.avatarFallback}><Ionicons name="person" size={38} color={C.cyan}/></View>}
         </Pressable>
+        </Animated.View>
         <View style={s.nameLine}><Text style={s.name}>{selectedProfile.display_name}</Text></View>
         <Text style={s.username}>@{selectedProfile.username}</Text>
         {!!selectedProfile.bio && <Text style={s.bio}>{selectedProfile.bio}</Text>}
