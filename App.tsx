@@ -6,6 +6,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { useVideoPlayer, VideoView } from 'expo-video';
+import { supabase } from './supabase';
 
 type Media = { uri: string; type: 'image' | 'video'; name?: string; size?: number };
 type Tab = 'Home' | 'Public' | 'Create' | 'Inbox' | 'Profile';
