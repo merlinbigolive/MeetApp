@@ -65,6 +65,8 @@ export default function App() {
   const [profileSearch, setProfileSearch] = useState('');
   const [searchCategory, setSearchCategory] = useState<SearchCategory>('People');
   const [publicVideos, setPublicVideos] = useState<SearchVideo[]>([]);
+  const [likedVideoIds, setLikedVideoIds] = useState<string[]>([]);
+  const [likeBusyIds, setLikeBusyIds] = useState<string[]>([]);
   const [videoUrls, setVideoUrls] = useState<Record<string, string>>({});
   const [loadingVideos, setLoadingVideos] = useState(false);
   const [loadingProfiles, setLoadingProfiles] = useState(false);
@@ -270,6 +272,19 @@ export default function App() {
       }
       const rows = (data || []) as SearchVideo[];
       setPublicVideos(rows);
+      if (rows.length) {
+        const { data: likedRows, error: likedError } = await supabase!.from('post_likes')
+          .select('post_id').in('post_id', rows.map(row => row.id));
+        if (!active) return;
+        if (likedError) {
+          Alert.alert('Could not load likes', likedError.message);
+          setLikedVideoIds([]);
+        } else {
+          setLikedVideoIds((likedRows || []).map(row => row.post_id));
+        }
+      } else {
+        setLikedVideoIds([]);
+      }
       const entries = await Promise.all(rows.map(async row => {
         const { data: signed, error: signedError } = await supabase!.storage.from('usay-media').createSignedUrl(row.media_path, 60 * 60);
         return signedError || !signed?.signedUrl ? null : [row.id, signed.signedUrl] as const;
@@ -412,6 +427,31 @@ export default function App() {
     } finally {
       setPublishingPost(false);
     }
+  };
+
+  const toggleVideoLike = async (video: SearchVideo) => {
+    const client = supabase;
+    if (!client || likeBusyIds.includes(video.id)) return;
+    const { data: authData, error: authError } = await client.auth.getSession();
+    const userId = authData.session?.user.id;
+    if (authError || !userId) {
+      Alert.alert('Sign in required', 'Please sign in again to like videos.');
+      return;
+    }
+    const isLiked = likedVideoIds.includes(video.id);
+    setLikeBusyIds(old => [...old, video.id]);
+    const result = isLiked
+      ? await client.from('post_likes').delete().eq('post_id', video.id).eq('user_id', userId)
+      : await client.from('post_likes').insert({ post_id: video.id, user_id: userId });
+    setLikeBusyIds(old => old.filter(id => id !== video.id));
+    if (result.error) {
+      Alert.alert('Could not update like', result.error.message);
+      return;
+    }
+    setLikedVideoIds(old => isLiked ? old.filter(id => id !== video.id) : [...old, video.id]);
+    setPublicVideos(old => old.map(item => item.id === video.id
+      ? { ...item, like_count: Math.max(0, item.like_count + (isLiked ? -1 : 1)) }
+      : item));
   };
 
   const loadInbox = async () => {
@@ -905,11 +945,21 @@ export default function App() {
         })}
       </> : <>
         <Text style={s.hint}>{searchCategory === 'Trending' ? 'Popular public videos, ranked by likes and views.' : 'Public ' + searchCategory.toLowerCase() + ' from USay.'}</Text>
-        {loadingVideos ? <Text style={s.hint}>Loading {searchCategory.toLowerCase()}…</Text> : filteredVideos.length === 0 ? <Text style={s.hint}>No {searchCategory.toLowerCase()} found yet.</Text> : filteredVideos.map(video => <Pressable key={video.id} style={s.videoSearchRow} onPress={() => openSearchVideo(video)}>
-          <View style={s.videoSearchThumb}><Ionicons name="play-circle" size={36} color="#FFFFFF"/></View>
-          <View style={s.personDetails}><Text style={s.personName} numberOfLines={2}>{video.caption || 'Public video'}</Text><Text style={s.personUsername}>{video.like_count || 0} likes · {video.view_count || 0} views · {new Date(video.created_at).toLocaleDateString()}</Text></View>
-          <Ionicons name="chevron-forward" size={18} color={C.muted}/>
-        </Pressable>)}
+        {loadingVideos ? <Text style={s.hint}>Loading {searchCategory.toLowerCase()}…</Text> : filteredVideos.length === 0 ? <Text style={s.hint}>No {searchCategory.toLowerCase()} found yet.</Text> : filteredVideos.map(video => {
+          const liked = likedVideoIds.includes(video.id);
+          const busy = likeBusyIds.includes(video.id);
+          return <View key={video.id} style={s.videoSearchRow}>
+            <Pressable onPress={() => openSearchVideo(video)} style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+              <View style={s.videoSearchThumb}><Ionicons name="play-circle" size={36} color="#FFFFFF"/></View>
+              <View style={s.personDetails}><Text style={s.personName} numberOfLines={2}>{video.caption || 'Public video'}</Text><Text style={s.personUsername}>{video.view_count || 0} views · {new Date(video.created_at).toLocaleDateString()}</Text></View>
+              <Ionicons name="chevron-forward" size={18} color={C.muted}/>
+            </Pressable>
+            <Pressable disabled={busy} onPress={() => void toggleVideoLike(video)} style={{ alignItems: 'center', justifyContent: 'center', minWidth: 42, padding: 6, opacity: busy ? 0.5 : 1 }}>
+              <Ionicons name={liked ? 'heart' : 'heart-outline'} size={21} color={liked ? '#E54872' : C.muted}/>
+              <Text style={s.personUsername}>{video.like_count || 0}</Text>
+            </Pressable>
+          </View>;
+        })}
       </>}
     </ScrollView>;
   };
