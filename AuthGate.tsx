@@ -10,6 +10,8 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [checking, setChecking] = useState(true);
   const [profileReady, setProfileReady] = useState(false);
+  const [profileError, setProfileError] = useState('');
+  const [profileAttempt, setProfileAttempt] = useState(0);
   const [email, setEmail] = useState('');
   const [code, setCode] = useState('');
   const [sent, setSent] = useState(false);
@@ -40,19 +42,18 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!session || !supabase) {
       setProfileReady(false);
+      setProfileError('');
       return;
     }
     let active = true;
     const client = supabase;
     setProfileReady(false);
+    setProfileError('');
     const createProfileIfMissing = async () => {
       try {
         const { data, error } = await client
           .from('profiles').select('id').eq('id', session.user.id).maybeSingle();
-        if (error) {
-          if (active) setMessage('Login successful, but profile setup could not be checked: ' + error.message);
-          return;
-        }
+        if (error) throw new Error('Could not check your profile: ' + error.message);
         if (!data) {
           const emailName = (session.user.email || 'usayuser').split('@')[0]
             .toLowerCase().replace(/[^a-z0-9_]/g, '').slice(0, 18) || 'usayuser';
@@ -63,19 +64,16 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
             username,
             display_name: displayName,
           });
-          if (insertError && active) {
-            setMessage('Login successful, but profile setup failed: ' + insertError.message);
-          }
+          if (insertError) throw new Error('Could not create your profile: ' + insertError.message);
         }
-      } catch (error: any) {
-        if (active) setMessage('Profile setup failed: ' + (error?.message || 'Please try again.'));
-      } finally {
         if (active) setProfileReady(true);
+      } catch (error: any) {
+        if (active) setProfileError(error?.message || 'Profile setup failed. Please try again.');
       }
     };
     createProfileIfMissing();
     return () => { active = false; };
-  }, [session]);
+  }, [session, profileAttempt]);
 
   const sendCode = async () => {
     const client = supabase;
@@ -123,6 +121,17 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
     return <View style={styles.loading}><ActivityIndicator size="large" color="#258FEA" /></View>;
   }
   if (session && !profileReady) {
+    if (profileError) {
+      return (
+        <View style={styles.loading}>
+          <Text style={styles.heading}>Finish setting up your profile</Text>
+          <Text style={styles.message}>{profileError}</Text>
+          <Pressable onPress={() => setProfileAttempt(value => value + 1)} style={styles.button}>
+            <Text style={styles.buttonText}>Retry</Text>
+          </Pressable>
+        </View>
+      );
+    }
     return <View style={styles.loading}><ActivityIndicator size="large" color="#258FEA" /></View>;
   }
   if (session) return <>{children}</>;
