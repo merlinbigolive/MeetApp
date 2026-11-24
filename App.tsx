@@ -52,6 +52,7 @@ export default function App() {
   const [otherFollowingCount, setOtherFollowingCount] = useState(0);
   const [otherFollowerCount, setOtherFollowerCount] = useState(0);
   const [loadingOtherProfile, setLoadingOtherProfile] = useState(false);
+  const [otherCoverExpanded, setOtherCoverExpanded] = useState(false);
   const [editing, setEditing] = useState(false);
   const [viewer, setViewer] = useState<Media | null>(null);
   const [coverExpanded, setCoverExpanded] = useState(false);
@@ -481,7 +482,7 @@ export default function App() {
           {otherProfileMedia.covers[0]?.type === 'image' ? <Image source={{uri:otherProfileMedia.covers[0].uri}} style={s.coverBackdropImage}/> :
             otherProfileMedia.covers[0]?.type === 'video' ? <View style={s.coverBackdropVideo}><Ionicons name="play-circle" size={28} color="#FFFFFF"/></View> : <View style={s.coverBackdropEmpty}/>}
           <View style={s.coverBackdropShade}/>
-          {!!otherProfileMedia.covers.length && <Pressable onPress={() => setViewer(otherProfileMedia.covers[0])} style={s.coverViewTap}/>}
+          {!!otherProfileMedia.covers.length && <Pressable onPress={() => setOtherCoverExpanded(true)} style={s.coverViewTap}/>}
         </View>
         <Pressable onPress={() => otherProfileMedia.avatar && setViewer(otherProfileMedia.avatar)} style={s.avatarWrap}>
           {otherProfileMedia.avatar ? <Image source={{uri:otherProfileMedia.avatar.uri}} style={s.avatar}/> : <View style={s.avatarFallback}><Ionicons name="person" size={38} color={C.cyan}/></View>}
@@ -554,7 +555,7 @@ export default function App() {
       <View style={s.nav}>
         {(['Home','Public','Create','Inbox','Profile'] as Tab[]).map((item, i) => {
           const icons = ['home-outline','globe-outline','add-circle-outline','mail-outline','person-outline'] as const;
-          return <Pressable key={item} style={s.navItem} onPress={() => setTab(item)}>
+          return <Pressable key={item} style={s.navItem} onPress={() => { setSelectedProfile(null); setTab(item); }}>
             <Ionicons name={icons[i]} size={21} color={tab === item ? C.pink : C.muted}/>
             <Text style={[s.navLabel, tab === item && {color:C.pink}]}>{item}</Text>
           </Pressable>;
@@ -582,10 +583,18 @@ export default function App() {
           </ScrollView>
         </View>
       </Modal>
+      <Modal visible={otherCoverExpanded} transparent animationType="fade" onRequestClose={()=>setOtherCoverExpanded(false)}>
+        <View style={s.coverViewer}>
+          <Pressable style={s.coverViewerClose} onPress={() => setOtherCoverExpanded(false)}><Ionicons name="close" size={26} color="#FFFFFF"/></Pressable>
+          <ScrollView horizontal pagingEnabled showsHorizontalScrollIndicator={false}>
+            {otherProfileMedia.covers.map((m, i) => <View key={i} style={{width, height:'100%', alignItems:'center', justifyContent:'center'}}><CoverMediaSlide media={m}/></View>)}
+          </ScrollView>
+        </View>
+      </Modal>
       <Modal visible={!!viewer} transparent animationType="fade" onRequestClose={()=>setViewer(null)}>
         <View style={s.viewer}><Pressable style={s.viewerClose} onPress={()=>setViewer(null)}><Ionicons name="close" size={26} color="#fff"/></Pressable>
           {viewer?.type === 'image' ? <Image source={{uri:viewer.uri}} resizeMode="contain" style={{width:'100%',height:'82%'}}/> :
-            <View style={s.videoPreview}><Ionicons name="play-circle" size={60} color={C.cyan}/><Text style={s.sectionTitle}>Video selected</Text><Text style={s.hint}>Video playback preview will be enabled with the media player integration.</Text></View>}
+            <CoverMediaSlide media={viewer!}/>}
         </View>
       </Modal>
     </View>
