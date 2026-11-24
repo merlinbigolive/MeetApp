@@ -1002,21 +1002,13 @@ export default function App() {
         {!!selectedProfile.website_url && <Pressable onPress={openOtherWebsite} style={s.websiteLine}><Ionicons name="link" color={C.cyan} size={15}/><Text style={s.website}>{selectedProfile.website_url}</Text></Pressable>}
       </View>
       <View style={s.profileBody}>
-        {!!followRequests.length && <View style={s.section}>
-          <View style={s.sectionHeading}><Text style={s.sectionTitle}>Follow Requests</Text><Text style={s.coverCount}>{followRequests.length}</Text></View>
-          {followRequests.map(request => <View key={request.follower_id} style={s.personRow}>
-            <View style={s.personDetails}><Text style={s.personName}>{request.display_name}</Text><Text style={s.personUsername}>@{request.username}</Text></View>
-            <Pressable disabled={followRequestBusyIds.includes(request.follower_id)} onPress={() => void respondToFollowRequest(request.follower_id,false)} style={[s.followButton,s.followingButton]}><Text style={s.followingButtonText}>Decline</Text></Pressable>
-            <Pressable disabled={followRequestBusyIds.includes(request.follower_id)} onPress={() => void respondToFollowRequest(request.follower_id,true)} style={s.followButton}><Text style={s.followButtonText}>Accept</Text></Pressable>
-          </View>)}
-        </View>}
         <View style={s.stats}>
           <View style={s.stat}><Text style={s.statNum}>{otherFollowingCount.toLocaleString()}</Text><Text style={s.statLabel}>Following</Text></View>
           <View style={s.stat}><Text style={s.statNum}>{otherFollowerCount.toLocaleString()}</Text><Text style={s.statLabel}>Followers</Text></View>
           <View style={s.stat}><Text style={s.statNum}>{otherLikesCount.toLocaleString()}</Text><Text style={s.statLabel}>Likes</Text></View>
         </View>
         <View style={s.actions}>
-          <Pressable disabled={busy} style={[s.primary, (following || pending) && s.followingButton]} onPress={() => toggleFollow(selectedProfile)}><Ionicons name={following ? 'checkmark' : pending ? 'time-outline' : 'person-add-outline'} color={following || pending ? C.cyan : '#fff'} size={17}/><Text style={[s.primaryText, (following || pending) && { color: C.cyan }]}>{busy ? 'Please wait…' : following ? 'Following' : pending ? 'Requested · Cancel' : 'Follow'</Text></Pressable>
+          <Pressable disabled={busy} style={[s.primary, (following || pending) && s.followingButton]} onPress={() => toggleFollow(selectedProfile)}><Ionicons name={following ? 'checkmark' : pending ? 'time-outline' : 'person-add-outline'} color={following || pending ? C.cyan : '#fff'} size={17}/><Text style={[s.primaryText, (following || pending) && { color: C.cyan }]}>{busy ? 'Please wait…' : following ? 'Following' : pending ? 'Requested · Cancel' : 'Follow'}</Text></Pressable>
           <Pressable style={s.secondary} onPress={() => void openChat(selectedProfile)}><Ionicons name="chatbubble-ellipses-outline" color={C.text} size={17}/><Text style={s.secondaryText}>Message</Text></Pressable>
         </View>
         <View style={s.section}>
