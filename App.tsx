@@ -13,6 +13,7 @@ type CloudMediaRow = { id: string; kind: 'avatar' | 'cover' | 'post'; position: 
 type Tab = 'Home' | 'Public' | 'Create' | 'Inbox' | 'Profile';
 type SearchCategory = 'People' | 'Videos' | 'Reels' | 'Trending' | 'Funny' | 'Vlogs' | 'Cinema' | 'Creators';
 type SearchVideo = { id: string; caption: string | null; media_path: string; created_at: string; user_id: string; content_category: string; like_count: number; view_count: number };
+type PublishedPost = { id: string; post_type: 'photo' | 'video' | 'text'; caption: string | null; media_path: string | null; created_at: string; visibility: string; content_category: string | null; media: Media };
 type PublicProfile = { id: string; username: string; display_name: string; bio: string | null; profession_category: string | null; website_url?: string | null; activity_status?: string | null };
 type ChatMessage = { id: string; conversation_id: string; sender_id: string; body: string; created_at: string };
 type ChatThread = { id: string; user_one_id: string; user_two_id: string; updated_at: string; otherUser: PublicProfile };
@@ -65,6 +66,9 @@ export default function App() {
   const [profileSearch, setProfileSearch] = useState('');
   const [searchCategory, setSearchCategory] = useState<SearchCategory>('People');
   const [publicVideos, setPublicVideos] = useState<SearchVideo[]>([]);
+  const [ownPublishedPosts, setOwnPublishedPosts] = useState<PublishedPost[]>([]);
+  const [otherPublishedPosts, setOtherPublishedPosts] = useState<PublishedPost[]>([]);
+  const [postsRefreshKey, setPostsRefreshKey] = useState(0);
   const [likedVideoIds, setLikedVideoIds] = useState<string[]>([]);
   const [likeBusyIds, setLikeBusyIds] = useState<string[]>([]);
   const [videoUrls, setVideoUrls] = useState<Record<string, string>>({});
@@ -203,6 +207,33 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    if (!supabase) return;
+    let active = true;
+    const loadOwnPublishedPosts = async () => {
+      const { data: authData, error: authError } = await supabase!.auth.getSession();
+      const userId = authData.session?.user.id;
+      if (authError || !userId) return;
+      const { data, error } = await supabase!.from('posts')
+        .select('id, post_type, caption, media_path, created_at, visibility, content_category')
+        .eq('user_id', userId).order('created_at', { ascending: false }).limit(50);
+      if (!active) return;
+      if (error) {
+        Alert.alert('Could not load your posts', error.message);
+        return;
+      }
+      const rows = (data || []).filter((row: any) => !!row.media_path);
+      const hydrated = await Promise.all(rows.map(async (row: any) => {
+        const { data: signed, error: signedError } = await supabase!.storage.from('usay-media').createSignedUrl(row.media_path, 60 * 60);
+        if (signedError || !signed?.signedUrl) return null;
+        return { ...row, media: { uri: signed.signedUrl, type: row.post_type === 'video' ? 'video' : 'image', storagePath: row.media_path } as Media } as PublishedPost;
+      }));
+      if (active) setOwnPublishedPosts(hydrated.filter((post): post is PublishedPost => post !== null));
+    };
+    void loadOwnPublishedPosts();
+    return () => { active = false; };
+  }, [postsRefreshKey]);
+
+  useEffect(() => {
     if (tab !== 'Public' || !supabase) return;
     let active = true;
     const loadDiscoverProfiles = async () => {
@@ -302,8 +333,9 @@ export default function App() {
     let active = true;
     const loadOtherProfile = async () => {
       setLoadingOtherProfile(true);
-      const [mediaResult, countsResult, likesResult] = await Promise.all([
+      const [mediaResult, postsResult, countsResult, likesResult] = await Promise.all([
         supabase!.from('profile_media').select('id, kind, position, storage_path, media_type, original_name').eq('user_id', selectedProfile.id).order('position', { ascending: true }),
+        supabase!.from('posts').select('id, post_type, caption, media_path, created_at, visibility, content_category').eq('user_id', selectedProfile.id).order('created_at', { ascending: false }).limit(50),
         supabase!.rpc('get_profile_follow_counts', { target_user_id: selectedProfile.id }).maybeSingle(),
         supabase!.rpc('get_profile_likes_count', { target_user_id: selectedProfile.id }),
       ]);
@@ -322,6 +354,15 @@ export default function App() {
         covers: valid.filter(item => item.kind === 'cover').sort((a,b) => a.position-b.position).map(item => item.media).slice(0,3),
         posts: valid.filter(item => item.kind === 'post').sort((a,b) => a.position-b.position).map(item => item.media).slice(0,3),
       });
+      if (postsResult.error) Alert.alert('Could not load published posts', postsResult.error.message);
+      const publishedRows = (postsResult.data || []).filter((row: any) => !!row.media_path);
+      const publishedHydrated = await Promise.all(publishedRows.map(async (row: any) => {
+        const { data: signed, error: signedError } = await supabase!.storage.from('usay-media').createSignedUrl(row.media_path, 60 * 60);
+        if (signedError || !signed?.signedUrl) return null;
+        return { ...row, media: { uri: signed.signedUrl, type: row.post_type === 'video' ? 'video' : 'image', storagePath: row.media_path } as Media } as PublishedPost;
+      }));
+      if (!active) return;
+      setOtherPublishedPosts(publishedHydrated.filter((post): post is PublishedPost => post !== null));
       if (countsResult.error) Alert.alert('Could not load profile counts', countsResult.error.message);
       const followCounts = countsResult.data as { following_count?: number; follower_count?: number } | null;
       setOtherFollowingCount(Number(followCounts?.following_count || 0));
@@ -420,6 +461,7 @@ export default function App() {
       setCreateCaption('');
       setCreateCategory('videos');
       setCreateVisibility('public');
+      setPostsRefreshKey(value => value + 1);
       Alert.alert('Published', 'Your post has been published to USay.');
     } catch (error: any) {
       if (storagePath) await client.storage.from('usay-media').remove([storagePath]);
@@ -776,6 +818,15 @@ export default function App() {
     </Pressable>
   );
 
+  const PublishedPostTile = ({ post, onPress }: { post: PublishedPost; onPress: () => void }) => (
+    <Pressable onPress={onPress} style={s.publishedTile}>
+      {post.media.type === 'image'
+        ? <Image source={{ uri: post.media.uri }} style={s.publishedImage} />
+        : <View style={s.publishedVideo}><Ionicons name="play-circle" size={34} color="#FFFFFF"/><Text style={s.videoText}>VIDEO</Text></View>}
+      {!!post.caption && <Text style={s.publishedCaption} numberOfLines={2}>{post.caption}</Text>}
+    </Pressable>
+  );
+
   const Profile = () => (
     <ScrollView contentContainerStyle={s.profileScroll} showsVerticalScrollIndicator={false} scrollEventThrottle={16} onScroll={(event) => {
       const y = event.nativeEvent.contentOffset.y;
@@ -825,9 +876,15 @@ export default function App() {
           </>}
         </View>
         <View style={s.section}>
-          <View style={s.sectionHeading}><Text style={s.sectionTitle}>Posts</Text><Text style={s.coverCount}>{posts.length}/3</Text></View>
-          <View style={s.mediaRow}>{[0,1,2].map(i => <MediaTile key={i} label="Add post" media={posts[i]} onPress={() => chooseMedia('post', i)} onRemove={posts[i] ? () => removeMedia('post', i) : undefined}/>)}</View>
+          <View style={s.sectionHeading}><Text style={s.sectionTitle}>Posts</Text><Text style={s.coverCount}>{ownPublishedPosts.length}</Text></View>
+          {ownPublishedPosts.length ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 9 }}>
+            {ownPublishedPosts.map(post => <PublishedPostTile key={post.id} post={post} onPress={() => setViewer(post.media)}/>)}
+          </ScrollView> : <Text style={s.hint}>Your published photos and videos will appear here.</Text>}
         </View>
+        {!!posts.length && <View style={s.section}>
+          <View style={s.sectionHeading}><Text style={s.sectionTitle}>Featured media</Text><Text style={s.coverCount}>{posts.length}/3</Text></View>
+          <View style={s.mediaRow}>{[0,1,2].map(i => <MediaTile key={i} label="Add media" media={posts[i]} onPress={() => chooseMedia('post', i)} onRemove={posts[i] ? () => removeMedia('post', i) : undefined}/>)}</View>
+        </View>}
         <View style={s.section}>
           <Text style={s.sectionTitle}>About</Text>
           {!!occupation && <View style={s.infoLine}><Ionicons name="briefcase-outline" color={C.cyan} size={18}/><Text style={s.infoText}>{occupation}</Text></View>}
@@ -885,9 +942,15 @@ export default function App() {
           <Pressable style={s.secondary} onPress={() => void openChat(selectedProfile)}><Ionicons name="chatbubble-ellipses-outline" color={C.text} size={17}/><Text style={s.secondaryText}>Message</Text></Pressable>
         </View>
         <View style={s.section}>
-          <View style={s.sectionHeading}><Text style={s.sectionTitle}>Posts</Text><Text style={s.coverCount}>{otherProfileMedia.posts.length}/3</Text></View>
-          {loadingOtherProfile ? <Text style={s.hint}>Loading profile media…</Text> : <View style={s.mediaRow}>{[0,1,2].map(i => <MediaTile key={i} label="Post" media={otherProfileMedia.posts[i]} onPress={() => otherProfileMedia.posts[i] && setViewer(otherProfileMedia.posts[i])}/>)}</View>}
+          <View style={s.sectionHeading}><Text style={s.sectionTitle}>Posts</Text><Text style={s.coverCount}>{otherPublishedPosts.length}</Text></View>
+          {loadingOtherProfile ? <Text style={s.hint}>Loading posts…</Text> : otherPublishedPosts.length ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 9 }}>
+            {otherPublishedPosts.map(post => <PublishedPostTile key={post.id} post={post} onPress={() => setViewer(post.media)}/>)}
+          </ScrollView> : <Text style={s.hint}>No published posts yet.</Text>}
         </View>
+        {!!otherProfileMedia.posts.length && <View style={s.section}>
+          <Text style={s.sectionTitle}>Featured media</Text>
+          <View style={s.mediaRow}>{otherProfileMedia.posts.map((media, i) => <MediaTile key={i} label="Post" media={media} onPress={() => setViewer(media)}/>)}</View>
+        </View>}
         <View style={s.section}>
           <Text style={s.sectionTitle}>About</Text>
           {!!selectedProfile.profession_category && <View style={s.infoLine}><Ionicons name="briefcase-outline" color={C.cyan} size={18}/><Text style={s.infoText}>{selectedProfile.profession_category}</Text></View>}
@@ -1155,7 +1218,7 @@ const s = StyleSheet.create({
   coverHeader:{flexDirection:'row',alignItems:'center',justifyContent:'space-between'},
   eyebrow:{color:C.cyan,fontSize:9,fontWeight:'900',letterSpacing:1.5},sectionTitle:{color:C.text,fontSize:16,fontWeight:'900'},
   mutedSmall:{color:C.muted,fontSize:11,marginTop:3},coverCount:{color:C.cyan,fontWeight:'800',fontSize:12},
-  mediaRow:{flexDirection:'row',gap:8},tile:{flex:1,aspectRatio:.9,borderRadius:13,borderWidth:1,borderColor:'#D8EAF7',borderStyle:'dashed',backgroundColor:C.panel2,alignItems:'center',justifyContent:'center',overflow:'hidden'},
+  mediaRow:{flexDirection:'row',gap:8},publishedTile:{width:118,gap:5},publishedImage:{width:118,height:132,borderRadius:12,backgroundColor:'#EAF5FF'},publishedVideo:{width:118,height:132,borderRadius:12,backgroundColor:'#6FAFD0',alignItems:'center',justifyContent:'center',gap:4},publishedCaption:{color:C.muted,fontSize:10,lineHeight:14},tile:{flex:1,aspectRatio:.9,borderRadius:13,borderWidth:1,borderColor:'#D8EAF7',borderStyle:'dashed',backgroundColor:C.panel2,alignItems:'center',justifyContent:'center',overflow:'hidden'},
   tileImage:{width:'100%',height:'100%'},tileLabel:{color:C.muted,fontSize:10,marginTop:5,fontWeight:'700'},
   videoTile:{alignItems:'center',justifyContent:'center',gap:4},videoText:{color:C.cyan,fontSize:9,fontWeight:'900'},
   remove:{position:'absolute',top:5,right:5,width:23,height:23,borderRadius:12,backgroundColor:'#0009',alignItems:'center',justifyContent:'center'},
