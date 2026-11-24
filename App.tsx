@@ -12,7 +12,7 @@ type Media = { uri: string; type: 'image' | 'video'; name?: string; size?: numbe
 type CloudMediaRow = { id: string; kind: 'avatar' | 'cover' | 'post'; position: number; storage_path: string; media_type: 'image' | 'video'; original_name: string | null; };
 type Tab = 'Home' | 'Public' | 'Create' | 'Inbox' | 'Profile';
 type SearchCategory = 'People' | 'Videos' | 'Reels' | 'Trending' | 'Funny' | 'Vlogs' | 'Cinema' | 'Creators';
-type SearchVideo = { id: string; caption: string | null; media_path: string; created_at: string; user_id: string };
+type SearchVideo = { id: string; caption: string | null; media_path: string; created_at: string; user_id: string; content_category: string; like_count: number; view_count: number };
 type PublicProfile = { id: string; username: string; display_name: string; bio: string | null; profession_category: string | null; website_url?: string | null; activity_status?: string | null };
 
 const C = {
@@ -189,36 +189,33 @@ export default function App() {
   }, [tab]);
 
   useEffect(() => {
-    if (tab !== 'Public' || searchCategory !== 'Videos' || !supabase) return;
+    const videoCategories: SearchCategory[] = ['Videos', 'Reels', 'Trending', 'Funny', 'Vlogs', 'Cinema'];
+    if (tab !== 'Public' || !videoCategories.includes(searchCategory) || !supabase) return;
     let active = true;
-    const loadPublicVideos = async () => {
+    const loadSearchVideos = async () => {
       setLoadingVideos(true);
+      const categoryFilter = searchCategory.toLowerCase();
       const { data, error } = await supabase!
-        .from('posts')
-        .select('id, caption, media_path, created_at, user_id')
-        .eq('post_type', 'video')
-        .eq('visibility', 'public')
-        .not('media_path', 'is', null)
-        .order('created_at', { ascending: false })
-        .limit(50);
+        .rpc('get_public_search_posts', { category_filter: categoryFilter, search_text: null });
       if (!active) return;
       if (error) {
-        Alert.alert('Could not load public videos', error.message);
+        Alert.alert('Search is not ready yet', 'Run supabase_search_discovery_setup.sql in Supabase SQL Editor, then try again.');
         setPublicVideos([]);
         setVideoUrls({});
-      } else {
-        const rows = (data || []) as SearchVideo[];
-        setPublicVideos(rows);
-        const entries = await Promise.all(rows.map(async row => {
-          const { data: signed, error: signedError } = await supabase!.storage.from('usay-media').createSignedUrl(row.media_path, 60 * 60);
-          return signedError || !signed?.signedUrl ? null : [row.id, signed.signedUrl] as const;
-        }));
-        if (!active) return;
-        setVideoUrls(Object.fromEntries(entries.filter((entry): entry is NonNullable<typeof entry> => entry !== null)));
+        setLoadingVideos(false);
+        return;
       }
-      if (active) setLoadingVideos(false);
+      const rows = (data || []) as SearchVideo[];
+      setPublicVideos(rows);
+      const entries = await Promise.all(rows.map(async row => {
+        const { data: signed, error: signedError } = await supabase!.storage.from('usay-media').createSignedUrl(row.media_path, 60 * 60);
+        return signedError || !signed?.signedUrl ? null : [row.id, signed.signedUrl] as const;
+      }));
+      if (!active) return;
+      setVideoUrls(Object.fromEntries(entries.filter((entry): entry is NonNullable<typeof entry> => entry !== null)));
+      setLoadingVideos(false);
     };
-    loadPublicVideos();
+    loadSearchVideos();
     return () => { active = false; };
   }, [tab, searchCategory]);
 
@@ -583,18 +580,29 @@ export default function App() {
   const DiscoverScreen = () => {
     const query = profileSearch.trim().toLowerCase();
     const filteredProfiles = publicProfiles.filter(profile =>
-      !query ||
-      profile.username.toLowerCase().includes(query) ||
-      profile.display_name.toLowerCase().includes(query) ||
-      (profile.profession_category || '').toLowerCase().includes(query)
+      (!query ||
+        profile.username.toLowerCase().includes(query) ||
+        profile.display_name.toLowerCase().includes(query) ||
+        (profile.profession_category || '').toLowerCase().includes(query)) &&
+      (searchCategory !== 'Creators' || /(creator|influencer|youtub|content)/i.test(profile.profession_category || ''))
     );
     const filteredVideos = publicVideos.filter(video => (video.caption || '').toLowerCase().includes(query));
     const categories: SearchCategory[] = ['People', 'Videos', 'Reels', 'Trending', 'Funny', 'Vlogs', 'Cinema', 'Creators'];
+    const openSearchVideo = (video: SearchVideo) => {
+      const uri = videoUrls[video.id];
+      if (!uri) {
+        Alert.alert('Video unavailable', 'This video could not be opened right now.');
+        return;
+      }
+      void supabase?.rpc('record_public_post_view', { target_post_id: video.id });
+      setViewer({ uri, type: 'video', storagePath: video.media_path });
+    };
+    const peopleMode = searchCategory === 'People' || searchCategory === 'Creators';
     return <ScrollView contentContainerStyle={s.discoverScroll} keyboardShouldPersistTaps="handled">
       <Text style={s.pageTitle}>Search</Text>
       <View style={s.searchBox}>
         <Ionicons name="search" size={19} color={C.muted}/>
-        <TextInput value={profileSearch} onChangeText={setProfileSearch} placeholder={searchCategory === 'People' ? 'Search username, nickname or profession' : 'Search ' + searchCategory.toLowerCase()} placeholderTextColor={C.muted} style={s.searchInput} returnKeyType="search"/>
+        <TextInput value={profileSearch} onChangeText={setProfileSearch} placeholder={peopleMode ? (searchCategory === 'Creators' ? 'Search creators by name or profession' : 'Search username, nickname or profession') : 'Search ' + searchCategory.toLowerCase()} placeholderTextColor={C.muted} style={s.searchInput} returnKeyType="search"/>
         {!!profileSearch && <Pressable onPress={() => setProfileSearch('')}><Ionicons name="close-circle" size={19} color={C.muted}/></Pressable>}
       </View>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.searchCategories}>
@@ -602,9 +610,9 @@ export default function App() {
           <Text style={[s.searchCategoryText, searchCategory === category && s.searchCategoryTextActive]}>{category}</Text>
         </Pressable>)}
       </ScrollView>
-      {searchCategory === 'People' ? <>
-        <Text style={s.hint}>Find people by username, nickname or profession.</Text>
-        {loadingProfiles ? <Text style={s.hint}>Loading people…</Text> : filteredProfiles.length === 0 ? <Text style={s.hint}>No people found. Try another search.</Text> : filteredProfiles.map(profile => {
+      {peopleMode ? <>
+        <Text style={s.hint}>{searchCategory === 'Creators' ? 'Find creators by their public profession.' : 'Find people by username, nickname or profession.'}</Text>
+        {loadingProfiles ? <Text style={s.hint}>Loading people…</Text> : filteredProfiles.length === 0 ? <Text style={s.hint}>{searchCategory === 'Creators' ? 'No creator profiles found yet.' : 'No people found. Try another search.'}</Text> : filteredProfiles.map(profile => {
           const following = followedUserIds.includes(profile.id);
           const busy = followBusyIds.includes(profile.id);
           return <View key={profile.id} style={s.personRow}>
@@ -615,18 +623,14 @@ export default function App() {
             <Pressable disabled={busy} onPress={() => toggleFollow(profile)} style={[s.followButton, following && s.followingButton]}><Text style={[s.followButtonText, following && s.followingButtonText]}>{busy ? '...' : following ? 'Following' : 'Follow'}</Text></Pressable>
           </View>;
         })}
-      </> : searchCategory === 'Videos' ? <>
-        <Text style={s.hint}>Public videos from USay.</Text>
-        {loadingVideos ? <Text style={s.hint}>Loading videos…</Text> : filteredVideos.length === 0 ? <Text style={s.hint}>No public videos found yet.</Text> : filteredVideos.map(video => <Pressable key={video.id} style={s.videoSearchRow} onPress={() => videoUrls[video.id] && setViewer({ uri: videoUrls[video.id], type: 'video', storagePath: video.media_path })}>
+      </> : <>
+        <Text style={s.hint}>{searchCategory === 'Trending' ? 'Popular public videos, ranked by likes and views.' : 'Public ' + searchCategory.toLowerCase() + ' from USay.'}</Text>
+        {loadingVideos ? <Text style={s.hint}>Loading {searchCategory.toLowerCase()}…</Text> : filteredVideos.length === 0 ? <Text style={s.hint}>No {searchCategory.toLowerCase()} found yet.</Text> : filteredVideos.map(video => <Pressable key={video.id} style={s.videoSearchRow} onPress={() => openSearchVideo(video)}>
           <View style={s.videoSearchThumb}><Ionicons name="play-circle" size={36} color="#FFFFFF"/></View>
-          <View style={s.personDetails}><Text style={s.personName} numberOfLines={2}>{video.caption || 'Public video'}</Text><Text style={s.personUsername}>{new Date(video.created_at).toLocaleDateString()}</Text></View>
+          <View style={s.personDetails}><Text style={s.personName} numberOfLines={2}>{video.caption || 'Public video'}</Text><Text style={s.personUsername}>{video.like_count || 0} likes · {video.view_count || 0} views · {new Date(video.created_at).toLocaleDateString()}</Text></View>
           <Ionicons name="chevron-forward" size={18} color={C.muted}/>
         </Pressable>)}
-      </> : <View style={s.searchComingSoon}>
-        <Ionicons name={searchCategory === 'Trending' ? 'trending-up' : searchCategory === 'Funny' ? 'happy-outline' : searchCategory === 'Creators' ? 'people-outline' : searchCategory === 'Cinema' ? 'film-outline' : 'videocam-outline'} size={32} color={C.cyan}/>
-        <Text style={s.sectionTitle}>{searchCategory} search</Text>
-        <Text style={s.hint}>{searchCategory} discovery is coming in the next content update.</Text>
-      </View>}
+      </>}
     </ScrollView>;
   };
 
