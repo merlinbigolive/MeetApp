@@ -84,3 +84,14 @@ exception
   when undefined_object then
     raise notice 'supabase_realtime publication was not found; enable Realtime for public.messages in Supabase Dashboard.';
 end $$;
+
+-- Live follow-request updates on the profile screen.
+alter table public.follows replica identity full;
+do $$
+begin
+  alter publication supabase_realtime add table public.follows;
+exception
+  when duplicate_object then null;
+  when undefined_object then
+    raise notice 'supabase_realtime publication was not found; enable Realtime for public.follows in Supabase Dashboard.';
+end $$;
