@@ -518,7 +518,7 @@ export default function App() {
       lastProfileScrollY.current = y;
     }}>
       <View style={s.top}><Text style={s.pageTitle}>꒤ꇙꋬꌦ</Text></View>
-      <View style={s.identity}>
+      <Animated.View style={[s.identity, { paddingTop: coverRevealProgress.interpolate({ inputRange: [0, 1], outputRange: [76, 266] }) }]}>
         <Animated.View style={[s.coverBackdrop, { height: coverRevealProgress.interpolate({ inputRange: [0, 1], outputRange: [190, 420] }) }]}>
           {covers[0]?.type === 'image' ? <Image source={{uri:covers[0].uri}} style={s.coverBackdropImage}/> :
             covers[0]?.type === 'video' ? <ProfileCoverVideo uri={covers[0].uri} /> :
@@ -527,7 +527,7 @@ export default function App() {
           {isOwnProfile && <Pressable onPress={() => chooseMedia('cover')} style={s.coverEdit}><Ionicons name="camera" size={15} color="#FFFFFF"/></Pressable>}
           {!!covers.length && <Pressable onPress={() => setCoverExpanded(true)} style={s.coverViewTap}/>}
         </Animated.View>
-        <Animated.View {...avatarPan.panHandlers} style={{ transform: [{ translateY: avatarDrag }] }}>
+        <Animated.View {...avatarPan.panHandlers}>
         <Pressable onPress={() => isOwnProfile ? chooseMedia('avatar') : undefined} style={s.avatarWrap}>
           {avatar ? <Image source={{uri:avatar.uri}} style={s.avatar} /> : <View style={s.avatarFallback}><Ionicons name="person" size={38} color={C.cyan}/></View>}
           {isOwnProfile && <View style={s.camera}><Ionicons name="camera" size={13} color="#fff"/></View>}
@@ -538,7 +538,7 @@ export default function App() {
         <Text style={s.bio}>{bio}</Text>
         {!!website && <Pressable onPress={openWebsite} style={s.websiteLine}><Ionicons name="link" color={C.cyan} size={15}/><Text style={s.website}>{website}</Text></Pressable>}
          
-      </View>
+      </Animated.View>
       <View style={s.profileBody}>
         <View style={s.stats}>
           <View style={s.stat}><Text style={s.statNum}>{followingCount.toLocaleString()}</Text><Text style={s.statLabel}>Following</Text></View>
