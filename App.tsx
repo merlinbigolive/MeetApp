@@ -949,8 +949,78 @@ export default function App() {
             ])}><Ionicons name="settings-outline" color={C.text} size={17}/><Text style={s.secondaryText}>Settings</Text></Pressable>
           </> : <>
             <Pressable style={s.primary} onPress={() => Alert.alert('Follow', 'Follow action will work after account and backend connection.')}><Ionicons name="person-add-outline" color="#fff" size={17}/><Text style={s.primaryText}>Follow</Text></Pressable>
-            <Pressable style={s.secondary} onPress={() => Alert.alert('Message', 'Messaging will work after chat backend connection.')}><Ionicons name="chatbubble-ellipses-outline" color={C.text} size={17}/><Text style={s.secondaryText}>Message</Text></Pressable>}
+            <Pressable style={s.secondary} onPress={() => Alert.alert('Message', 'Messaging will work after chat backend connection.')}><Ionicons name="chatbubble-ellipses-outline" color={C.text} size={17}/><Text style={s.secondaryText}>Message</Text></Pressable>
           </>}
+        </View>
+        <View style={s.section}>
+          <View style={s.sectionHeading}><Text style={s.sectionTitle}>Posts</Text><Text style={s.coverCount}>{ownPublishedPosts.length}</Text></View>
+          {ownPublishedPosts.length ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 9 }}>
+            {ownPublishedPosts.map(post => <PublishedPostTile key={post.id} post={post} onPress={() => setViewer(post.media)}/>)}
+          </ScrollView> : <Text style={s.hint}>Your published photos and videos will appear here.</Text>}
+        </View>
+        {!!posts.length && <View style={s.section}>
+          <View style={s.sectionHeading}><Text style={s.sectionTitle}>Featured media</Text><Text style={s.coverCount}>{posts.length}/3</Text></View>
+          <View style={s.mediaRow}>{[0,1,2].map(i => <MediaTile key={i} label="Add media" media={posts[i]} onPress={() => chooseMedia('post', i)} onRemove={posts[i] ? () => removeMedia('post', i) : undefined}/>)}</View>
+        </View>}
+        <View style={s.section}>
+          <Text style={s.sectionTitle}>About</Text>
+          {!!occupation && <View style={s.infoLine}><Ionicons name="briefcase-outline" color={C.cyan} size={18}/><Text style={s.infoText}>{occupation}</Text></View>}
+          <View style={s.infoLine}><Ionicons name="time-outline" color={C.cyan} size={18}/><Text style={s.infoText}>{activity}</Text></View>
+        </View>
+        <Text style={s.footerNote}>Profile details and uploaded media are synced with your USay account.</Text>
+      </View>
+    </ScrollView>
+  );
+
+  const OtherProfileScreen = () => {
+    if (!selectedProfile) return null;
+    const following = followedUserIds.includes(selectedProfile.id);
+    const pending = pendingFollowIds.includes(selectedProfile.id);
+    const busy = followBusyIds.includes(selectedProfile.id);
+    const openOtherWebsite = () => {
+      const raw = selectedProfile.website_url || '';
+      if (!raw) return;
+      const url = raw.startsWith('http') ? raw : `https://${raw}`;
+      import('react-native').then(({ Linking }) => Linking.openURL(url).catch(() => Alert.alert('Website', 'This website link could not be opened.')));
+    };
+    return <ScrollView contentContainerStyle={s.profileScroll} showsVerticalScrollIndicator={false} scrollEventThrottle={16} onScroll={(event) => {
+      const y = event.nativeEvent.contentOffset.y;
+      if (coverRevealed && y < lastProfileScrollY.current - 3) animateCoverReveal(false);
+      lastProfileScrollY.current = y;
+    }}>
+      <View style={[s.top, { justifyContent: 'space-between' }]}>
+        <Pressable onPress={() => setSelectedProfile(null)} style={{ padding: 8 }}><Ionicons name="arrow-back" size={24} color={C.text}/></Pressable>
+        <Text style={s.pageTitle}>꒤ꇙꋬꌦ</Text><View style={{ width: 40 }}/>
+      </View>
+      <View style={s.identity}>
+<Animated.View style={[s.coverBackdrop, { height: coverRevealProgress.interpolate({ inputRange: [0, 1], outputRange: [190, 420] }) }]}>
+          {otherProfileMedia.covers[0]?.type === 'image' ? <Image source={{uri:otherProfileMedia.covers[0].uri}} style={s.coverBackdropImage}/> :
+            otherProfileMedia.covers[0]?.type === 'video' ? <ProfileCoverVideo uri={otherProfileMedia.covers[0].uri} /> : <View style={s.coverBackdropEmpty}/>}
+          <View style={s.coverBackdropShade}/>
+          {!!otherProfileMedia.covers.length && <Pressable onPress={() => setOtherCoverExpanded(true)} style={s.coverViewTap}/>}
+        </Animated.View>
+        <Animated.View {...avatarPan.panHandlers} style={{ transform: [{ translateY: avatarDrag }] }}>
+        <Pressable onPress={() => otherProfileMedia.avatar && setViewer(otherProfileMedia.avatar)} style={s.avatarWrap}>
+          {otherProfileMedia.avatar ? <Image source={{uri:otherProfileMedia.avatar.uri}} style={s.avatar}/> : <View style={s.avatarFallback}><Ionicons name="person" size={38} color={C.cyan}/></View>}
+        </Pressable>
+        </Animated.View>
+        <View style={s.nameLine}><Text style={s.name}>{selectedProfile.display_name}</Text></View>
+        <Text style={s.username}>@{selectedProfile.username}</Text>
+        {selectedProfile.is_private && <View style={s.businessTag}><Ionicons name="lock-closed-outline" size={13} color={C.cyan}/><Text style={s.businessTagText}>Private Account</Text></View>}
+        {selectedProfile.account_type === 'business' && <View style={s.businessTag}><Ionicons name="briefcase-outline" size={13} color={C.cyan}/><Text style={s.businessTagText}>Professional Business Account</Text></View>}
+        {!!selectedProfile.bio && <Text style={s.bio}>{selectedProfile.bio}</Text>}
+        {selectedProfile.account_type === 'business' && !!selectedProfile.business_name && <View style={s.businessInfo}><Text style={s.businessName}>{selectedProfile.business_name}</Text>{!!selectedProfile.business_category && <Text style={s.personBio}>{selectedProfile.business_category}</Text>}{!!selectedProfile.business_description && <Text style={s.infoText}>{selectedProfile.business_description}</Text>}</View>}
+        {!!selectedProfile.website_url && <Pressable onPress={openOtherWebsite} style={s.websiteLine}><Ionicons name="link" color={C.cyan} size={15}/><Text style={s.website}>{selectedProfile.website_url}</Text></Pressable>}
+      </View>
+      <View style={s.profileBody}>
+        <View style={s.stats}>
+          <View style={s.stat}><Text style={s.statNum}>{otherFollowingCount.toLocaleString()}</Text><Text style={s.statLabel}>Following</Text></View>
+          <View style={s.stat}><Text style={s.statNum}>{otherFollowerCount.toLocaleString()}</Text><Text style={s.statLabel}>Followers</Text></View>
+          <View style={s.stat}><Text style={s.statNum}>{otherLikesCount.toLocaleString()}</Text><Text style={s.statLabel}>Likes</Text></View>
+        </View>
+        <View style={s.actions}>
+          <Pressable disabled={busy} style={[s.primary, (following || pending) && s.followingButton]} onPress={() => toggleFollow(selectedProfile)}><Ionicons name={following ? 'checkmark' : pending ? 'time-outline' : 'person-add-outline'} color={following || pending ? C.cyan : '#fff'} size={17}/><Text style={[s.primaryText, (following || pending) && { color: C.cyan }]}>{busy ? 'Please wait…' : following ? 'Following' : pending ? 'Requested · Cancel' : 'Follow'}</Text></Pressable>
+          {(!selectedProfile.is_private || following) && <Pressable style={s.secondary} onPress={() => void openChat(selectedProfile)}><Ionicons name="chatbubble-ellipses-outline" color={C.text} size={17}/><Text style={s.secondaryText}>Message</Text></Pressable>}
         </View>
         {selectedProfile.is_private && !following ? <View style={s.section}>
           <Ionicons name="lock-closed" size={26} color={C.cyan}/>
