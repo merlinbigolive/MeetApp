@@ -394,6 +394,11 @@ export default function App() {
       return;
     }
     setFollowedUserIds(old => isFollowing ? old.filter(id => id !== profile.id) : [...old, profile.id]);
+    const countDelta = isFollowing ? -1 : 1;
+    setFollowingCount(count => Math.max(0, count + countDelta));
+    if (selectedProfile?.id === profile.id) {
+      setOtherFollowerCount(count => Math.max(0, count + countDelta));
+    }
   };
 
   const chooseCreateMedia = async () => {
