@@ -25,4 +25,4 @@ jobs:
             exit 1
           fi
           npx --yes supabase@latest secrets set "CUCKOO_PUSH_WEBHOOK_SECRET=$CUCKOO_PUSH_WEBHOOK_SECRET" --project-ref sbzqxacibcfyyxoysseu --yes
-          npx --yes supabase@latest functions deploy send-message-push --project-ref sbzqxacibcfyyxoysseu
+          npx --yes supabase@latest functions deploy send-message-push --project-ref sbzqxacibcfyyxoysseu --yes
