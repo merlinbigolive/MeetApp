@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import Constants from 'expo-constants';
 import * as Notifications from 'expo-notifications';
 import {
   Alert, Image, Modal, Pressable, ScrollView, StatusBar, StyleSheet, Platform,
@@ -142,10 +143,8 @@ export default function App() {
         const saved = await AsyncStorage.getItem(NOTIFICATION_SOUND_KEY);
         const enabled = saved === null ? true : saved === 'true';
         if (active) setMessageSoundEnabled(enabled);
-        if (enabled) {
-          const permission = await Notifications.getPermissionsAsync();
-          if (!permission.granted) await Notifications.requestPermissionsAsync();
-        }
+        const permission = await Notifications.getPermissionsAsync();
+        if (!permission.granted) await Notifications.requestPermissionsAsync();
         await Notifications.setNotificationChannelAsync(CUCKOO_SOUND_CHANNEL, {
           name: 'Messages - Cuckoo sound', importance: Notifications.AndroidImportance.HIGH,
           sound: CUCKOO_SOUND_FILE, vibrationPattern: [0, 180, 100, 180],
@@ -162,10 +161,45 @@ export default function App() {
     return () => { active = false; };
   }, []);
 
+  useEffect(() => {
+    if (!supabase || !currentUserId) return;
+    let active = true;
+    const registerPushToken = async () => {
+      try {
+        let permission = await Notifications.getPermissionsAsync();
+        if (!permission.granted) permission = await Notifications.requestPermissionsAsync();
+        if (!permission.granted) return;
+        const projectId = Constants.easConfig?.projectId || Constants.expoConfig?.extra?.eas?.projectId;
+        if (!projectId) {
+          console.warn('Expo project ID is missing; background push token registration skipped.');
+          return;
+        }
+        const tokenResult = await Notifications.getExpoPushTokenAsync({ projectId });
+        if (!active) return;
+        const { error } = await supabase.from('user_push_tokens').upsert({
+          user_id: currentUserId,
+          expo_push_token: tokenResult.data,
+          sound_enabled: messageSoundEnabled,
+          device_platform: Platform.OS,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'expo_push_token' });
+        if (error) console.warn('Push token could not be saved:', error.message);
+      } catch (error) {
+        console.warn('Push token registration failed:', error);
+      }
+    };
+    void registerPushToken();
+    return () => { active = false; };
+  }, [currentUserId]);
+
   const setMessageNotificationSound = async (enabled: boolean) => {
     setMessageSoundEnabled(enabled);
     try {
       await AsyncStorage.setItem(NOTIFICATION_SOUND_KEY, String(enabled));
+      if (supabase && currentUserId) {
+        const { error } = await supabase.from('user_push_tokens').update({ sound_enabled: enabled }).eq('user_id', currentUserId);
+        if (error) console.warn('Could not update push sound preference:', error.message);
+      }
       if (enabled) {
         const permission = await Notifications.getPermissionsAsync();
         if (!permission.granted) {
@@ -978,18 +1012,6 @@ export default function App() {
     const channel = supabase.channel('inbox-live-' + currentUserId)
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, async payload => {
         const incoming = payload.new as ChatMessage;
-        if (incoming.sender_id !== currentUserId && activeChat?.id !== incoming.conversation_id) {
-          void Notifications.scheduleNotificationAsync({
-            content: {
-              title: 'New message',
-              body: incoming.message_type === 'voice' ? 'You received a voice message.' : (incoming.body || 'You received a message.'),
-              sound: messageSoundEnabled ? CUCKOO_SOUND_FILE : false,
-              ...(Platform.OS === 'android' ? { channelId: messageSoundEnabled ? CUCKOO_SOUND_CHANNEL : SILENT_MESSAGE_CHANNEL } : {}),
-              data: { conversationId: incoming.conversation_id },
-            },
-            trigger: null,
-          }).catch(error => console.warn('Could not show message notification:', error));
-        }
         if (activeChat?.id === incoming.conversation_id) {
           if (incoming.audio_path) { const { data: signed } = await supabase!.storage.from('usay-chat-audio').createSignedUrl(incoming.audio_path, 3600); incoming.audio_url = signed?.signedUrl || null; }
           setChatMessages(old => old.some(message => message.id === incoming.id) ? old : [...old, incoming]);
