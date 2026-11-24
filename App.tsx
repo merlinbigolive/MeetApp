@@ -103,25 +103,16 @@ export default function App() {
 
   const Profile = () => (
     <ScrollView contentContainerStyle={s.profileScroll} showsVerticalScrollIndicator={false}>
-      <View style={s.top}><Text style={s.pageTitle}>Profile</Text><Pressable onPress={() => setIsOwnProfile(v => !v)}><Text style={s.switchText}>{isOwnProfile ? 'Preview public view' : 'My profile'}</Text></Pressable></View>
-      <View style={s.coverCarousel}>
-        <ScrollView horizontal pagingEnabled showsHorizontalScrollIndicator={false}>
-          {covers.map((media, i) => (
-            <Pressable key={i} onPress={() => setCoverExpanded(true)} style={[s.coverSlide, { width }]}>
-              {media.type === 'image' ? <Image source={{ uri: media.uri }} style={s.coverImage} /> :
-                <View style={s.coverVideo}><Ionicons name="play-circle" size={38} color="#FFFFFF" /><Text style={s.coverVideoText}>VIDEO COVER</Text></View>}
-              {isOwnProfile && <Pressable onPress={() => removeMedia('cover', i)} style={s.coverRemove}><Ionicons name="close" size={16} color="#FFFFFF" /></Pressable>}
-            </Pressable>
-          ))}
-          {isOwnProfile && covers.length < 3 && (
-            <Pressable onPress={() => chooseMedia('cover')} style={[s.coverSlide, s.coverEmpty, { width }]}>
-              <Ionicons name="image-outline" size={25} color={C.cyan} />
-              <Text style={s.coverEmptyText}>{covers.length ? 'Add another cover' : 'Add cover photo or video'}</Text>
-            </Pressable>
-          )}
-        </ScrollView>
-      </View>
+      <View style={s.top}><Text style={s.pageTitle}>MeetApp</Text></View>
       <Animated.View {...avatarPan.panHandlers} style={[s.identity, { transform: [{ translateY: avatarDrag }] }]}>
+        <View style={s.coverBackdrop}>
+          {covers[0]?.type === 'image' ? <Image source={{uri:covers[0].uri}} style={s.coverBackdropImage}/> :
+            covers[0]?.type === 'video' ? <View style={s.coverBackdropVideo}><Ionicons name="play-circle" size={28} color="#FFFFFF"/></View> :
+            <View style={s.coverBackdropEmpty}/>}
+          <View style={s.coverBackdropShade}/>
+          {isOwnProfile && <Pressable onPress={() => chooseMedia('cover')} style={s.coverEdit}><Ionicons name="camera" size={15} color="#FFFFFF"/></Pressable>}
+          {!!covers.length && <Pressable onPress={() => setCoverExpanded(true)} style={s.coverViewTap}/>}
+        </View>
         <Pressable onPress={() => isOwnProfile ? chooseMedia('avatar') : undefined} style={s.avatarWrap}>
           {avatar ? <Image source={{uri:avatar.uri}} style={s.avatar} /> : <View style={s.avatarFallback}><Ionicons name="person" size={38} color={C.cyan}/></View>}
           {isOwnProfile && <View style={s.camera}><Ionicons name="camera" size={13} color="#fff"/></View>}
@@ -130,7 +121,7 @@ export default function App() {
         <Text style={s.username}>@{username.replace(/^@/, '')}</Text>
         <Text style={s.bio}>{bio}</Text>
         {!!website && <Pressable onPress={openWebsite} style={s.websiteLine}><Ionicons name="link" color={C.cyan} size={15}/><Text style={s.website}>{website}</Text></Pressable>}
-        <Text style={s.dragHint}>{covers.length ? 'Pull avatar down to view cover' : 'Add a cover photo or video'}</Text>
+         
       </Animated.View>
       <View style={s.profileBody}>
         <View style={s.stats}>
@@ -230,7 +221,7 @@ const s = StyleSheet.create({
   sectionHeading:{flexDirection:'row',alignItems:'center',justifyContent:'space-between'},
   coverViewer:{flex:1,backgroundColor:'#03050A',justifyContent:'center'},
   coverViewerClose:{position:'absolute',top:48,right:18,zIndex:3,width:42,height:42,borderRadius:22,backgroundColor:'#263442',alignItems:'center',justifyContent:'center'},
-  top:{height:44,flexDirection:'row',alignItems:'center',justifyContent:'space-between'},
+  top:{height:48,flexDirection:'row',alignItems:'center',justifyContent:'flex-start',paddingHorizontal:16},
   pageTitle:{color:C.text,fontSize:22,fontWeight:'900'},switchText:{color:C.cyan,fontSize:11,fontWeight:'700'},
   card:{backgroundColor:C.panel,borderRadius:22,borderWidth:1,borderColor:C.border,padding:15,gap:12},
   coverHeader:{flexDirection:'row',alignItems:'center',justifyContent:'space-between'},
@@ -240,7 +231,14 @@ const s = StyleSheet.create({
   tileImage:{width:'100%',height:'100%'},tileLabel:{color:C.muted,fontSize:10,marginTop:5,fontWeight:'700'},
   videoTile:{alignItems:'center',justifyContent:'center',gap:4},videoText:{color:C.cyan,fontSize:9,fontWeight:'900'},
   remove:{position:'absolute',top:5,right:5,width:23,height:23,borderRadius:12,backgroundColor:'#0009',alignItems:'center',justifyContent:'center'},
-  hint:{color:C.muted,fontSize:10,lineHeight:15},identity:{alignItems:'center',paddingTop:8},
+  hint:{color:C.muted,fontSize:10,lineHeight:15},identity:{alignItems:'center',paddingTop:18,paddingBottom:14,position:'relative',overflow:'hidden'},
+  coverBackdrop:{position:'absolute',top:0,left:0,right:0,height:118,backgroundColor:'#B9E2F8',overflow:'hidden'},
+  coverBackdropImage:{width:'100%',height:'100%',resizeMode:'cover'},
+  coverBackdropVideo:{width:'100%',height:'100%',backgroundColor:'#70B6D8',alignItems:'center',justifyContent:'center'},
+  coverBackdropEmpty:{flex:1,backgroundColor:'#D9F0FF'},
+  coverBackdropShade:{...StyleSheet.absoluteFillObject,backgroundColor:'#173A4A18'},
+  coverEdit:{position:'absolute',right:14,top:10,width:30,height:30,borderRadius:16,backgroundColor:'#173A4A99',alignItems:'center',justifyContent:'center',zIndex:2},
+  coverViewTap:{position:'absolute',left:0,top:0,width:'80%',height:'100%'},
   avatarWrap:{width:98,height:98,borderRadius:50,borderWidth:4,borderColor:C.panel,padding:2,marginBottom:10,backgroundColor:C.panel},
   avatar:{width:'100%',height:'100%',borderRadius:44},avatarFallback:{flex:1,borderRadius:44,backgroundColor:C.panel2,alignItems:'center',justifyContent:'center'},
   camera:{position:'absolute',right:-1,bottom:0,width:27,height:27,borderRadius:14,backgroundColor:C.pink,borderWidth:2,borderColor:C.panel,alignItems:'center',justifyContent:'center'},
@@ -253,7 +251,7 @@ const s = StyleSheet.create({
   actions:{flexDirection:'row',gap:9},primary:{flex:1,minHeight:44,borderRadius:13,backgroundColor:C.pink,alignItems:'center',justifyContent:'center',flexDirection:'row',gap:7},
   primaryText:{color:'#fff',fontWeight:'800',fontSize:13},secondary:{flex:1,minHeight:44,borderRadius:13,backgroundColor:C.panel2,borderWidth:1,borderColor:C.border,alignItems:'center',justifyContent:'center',flexDirection:'row',gap:7},
   secondaryText:{color:C.text,fontSize:13,fontWeight:'800'},infoLine:{flexDirection:'row',alignItems:'center',gap:10},infoText:{color:'#526B7D',fontSize:12},
-  footerNote:{color:C.muted,fontSize:10,lineHeight:15,paddingHorizontal:3},nav:{height:66,backgroundColor:C.panel,borderTopWidth:1,borderColor:C.border,flexDirection:'row',alignItems:'center',justifyContent:'space-around',paddingBottom:5},
+  footerNote:{color:C.muted,fontSize:10,lineHeight:15,paddingHorizontal:3},nav:{height:90,backgroundColor:C.panel,borderTopWidth:1,borderColor:C.border,flexDirection:'row',alignItems:'center',justifyContent:'space-around',paddingTop:5,paddingBottom:24},
   navItem:{flex:1,alignItems:'center',justifyContent:'center',gap:3},navLabel:{fontSize:9,color:C.muted,fontWeight:'700'},
   simple:{flex:1,backgroundColor:C.bg,padding:20,paddingTop:55,gap:18},modalShade:{flex:1,backgroundColor:'#000B',justifyContent:'flex-end'},
   editSheet:{maxHeight:'90%',backgroundColor:C.panel,borderTopLeftRadius:24,borderTopRightRadius:24,padding:20},
