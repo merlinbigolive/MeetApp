@@ -11,7 +11,7 @@ import { supabase } from './supabase';
 type Media = { uri: string; type: 'image' | 'video'; name?: string; size?: number; storagePath?: string };
 type CloudMediaRow = { id: string; kind: 'avatar' | 'cover' | 'post'; position: number; storage_path: string; media_type: 'image' | 'video'; original_name: string | null; };
 type Tab = 'Home' | 'Public' | 'Create' | 'Inbox' | 'Profile';
-type PublicProfile = { id: string; username: string; display_name: string; bio: string | null; profession_category: string | null };
+type PublicProfile = { id: string; username: string; display_name: string; bio: string | null; profession_category: string | null; website_url?: string | null; activity_status?: string | null };
 
 const C = {
   bg: '#FFFFFF', panel: '#FFFFFF', panel2: '#FFFFFF', text: '#172B3A',
@@ -47,6 +47,11 @@ export default function App() {
   const [profileSearch, setProfileSearch] = useState('');
   const [loadingProfiles, setLoadingProfiles] = useState(false);
   const [followBusyIds, setFollowBusyIds] = useState<string[]>([]);
+  const [selectedProfile, setSelectedProfile] = useState<PublicProfile | null>(null);
+  const [otherProfileMedia, setOtherProfileMedia] = useState<{ avatar: Media | null; covers: Media[]; posts: Media[] }>({ avatar: null, covers: [], posts: [] });
+  const [otherFollowingCount, setOtherFollowingCount] = useState(0);
+  const [otherFollowerCount, setOtherFollowerCount] = useState(0);
+  const [loadingOtherProfile, setLoadingOtherProfile] = useState(false);
   const [editing, setEditing] = useState(false);
   const [viewer, setViewer] = useState<Media | null>(null);
   const [coverExpanded, setCoverExpanded] = useState(false);
@@ -136,7 +141,7 @@ export default function App() {
         return;
       }
       const [profilesResult, followsResult] = await Promise.all([
-        supabase!.from('profiles').select('id, username, display_name, bio, profession_category').neq('id', userId).order('created_at', { ascending: false }).limit(50),
+        supabase!.from('profiles').select('id, username, display_name, bio, profession_category, website_url, activity_status').neq('id', userId).order('created_at', { ascending: false }).limit(50),
         supabase!.from('follows').select('followed_id').eq('follower_id', userId),
       ]);
       if (!active) return;
@@ -149,6 +154,41 @@ export default function App() {
     loadDiscoverProfiles();
     return () => { active = false; };
   }, [tab]);
+
+  useEffect(() => {
+    if (!selectedProfile || !supabase) return;
+    let active = true;
+    const loadOtherProfile = async () => {
+      setLoadingOtherProfile(true);
+      const [mediaResult, followingResult, followerResult] = await Promise.all([
+        supabase!.from('profile_media').select('id, kind, position, storage_path, media_type, original_name').eq('user_id', selectedProfile.id).order('position', { ascending: true }),
+        supabase!.from('follows').select('follower_id', { count: 'exact', head: true }).eq('follower_id', selectedProfile.id),
+        supabase!.from('follows').select('followed_id', { count: 'exact', head: true }).eq('followed_id', selectedProfile.id),
+      ]);
+      if (!active) return;
+      if (mediaResult.error) Alert.alert('Could not load profile media', mediaResult.error.message);
+      const rows = (mediaResult.data || []) as CloudMediaRow[];
+      const hydrated = await Promise.all(rows.map(async row => {
+        const { data, error } = await supabase!.storage.from('usay-media').createSignedUrl(row.storage_path, 60 * 60);
+        if (error || !data?.signedUrl) return null;
+        return { kind: row.kind, position: row.position, media: { uri: data.signedUrl, type: row.media_type, name: row.original_name || undefined, storagePath: row.storage_path } as Media };
+      }));
+      if (!active) return;
+      const valid = hydrated.filter((item): item is NonNullable<typeof item> => item !== null);
+      setOtherProfileMedia({
+        avatar: valid.find(item => item.kind === 'avatar')?.media || null,
+        covers: valid.filter(item => item.kind === 'cover').sort((a,b) => a.position-b.position).map(item => item.media).slice(0,3),
+        posts: valid.filter(item => item.kind === 'post').sort((a,b) => a.position-b.position).map(item => item.media).slice(0,3),
+      });
+      if (followingResult.error) Alert.alert('Could not load following count', followingResult.error.message);
+      if (followerResult.error) Alert.alert('Could not load follower count', followerResult.error.message);
+      setOtherFollowingCount(followingResult.count || 0);
+      setOtherFollowerCount(followerResult.count || 0);
+      setLoadingOtherProfile(false);
+    };
+    loadOtherProfile();
+    return () => { active = false; };
+  }, [selectedProfile?.id]);
 
   const toggleFollow = async (profile: PublicProfile) => {
     if (!supabase || followBusyIds.includes(profile.id)) return;
@@ -421,6 +461,59 @@ export default function App() {
     </ScrollView>
   );
 
+  const OtherProfileScreen = () => {
+    if (!selectedProfile) return null;
+    const following = followedUserIds.includes(selectedProfile.id);
+    const busy = followBusyIds.includes(selectedProfile.id);
+    const openOtherWebsite = () => {
+      const raw = selectedProfile.website_url || '';
+      if (!raw) return;
+      const url = raw.startsWith('http') ? raw : `https://${raw}`;
+      import('react-native').then(({ Linking }) => Linking.openURL(url).catch(() => Alert.alert('Website', 'This website link could not be opened.')));
+    };
+    return <ScrollView contentContainerStyle={s.profileScroll} showsVerticalScrollIndicator={false}>
+      <View style={[s.top, { justifyContent: 'space-between' }]}>
+        <Pressable onPress={() => setSelectedProfile(null)} style={{ padding: 8 }}><Ionicons name="arrow-back" size={24} color={C.text}/></Pressable>
+        <Text style={s.pageTitle}>꒤ꇙꋬꌦ</Text><View style={{ width: 40 }}/>
+      </View>
+      <View style={s.identity}>
+        <View style={s.coverBackdrop}>
+          {otherProfileMedia.covers[0]?.type === 'image' ? <Image source={{uri:otherProfileMedia.covers[0].uri}} style={s.coverBackdropImage}/> :
+            otherProfileMedia.covers[0]?.type === 'video' ? <View style={s.coverBackdropVideo}><Ionicons name="play-circle" size={28} color="#FFFFFF"/></View> : <View style={s.coverBackdropEmpty}/>}
+          <View style={s.coverBackdropShade}/>
+          {!!otherProfileMedia.covers.length && <Pressable onPress={() => setViewer(otherProfileMedia.covers[0])} style={s.coverViewTap}/>}
+        </View>
+        <Pressable onPress={() => otherProfileMedia.avatar && setViewer(otherProfileMedia.avatar)} style={s.avatarWrap}>
+          {otherProfileMedia.avatar ? <Image source={{uri:otherProfileMedia.avatar.uri}} style={s.avatar}/> : <View style={s.avatarFallback}><Ionicons name="person" size={38} color={C.cyan}/></View>}
+        </Pressable>
+        <View style={s.nameLine}><Text style={s.name}>{selectedProfile.display_name}</Text></View>
+        <Text style={s.username}>@{selectedProfile.username}</Text>
+        {!!selectedProfile.bio && <Text style={s.bio}>{selectedProfile.bio}</Text>}
+        {!!selectedProfile.website_url && <Pressable onPress={openOtherWebsite} style={s.websiteLine}><Ionicons name="link" color={C.cyan} size={15}/><Text style={s.website}>{selectedProfile.website_url}</Text></Pressable>}
+      </View>
+      <View style={s.profileBody}>
+        <View style={s.stats}>
+          <View style={s.stat}><Text style={s.statNum}>{otherFollowingCount.toLocaleString()}</Text><Text style={s.statLabel}>Following</Text></View>
+          <View style={s.stat}><Text style={s.statNum}>{otherFollowerCount.toLocaleString()}</Text><Text style={s.statLabel}>Followers</Text></View>
+          <View style={s.stat}><Text style={s.statNum}>—</Text><Text style={s.statLabel}>Likes</Text></View>
+        </View>
+        <View style={s.actions}>
+          <Pressable disabled={busy} style={[s.primary, following && s.followingButton]} onPress={() => toggleFollow(selectedProfile)}><Ionicons name={following ? 'checkmark' : 'person-add-outline'} color={following ? C.cyan : '#fff'} size={17}/><Text style={[s.primaryText, following && { color: C.cyan }]}>{busy ? 'Please wait…' : following ? 'Following' : 'Follow'}</Text></Pressable>
+          <Pressable style={s.secondary} onPress={() => Alert.alert('Messages', 'Chat and messaging are not connected yet.')}><Ionicons name="chatbubble-ellipses-outline" color={C.text} size={17}/><Text style={s.secondaryText}>Message</Text></Pressable>
+        </View>
+        <View style={s.section}>
+          <View style={s.sectionHeading}><Text style={s.sectionTitle}>Posts</Text><Text style={s.coverCount}>{otherProfileMedia.posts.length}/3</Text></View>
+          {loadingOtherProfile ? <Text style={s.hint}>Loading profile media…</Text> : <View style={s.mediaRow}>{[0,1,2].map(i => <MediaTile key={i} label="Post" media={otherProfileMedia.posts[i]} onPress={() => otherProfileMedia.posts[i] && setViewer(otherProfileMedia.posts[i])}/>)}</View>}
+        </View>
+        <View style={s.section}>
+          <Text style={s.sectionTitle}>About</Text>
+          {!!selectedProfile.profession_category && <View style={s.infoLine}><Ionicons name="briefcase-outline" color={C.cyan} size={18}/><Text style={s.infoText}>{selectedProfile.profession_category}</Text></View>}
+          {!!selectedProfile.activity_status && <View style={s.infoLine}><Ionicons name="time-outline" color={C.cyan} size={18}/><Text style={s.infoText}>{selectedProfile.activity_status}</Text></View>}
+        </View>
+      </View>
+    </ScrollView>;
+  };
+
   const DiscoverScreen = () => {
     const filteredProfiles = publicProfiles.filter(profile => {
       const query = profileSearch.trim().toLowerCase();
@@ -434,8 +527,10 @@ export default function App() {
         const following = followedUserIds.includes(profile.id);
         const busy = followBusyIds.includes(profile.id);
         return <View key={profile.id} style={s.personRow}>
-          <View style={s.personAvatar}><Ionicons name="person" size={22} color={C.cyan}/></View>
-          <View style={s.personDetails}><Text style={s.personName}>{profile.display_name}</Text><Text style={s.personUsername}>@{profile.username}</Text>{!!profile.bio && <Text style={s.personBio} numberOfLines={2}>{profile.bio}</Text>}</View>
+          <Pressable onPress={() => setSelectedProfile(profile)} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 }}>
+            <View style={s.personAvatar}><Ionicons name="person" size={22} color={C.cyan}/></View>
+            <View style={s.personDetails}><Text style={s.personName}>{profile.display_name}</Text><Text style={s.personUsername}>@{profile.username}</Text>{!!profile.bio && <Text style={s.personBio} numberOfLines={2}>{profile.bio}</Text>}</View>
+          </Pressable>
           <Pressable disabled={busy} onPress={() => toggleFollow(profile)} style={[s.followButton, following && s.followingButton]}><Text style={[s.followButtonText, following && s.followingButtonText]}>{busy ? '...' : following ? 'Following' : 'Follow'}</Text></Pressable>
         </View>;
       })}
@@ -450,7 +545,7 @@ export default function App() {
     <View style={s.root}>
       <StatusBar barStyle="dark-content" backgroundColor={C.bg}/>
       <View style={{flex:1}}>
-        {tab === 'Profile' ? <Profile/> :
+        {selectedProfile ? <OtherProfileScreen/> : tab === 'Profile' ? <Profile/> :
           tab === 'Home' ? <SimpleScreen title="USay" subtitle="Your people, one place."/> :
           tab === 'Public' ? <DiscoverScreen/> :
           tab === 'Create' ? <SimpleScreen title="Create" subtitle="Share a photo, video or update."/> :
