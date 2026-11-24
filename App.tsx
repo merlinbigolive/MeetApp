@@ -158,6 +158,7 @@ export default function App() {
       const { data: authData } = await supabase.auth.getSession();
       const userId = authData.session?.user.id;
       if (!userId) return;
+      setCurrentUserId(userId);
       const { data, error } = await supabase
         .from('profiles')
         .select('username, display_name, bio, website_url, profession_category, activity_status, is_private, account_type, business_name, business_category, business_description')
@@ -689,6 +690,17 @@ export default function App() {
     if (tab === 'Inbox') void loadInbox();
     if (tab === 'Profile') void loadFollowRequests();
   }, [tab]);
+
+  useEffect(() => {
+    if (!supabase || tab !== 'Profile' || !currentUserId) return;
+    const channel = supabase.channel('follow-requests-' + currentUserId)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'follows' }, payload => {
+        const row = (payload.new || payload.old) as { followed_id?: string } | undefined;
+        if (row?.followed_id === currentUserId) void loadFollowRequests();
+      })
+      .subscribe();
+    return () => { void supabase!.removeChannel(channel); };
+  }, [tab, currentUserId]);
 
   useEffect(() => {
     if (!supabase || tab !== 'Inbox' || !currentUserId) return;
