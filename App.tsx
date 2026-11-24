@@ -155,8 +155,8 @@ export default function App() {
     if (result.canceled || !result.assets?.[0]) return;
     const a = result.assets[0];
     const type = a.type === 'video' ? 'video' : 'image';
-    if (type === 'video' && (typeof a.fileSize !== 'number' || a.fileSize > 1024 * 1024)) {
-      Alert.alert('Video size limit', 'Please choose a video that is 1 MB or smaller. If its size cannot be checked, choose a photo instead.');
+    if (type === 'video' && typeof a.fileSize === 'number' && a.fileSize > 50 * 1024 * 1024) {
+      Alert.alert('Video size limit', 'Please choose a video that is 50 MB or smaller.');
       return;
     }
     const client = supabase;
