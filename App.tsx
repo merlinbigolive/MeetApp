@@ -14,6 +14,8 @@ type Tab = 'Home' | 'Public' | 'Create' | 'Inbox' | 'Profile';
 type SearchCategory = 'People' | 'Videos' | 'Reels' | 'Trending' | 'Funny' | 'Vlogs' | 'Cinema' | 'Creators';
 type SearchVideo = { id: string; caption: string | null; media_path: string; created_at: string; user_id: string; content_category: string; like_count: number; view_count: number };
 type PublicProfile = { id: string; username: string; display_name: string; bio: string | null; profession_category: string | null; website_url?: string | null; activity_status?: string | null };
+type ChatMessage = { id: string; conversation_id: string; sender_id: string; body: string; created_at: string };
+type ChatThread = { id: string; user_one_id: string; user_two_id: string; updated_at: string; otherUser: PublicProfile };
 
 const C = {
   bg: '#FFFFFF', panel: '#FFFFFF', panel2: '#FFFFFF', text: '#172B3A',
@@ -68,6 +70,13 @@ export default function App() {
   const [loadingProfiles, setLoadingProfiles] = useState(false);
   const [followBusyIds, setFollowBusyIds] = useState<string[]>([]);
   const [selectedProfile, setSelectedProfile] = useState<PublicProfile | null>(null);
+  const [chatThreads, setChatThreads] = useState<ChatThread[]>([]);
+  const [activeChat, setActiveChat] = useState<ChatThread | null>(null);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [chatDraft, setChatDraft] = useState('');
+  const [chatLoading, setChatLoading] = useState(false);
+  const [chatSending, setChatSending] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState('');
   const [otherProfileMedia, setOtherProfileMedia] = useState<{ avatar: Media | null; covers: Media[]; posts: Media[] }>({ avatar: null, covers: [], posts: [] });
   const [otherFollowingCount, setOtherFollowingCount] = useState(0);
   const [otherFollowerCount, setOtherFollowerCount] = useState(0);
@@ -325,6 +334,136 @@ export default function App() {
     }
     setFollowedUserIds(old => isFollowing ? old.filter(id => id !== profile.id) : [...old, profile.id]);
   };
+
+  const loadInbox = async () => {
+    if (!supabase) return;
+    const { data: authData, error: authError } = await supabase.auth.getSession();
+    const userId = authData.session?.user.id;
+    if (authError || !userId) {
+      Alert.alert('Sign in required', 'Please sign in again to view your messages.');
+      return;
+    }
+    setCurrentUserId(userId);
+    setChatLoading(true);
+    const { data: rows, error } = await supabase.from('conversations')
+      .select('id, user_one_id, user_two_id, updated_at')
+      .or('user_one_id.eq.' + userId + ',user_two_id.eq.' + userId)
+      .order('updated_at', { ascending: false });
+    if (error) {
+      setChatLoading(false);
+      Alert.alert('Inbox could not load', error.message);
+      return;
+    }
+    const ids = Array.from(new Set((rows || []).map((row: any) => row.user_one_id === userId ? row.user_two_id : row.user_one_id)));
+    let profiles: PublicProfile[] = [];
+    if (ids.length) {
+      const result = await supabase.from('profiles')
+        .select('id, username, display_name, bio, profession_category, website_url, activity_status')
+        .in('id', ids);
+      if (result.error) {
+        setChatLoading(false);
+        Alert.alert('Inbox could not load', result.error.message);
+        return;
+      }
+      profiles = (result.data || []) as PublicProfile[];
+    }
+    const byId = new Map(profiles.map(profile => [profile.id, profile]));
+    const threads = (rows || []).map((row: any) => {
+      const otherUserId = row.user_one_id === userId ? row.user_two_id : row.user_one_id;
+      const otherUser = byId.get(otherUserId);
+      return otherUser ? { ...row, otherUser } as ChatThread : null;
+    }).filter((item: ChatThread | null): item is ChatThread => item !== null);
+    setChatThreads(threads);
+    setChatLoading(false);
+  };
+
+  const openChat = async (profile: PublicProfile) => {
+    if (!supabase) {
+      Alert.alert('Chat unavailable', 'Supabase is not connected.');
+      return;
+    }
+    const { data: authData, error: authError } = await supabase.auth.getSession();
+    const userId = authData.session?.user.id;
+    if (authError || !userId) {
+      Alert.alert('Sign in required', 'Please sign in again to message people.');
+      return;
+    }
+    if (userId === profile.id) {
+      Alert.alert('Your profile', 'You cannot start a chat with yourself.');
+      return;
+    }
+    setCurrentUserId(userId);
+    const pair = [userId, profile.id].sort();
+    let result = await supabase.from('conversations').select('id, user_one_id, user_two_id, updated_at')
+      .eq('user_one_id', pair[0]).eq('user_two_id', pair[1]).maybeSingle();
+    if (result.error) {
+      Alert.alert('Could not open chat', result.error.message);
+      return;
+    }
+    let conversation = result.data;
+    if (!conversation) {
+      const created = await supabase.from('conversations')
+        .insert({ user_one_id: pair[0], user_two_id: pair[1] })
+        .select('id, user_one_id, user_two_id, updated_at').single();
+      if (created.error) {
+        const retry = await supabase.from('conversations').select('id, user_one_id, user_two_id, updated_at')
+          .eq('user_one_id', pair[0]).eq('user_two_id', pair[1]).maybeSingle();
+        if (retry.error || !retry.data) {
+          Alert.alert('Could not start chat', created.error.message);
+          return;
+        }
+        conversation = retry.data;
+      } else conversation = created.data;
+    }
+    const thread = { ...conversation, otherUser: profile } as ChatThread;
+    setActiveChat(thread);
+    setChatLoading(true);
+    setChatMessages([]);
+    const messagesResult = await supabase.from('messages')
+      .select('id, conversation_id, sender_id, body, created_at')
+      .eq('conversation_id', thread.id).order('created_at', { ascending: true }).limit(200);
+    setChatLoading(false);
+    if (messagesResult.error) {
+      Alert.alert('Could not load messages', messagesResult.error.message);
+    } else setChatMessages((messagesResult.data || []) as ChatMessage[]);
+    setSelectedProfile(null);
+    setTab('Inbox');
+    await loadInbox();
+  };
+
+  const sendChatMessage = async () => {
+    const body = chatDraft.trim();
+    if (!body || !activeChat || !supabase || chatSending) return;
+    if (body.length > 4000) {
+      Alert.alert('Message too long', 'Messages can contain up to 4,000 characters.');
+      return;
+    }
+    setChatSending(true);
+    const { data: authData } = await supabase.auth.getSession();
+    const senderId = authData.session?.user.id;
+    if (!senderId || senderId !== currentUserId) {
+      setChatSending(false);
+      Alert.alert('Sign in required', 'Please sign in again before sending a message.');
+      return;
+    }
+    const { data, error } = await supabase.from('messages')
+      .insert({ conversation_id: activeChat.id, sender_id: senderId, body })
+      .select('id, conversation_id, sender_id, body, created_at').single();
+    if (error) {
+      setChatSending(false);
+      Alert.alert('Message not sent', error.message);
+      return;
+    }
+    setChatMessages(old => [...old, data as ChatMessage]);
+    setChatDraft('');
+    await supabase.from('conversations').update({ updated_at: new Date().toISOString() }).eq('id', activeChat.id);
+    setChatSending(false);
+    void loadInbox();
+  };
+
+  useEffect(() => {
+    if (tab === 'Inbox') void loadInbox();
+  }, [tab]);
 
   const saveProfile = async () => {
     const client = supabase;
@@ -624,7 +763,7 @@ export default function App() {
         </View>
         <View style={s.actions}>
           <Pressable disabled={busy} style={[s.primary, following && s.followingButton]} onPress={() => toggleFollow(selectedProfile)}><Ionicons name={following ? 'checkmark' : 'person-add-outline'} color={following ? C.cyan : '#fff'} size={17}/><Text style={[s.primaryText, following && { color: C.cyan }]}>{busy ? 'Please wait…' : following ? 'Following' : 'Follow'}</Text></Pressable>
-          <Pressable style={s.secondary} onPress={() => Alert.alert('Messages', 'Chat and messaging are not connected yet.')}><Ionicons name="chatbubble-ellipses-outline" color={C.text} size={17}/><Text style={s.secondaryText}>Message</Text></Pressable>
+          <Pressable style={s.secondary} onPress={() => void openChat(selectedProfile)}><Ionicons name="chatbubble-ellipses-outline" color={C.text} size={17}/><Text style={s.secondaryText}>Message</Text></Pressable>
         </View>
         <View style={s.section}>
           <View style={s.sectionHeading}><Text style={s.sectionTitle}>Posts</Text><Text style={s.coverCount}>{otherProfileMedia.posts.length}/3</Text></View>
@@ -696,6 +835,60 @@ export default function App() {
     </ScrollView>;
   };
 
+  const InboxScreen = () => (
+    <View style={s.simple}>
+      {activeChat ? <>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+          <Pressable onPress={() => { setActiveChat(null); setChatMessages([]); void loadInbox(); }} style={{ padding: 6 }}>
+            <Ionicons name="arrow-back" size={23} color={C.text}/>
+          </Pressable>
+          <View style={{ flex: 1 }}>
+            <Text style={s.sectionTitle}>{activeChat.otherUser.display_name}</Text>
+            <Text style={s.personUsername}>@{activeChat.otherUser.username}</Text>
+          </View>
+          <Pressable onPress={() => setActiveChat(null)}><Ionicons name="close" size={21} color={C.muted}/></Pressable>
+        </View>
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ gap: 10, paddingVertical: 12 }} keyboardShouldPersistTaps="handled">
+          {chatLoading && chatMessages.length === 0 ? <Text style={s.hint}>Loading messages…</Text> :
+            chatMessages.length === 0 ? <Text style={[s.hint, { textAlign: 'center', marginTop: 30 }]}>Say hello and start the conversation.</Text> :
+            chatMessages.map(message => {
+              const mine = message.sender_id === currentUserId;
+              return <View key={message.id} style={{ alignSelf: mine ? 'flex-end' : 'flex-start', maxWidth: '84%', backgroundColor: mine ? '#E5F4FF' : '#F3F6F8', borderRadius: 16, paddingHorizontal: 13, paddingVertical: 9 }}>
+                <Text style={{ color: C.text, fontSize: 14 }}>{message.body}</Text>
+                <Text style={{ color: C.muted, fontSize: 9, marginTop: 4, textAlign: 'right' }}>{new Date(message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</Text>
+              </View>;
+            })}
+        </ScrollView>
+        <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 8, paddingTop: 10, borderTopWidth: 1, borderColor: C.border }}>
+          <TextInput value={chatDraft} onChangeText={setChatDraft} placeholder="Write a message…" placeholderTextColor={C.muted} multiline style={[s.input, { flex: 1, maxHeight: 110, minHeight: 44, paddingVertical: 10 }]}/>
+          <Pressable disabled={!chatDraft.trim() || chatSending} onPress={() => void sendChatMessage()} style={[s.primary, { flex: 0, width: 48, minHeight: 44, opacity: !chatDraft.trim() || chatSending ? 0.55 : 1 }]}>
+            <Ionicons name="send" size={18} color="#FFFFFF"/>
+          </Pressable>
+        </View>
+      </> : <>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+          <Text style={s.pageTitle}>Inbox</Text>
+          <Pressable onPress={() => void loadInbox()}><Ionicons name="refresh" size={21} color={C.cyan}/></Pressable>
+        </View>
+        {chatLoading ? <Text style={s.hint}>Loading conversations…</Text> :
+          chatThreads.length === 0 ? <View style={{ paddingTop: 25, gap: 8 }}>
+            <Text style={s.sectionTitle}>No messages yet</Text>
+            <Text style={s.hint}>Open someone’s profile and tap Message to start a private chat.</Text>
+          </View> :
+          <ScrollView contentContainerStyle={{ paddingBottom: 24 }}>
+            {chatThreads.map(thread => <Pressable key={thread.id} onPress={() => void openChat(thread.otherUser)} style={s.personRow}>
+              <View style={s.personAvatar}><Ionicons name="person" size={22} color={C.cyan}/></View>
+              <View style={s.personDetails}>
+                <Text style={s.personName}>{thread.otherUser.display_name}</Text>
+                <Text style={s.personUsername}>@{thread.otherUser.username}</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color={C.muted}/>
+            </Pressable>)}
+          </ScrollView>}
+      </>}
+    </View>
+  );
+
   const SimpleScreen = ({ title, subtitle }: {title:string;subtitle:string}) => (
     <View style={s.simple}><Text style={s.pageTitle}>{title}</Text><View style={s.card}><Text style={s.sectionTitle}>{subtitle}</Text><Text style={s.hint}>This section will be connected to USay accounts and services in the next build step.</Text></View></View>
   );
@@ -708,7 +901,7 @@ export default function App() {
           tab === 'Home' ? <SimpleScreen title="USay" subtitle="Your people, one place."/> :
           tab === 'Public' ? <DiscoverScreen/> :
           tab === 'Create' ? <SimpleScreen title="Create" subtitle="Share a photo, video or update."/> :
-          <SimpleScreen title="Inbox" subtitle="Your chats and calls."/>}
+          <InboxScreen/>}
       </View>
       <View style={s.nav}>
         {(['Home','Public','Create','Inbox','Profile'] as Tab[]).map((item, i) => {
