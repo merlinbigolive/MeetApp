@@ -79,6 +79,7 @@ function CuckooOpeningExperience() {
   const [visible, setVisible] = useState(true);
   const [welcome, setWelcome] = useState(false);
   const [mascotVisible, setMascotVisible] = useState(false);
+  const { width } = useWindowDimensions();
   const mascotY = useRef(new Animated.Value(42)).current;
   const mascotScale = useRef(new Animated.Value(0.72)).current;
   const mascotOpacity = useRef(new Animated.Value(0)).current;
@@ -144,7 +145,6 @@ function CuckooOpeningExperience() {
   };
   if (!visible) return null;
 
-  const { width, height } = useWindowDimensions();
   const openingMascotWidth = Math.min(width * 0.64, 270);
   const welcomeMascotWidth = Math.min(width * 0.48, 190);
   const blinkLineOpacity = blink.interpolate({ inputRange: [0, 1], outputRange: [1, 0] });
