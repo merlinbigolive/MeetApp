@@ -282,7 +282,7 @@ export default function App() {
         Alert.alert('Could not load post likes', engagementResult.error.message);
         setOwnPublishedPosts(validPosts.map(post => ({ ...post, like_count: 0, viewer_liked: false })));
       } else {
-        const engagementById = new Map((engagementResult.data || []).map((item: any) => [item.post_id, item]));
+        const engagementById = new Map<string, any>((engagementResult.data || []).map((item: any) => [item.post_id, item] as [string, any]));
         setOwnPublishedPosts(validPosts.map(post => {
           const engagement = engagementById.get(post.id) as any;
           return { ...post, like_count: Number(engagement?.like_count || 0), viewer_liked: !!engagement?.viewer_liked };
@@ -443,7 +443,7 @@ export default function App() {
           Alert.alert('Could not load post likes', engagementResult.error.message);
           setOtherPublishedPosts(validPublishedPosts.map(post => ({ ...post, like_count: 0, viewer_liked: false })));
         } else {
-          const engagementById = new Map((engagementResult.data || []).map((item: any) => [item.post_id, item]));
+          const engagementById = new Map<string, any>((engagementResult.data || []).map((item: any) => [item.post_id, item] as [string, any]));
           setOtherPublishedPosts(validPublishedPosts.map(post => {
             const engagement = engagementById.get(post.id) as any;
             return { ...post, like_count: Number(engagement?.like_count || 0), viewer_liked: !!engagement?.viewer_liked };
