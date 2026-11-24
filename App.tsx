@@ -1002,6 +1002,14 @@ export default function App() {
         {!!selectedProfile.website_url && <Pressable onPress={openOtherWebsite} style={s.websiteLine}><Ionicons name="link" color={C.cyan} size={15}/><Text style={s.website}>{selectedProfile.website_url}</Text></Pressable>}
       </View>
       <View style={s.profileBody}>
+        {!!followRequests.length && <View style={s.section}>
+          <View style={s.sectionHeading}><Text style={s.sectionTitle}>Follow Requests</Text><Text style={s.coverCount}>{followRequests.length}</Text></View>
+          {followRequests.map(request => <View key={request.follower_id} style={s.personRow}>
+            <View style={s.personDetails}><Text style={s.personName}>{request.display_name}</Text><Text style={s.personUsername}>@{request.username}</Text></View>
+            <Pressable disabled={followRequestBusyIds.includes(request.follower_id)} onPress={() => void respondToFollowRequest(request.follower_id,false)} style={[s.followButton,s.followingButton]}><Text style={s.followingButtonText}>Decline</Text></Pressable>
+            <Pressable disabled={followRequestBusyIds.includes(request.follower_id)} onPress={() => void respondToFollowRequest(request.follower_id,true)} style={s.followButton}><Text style={s.followButtonText}>Accept</Text></Pressable>
+          </View>)}
+        </View>}
         <View style={s.stats}>
           <View style={s.stat}><Text style={s.statNum}>{otherFollowingCount.toLocaleString()}</Text><Text style={s.statLabel}>Following</Text></View>
           <View style={s.stat}><Text style={s.statNum}>{otherFollowerCount.toLocaleString()}</Text><Text style={s.statLabel}>Followers</Text></View>
@@ -1232,6 +1240,12 @@ export default function App() {
             <View key={label} style={s.field}><Text style={s.fieldLabel}>{label}</Text><TextInput value={value} onChangeText={setter} placeholder={label} placeholderTextColor={C.muted} style={s.input} multiline={label==='Bio'} /></View>
           )}
           <Text style={s.hint}>Username: 3–25 lowercase letters, numbers or underscores. Bio: up to 300 characters.</Text>
+          <Text style={s.fieldLabel}>Account privacy</Text>
+          <View style={s.activityGrid}>
+            <Pressable onPress={() => setIsPrivateAccount(false)} style={[s.activityChip,!isPrivateAccount&&s.activityActive]}><Text style={[s.activityText,!isPrivateAccount&&{color:C.cyan}]}>Public account</Text></Pressable>
+            <Pressable onPress={() => setIsPrivateAccount(true)} style={[s.activityChip,isPrivateAccount&&s.activityActive]}><Text style={[s.activityText,isPrivateAccount&&{color:C.cyan}]}>Private account</Text></Pressable>
+          </View>
+          <Text style={s.hint}>{isPrivateAccount ? 'New followers must be approved before they can view your private content.' : 'Anyone signed in can discover and follow your public profile.'}</Text>
           <Text style={s.fieldLabel}>Activity status</Text>
           <View style={s.activityGrid}>{['Available','Busy','Work','Drive','Gym','School','College'].map(x=><Pressable key={x} onPress={()=>setActivity(x)} style={[s.activityChip,activity===x&&s.activityActive]}><Text style={[s.activityText,activity===x&&{color:C.cyan}]}>{x}</Text></Pressable>)}</View>
           <Pressable style={s.primary} onPress={saveProfile}><Text style={s.primaryText}>Save profile</Text></Pressable>
