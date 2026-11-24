@@ -43,6 +43,7 @@ export default function App() {
   const [followingCount, setFollowingCount] = useState(0);
   const [followerCount, setFollowerCount] = useState(0);
   const [publicProfiles, setPublicProfiles] = useState<PublicProfile[]>([]);
+  const [discoverAvatars, setDiscoverAvatars] = useState<Record<string, Media>>({});
   const [followedUserIds, setFollowedUserIds] = useState<string[]>([]);
   const [profileSearch, setProfileSearch] = useState('');
   const [loadingProfiles, setLoadingProfiles] = useState(false);
@@ -147,7 +148,32 @@ export default function App() {
       ]);
       if (!active) return;
       if (profilesResult.error) Alert.alert('Could not load people', profilesResult.error.message);
-      else setPublicProfiles((profilesResult.data || []) as PublicProfile[]);
+      else {
+        const profiles = (profilesResult.data || []) as PublicProfile[];
+        setPublicProfiles(profiles);
+        const profileIds = profiles.map(profile => profile.id);
+        if (profileIds.length) {
+          const { data: avatarRows, error: avatarError } = await supabase!
+            .from('profile_media')
+            .select('user_id, storage_path, media_type, original_name')
+            .in('user_id', profileIds)
+            .eq('kind', 'avatar');
+          if (!active) return;
+          if (avatarError) {
+            Alert.alert('Could not load profile photos', avatarError.message);
+          } else {
+            const avatarEntries = await Promise.all((avatarRows || []).map(async row => {
+              const { data: signed, error } = await supabase!.storage.from('usay-media').createSignedUrl(row.storage_path, 60 * 60);
+              if (error || !signed?.signedUrl) return null;
+              return [row.user_id, { uri: signed.signedUrl, type: row.media_type, name: row.original_name || undefined, storagePath: row.storage_path } as Media] as const;
+            }));
+            if (!active) return;
+            setDiscoverAvatars(Object.fromEntries(avatarEntries.filter((entry): entry is NonNullable<typeof entry> => entry !== null)));
+          }
+        } else {
+          setDiscoverAvatars({});
+        }
+      }
       if (followsResult.error) Alert.alert('Could not load follows', followsResult.error.message);
       else setFollowedUserIds((followsResult.data || []).map(row => row.followed_id));
       setLoadingProfiles(false);
@@ -528,7 +554,7 @@ export default function App() {
         const busy = followBusyIds.includes(profile.id);
         return <View key={profile.id} style={s.personRow}>
           <Pressable onPress={() => setSelectedProfile(profile)} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 }}>
-            <View style={s.personAvatar}><Ionicons name="person" size={22} color={C.cyan}/></View>
+            <View style={s.personAvatar}>{discoverAvatars[profile.id]?.type === 'image' ? <Image source={{ uri: discoverAvatars[profile.id].uri }} style={{ width: '100%', height: '100%', borderRadius: 24 }} /> : <Ionicons name="person" size={22} color={C.cyan}/>}</View>
             <View style={s.personDetails}><Text style={s.personName}>{profile.display_name}</Text><Text style={s.personUsername}>@{profile.username}</Text>{!!profile.bio && <Text style={s.personBio} numberOfLines={2}>{profile.bio}</Text>}</View>
           </Pressable>
           <Pressable disabled={busy} onPress={() => toggleFollow(profile)} style={[s.followButton, following && s.followingButton]}><Text style={[s.followButtonText, following && s.followingButtonText]}>{busy ? '...' : following ? 'Following' : 'Follow'}</Text></Pressable>
