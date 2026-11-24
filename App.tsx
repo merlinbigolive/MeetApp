@@ -181,8 +181,9 @@ export default function App() {
         posts: valid.filter(item => item.kind === 'post').sort((a,b) => a.position-b.position).map(item => item.media).slice(0,3),
       });
       if (countsResult.error) Alert.alert('Could not load profile counts', countsResult.error.message);
-      setOtherFollowingCount(Number(countsResult.data?.following_count || 0));
-      setOtherFollowerCount(Number(countsResult.data?.follower_count || 0));
+      const followCounts = countsResult.data as { following_count?: number; follower_count?: number } | null;
+      setOtherFollowingCount(Number(followCounts?.following_count || 0));
+      setOtherFollowerCount(Number(followCounts?.follower_count || 0));
       setLoadingOtherProfile(false);
     };
     loadOtherProfile();
