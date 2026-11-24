@@ -75,6 +75,126 @@ function CoverMediaSlide({ media }: { media: Media }) {
     : <VideoView player={player} style={{ width: '100%', height: '85%' }} contentFit="contain" nativeControls />;
 }
 
+function CuckooOpeningExperience() {
+  const [visible, setVisible] = useState(true);
+  const [welcome, setWelcome] = useState(false);
+  const mascotY = useRef(new Animated.Value(34)).current;
+  const mascotScale = useRef(new Animated.Value(0.82)).current;
+  const mascotOpacity = useRef(new Animated.Value(0)).current;
+  const armWave = useRef(new Animated.Value(0)).current;
+  const blink = useRef(new Animated.Value(1)).current;
+  const blush = useRef(new Animated.Value(0)).current;
+  const welcomeOpacity = useRef(new Animated.Value(0)).current;
+  const exitOpacity = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    let alive = true;
+    Animated.parallel([
+      Animated.spring(mascotY, { toValue: 0, useNativeDriver: true, damping: 13, stiffness: 105 }),
+      Animated.spring(mascotScale, { toValue: 1, useNativeDriver: true, damping: 12, stiffness: 100 }),
+      Animated.timing(mascotOpacity, { toValue: 1, duration: 650, useNativeDriver: true }),
+    ]).start();
+
+    const wave = Animated.loop(Animated.sequence([
+      Animated.timing(armWave, { toValue: 1, duration: 230, useNativeDriver: true }),
+      Animated.timing(armWave, { toValue: -0.45, duration: 230, useNativeDriver: true }),
+      Animated.timing(armWave, { toValue: 0.72, duration: 210, useNativeDriver: true }),
+      Animated.timing(armWave, { toValue: 0, duration: 220, useNativeDriver: true }),
+      Animated.delay(650),
+    ]));
+    const blinkLoop = Animated.loop(Animated.sequence([
+      Animated.delay(1050),
+      Animated.timing(blink, { toValue: 0.08, duration: 90, useNativeDriver: true }),
+      Animated.timing(blink, { toValue: 1, duration: 130, useNativeDriver: true }),
+      Animated.delay(1250),
+      Animated.timing(blink, { toValue: 0.08, duration: 90, useNativeDriver: true }),
+      Animated.timing(blink, { toValue: 1, duration: 130, useNativeDriver: true }),
+    ]));
+    wave.start();
+    blinkLoop.start();
+    Animated.sequence([
+      Animated.delay(700),
+      Animated.timing(blush, { toValue: 1, duration: 420, useNativeDriver: true }),
+      Animated.delay(700),
+      Animated.timing(blush, { toValue: 0, duration: 350, useNativeDriver: true }),
+    ]).start();
+
+    const welcomeTimer = setTimeout(() => {
+      if (!alive) return;
+      setWelcome(true);
+      Animated.timing(welcomeOpacity, { toValue: 1, duration: 650, useNativeDriver: true }).start();
+    }, 2450);
+
+    return () => {
+      alive = false;
+      clearTimeout(welcomeTimer);
+      wave.stop();
+      blinkLoop.stop();
+    };
+  }, [armWave, blink, blush, mascotOpacity, mascotScale, mascotY, welcomeOpacity]);
+
+  const continueIntoApp = () => {
+    Animated.timing(exitOpacity, { toValue: 0, duration: 380, useNativeDriver: true }).start(() => setVisible(false));
+  };
+  if (!visible) return null;
+
+  const armRotation = armWave.interpolate({ inputRange: [-1, 1], outputRange: ['-24deg', '34deg'] });
+  return (
+    <Animated.View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 1000, opacity: exitOpacity }}>
+      <View style={{ flex: 1, backgroundColor: welcome ? '#F7FCFF' : '#78C8F2', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+        <View style={{ position: 'absolute', width: 330, height: 330, borderRadius: 165, backgroundColor: '#FFFFFF22', top: -115, right: -110 }} />
+        <View style={{ position: 'absolute', width: 260, height: 260, borderRadius: 130, backgroundColor: '#FFFFFF30', bottom: -100, left: -90 }} />
+        {!welcome ? (
+          <Animated.View style={{ alignItems: 'center', transform: [{ translateY: mascotY }, { scale: mascotScale }], opacity: mascotOpacity }}>
+            <View style={{ width: 178, height: 154, borderRadius: 78, backgroundColor: '#9B79E8', borderWidth: 5, borderColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center', shadowColor: '#3D2A75', shadowOpacity: 0.22, shadowRadius: 18, shadowOffset: { width: 0, height: 10 }, elevation: 8 }}>
+              <View style={{ flexDirection: 'row', gap: 23, marginTop: 4 }}>
+                {[0, 1].map((eye) => (
+                  <View key={eye} style={{ width: 37, height: 43, borderRadius: 22, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+                    <Animated.View style={{ width: 14, height: 19, borderRadius: 9, backgroundColor: '#27334D', transform: [{ scaleY: blink }] }}>
+                      <View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: '#FFFFFF', marginTop: 3, marginLeft: 3 }} />
+                    </Animated.View>
+                  </View>
+                ))}
+              </View>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', width: 116, marginTop: 10 }}>
+                <Animated.View style={{ width: 25, height: 12, borderRadius: 12, backgroundColor: '#FF9CB8', opacity: blush }} />
+                <View style={{ width: 17, height: 9, borderBottomWidth: 3, borderColor: '#503B82', borderRadius: 12, marginTop: -1 }} />
+                <Animated.View style={{ width: 25, height: 12, borderRadius: 12, backgroundColor: '#FF9CB8', opacity: blush }} />
+              </View>
+            </View>
+            <Animated.View style={{ position: 'absolute', right: -22, top: 36, width: 29, height: 64, borderRadius: 18, backgroundColor: '#9B79E8', borderWidth: 4, borderColor: '#FFFFFF', transform: [{ rotate: armRotation }] }} />
+            <View style={{ flexDirection: 'row', gap: 34, marginTop: -2 }}>
+              <View style={{ width: 28, height: 17, borderRadius: 12, backgroundColor: '#8060D0' }} />
+              <View style={{ width: 28, height: 17, borderRadius: 12, backgroundColor: '#8060D0' }} />
+            </View>
+            <Text style={{ color: '#FFFFFF', fontSize: 13, fontWeight: '800', letterSpacing: 2.2, marginTop: 27 }}>HELLO THERE!</Text>
+          </Animated.View>
+        ) : (
+          <Animated.View style={{ alignItems: 'center', paddingHorizontal: 30, opacity: welcomeOpacity }}>
+            <Animated.View style={{ transform: [{ scale: mascotScale }, { translateY: mascotY }] }}>
+              <View style={{ width: 112, height: 98, borderRadius: 52, backgroundColor: '#9B79E8', borderWidth: 4, borderColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center', shadowColor: '#66509B', shadowOpacity: 0.18, shadowRadius: 15, elevation: 5 }}>
+                <View style={{ flexDirection: 'row', gap: 15 }}>
+                  {[0, 1].map(eye => <View key={eye} style={{ width: 24, height: 29, borderRadius: 15, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center' }}><View style={{ width: 9, height: 13, borderRadius: 7, backgroundColor: '#27334D' }} /></View>)}
+                </View>
+                <View style={{ flexDirection: 'row', gap: 34, marginTop: 7 }}>
+                  <View style={{ width: 16, height: 8, borderRadius: 8, backgroundColor: '#FF9CB8' }} />
+                  <View style={{ width: 16, height: 8, borderRadius: 8, backgroundColor: '#FF9CB8' }} />
+                </View>
+              </View>
+            </Animated.View>
+            <Text style={{ color: '#19384F', fontSize: 30, fontWeight: '900', letterSpacing: 3, marginTop: 28 }}>CUCKOO</Text>
+            <Text style={{ color: '#52758B', fontSize: 16, fontWeight: '600', marginTop: 10 }}>Welcome to CUCKOO</Text>
+            <Text style={{ color: '#6B8798', fontSize: 13, textAlign: 'center', lineHeight: 20, marginTop: 8 }}>Meet people. Share moments. Feel connected.</Text>
+            <Pressable onPress={continueIntoApp} style={{ marginTop: 34, minWidth: 190, paddingHorizontal: 30, paddingVertical: 15, borderRadius: 28, backgroundColor: '#258FEA', alignItems: 'center', shadowColor: '#258FEA', shadowOpacity: 0.22, shadowRadius: 12, elevation: 4 }}>
+              <Text style={{ color: '#FFFFFF', fontSize: 15, fontWeight: '800', letterSpacing: 0.4 }}>Continue</Text>
+            </Pressable>
+          </Animated.View>
+        )}
+      </View>
+    </Animated.View>
+  );
+}
+
 export default function App() {
   const [tab, setTab] = useState<Tab>('Profile');
   const [name, setName] = useState('USay User');
@@ -1589,6 +1709,7 @@ export default function App() {
   return (
     <View style={s.root}>
       <StatusBar barStyle="dark-content" backgroundColor={C.bg}/>
+      <CuckooOpeningExperience />
       <View style={{flex:1}}>
         {selectedProfile ? <OtherProfileScreen/> : tab === 'Profile' ? <Profile/> :
           tab === 'Home' ? <SimpleScreen title="USay" subtitle="Your people, one place."/> :
