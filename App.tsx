@@ -233,15 +233,23 @@ export default function App() {
     if (kind === 'cover') {
       const next = covers.filter((_, i) => i !== index);
       setCovers(next);
-      await Promise.all(next.map((item, position) => client.from('profile_media')
-        .update({ position, updated_at: new Date().toISOString() })
-        .eq('user_id', userId).eq('kind', 'cover').eq('storage_path', item.storagePath || '')));
+      for (let position = 0; position < next.length; position++) {
+        const item = next[position];
+        const { error: reorderError } = await client.from('profile_media')
+          .update({ position, updated_at: new Date().toISOString() })
+          .eq('user_id', userId).eq('kind', 'cover').eq('storage_path', item.storagePath || '');
+        if (reorderError) Alert.alert('Gallery update warning', reorderError.message);
+      }
     } else {
       const next = posts.filter((_, i) => i !== index);
       setPosts(next);
-      await Promise.all(next.map((item, position) => client.from('profile_media')
-        .update({ position, updated_at: new Date().toISOString() })
-        .eq('user_id', userId).eq('kind', 'post').eq('storage_path', item.storagePath || '')));
+      for (let position = 0; position < next.length; position++) {
+        const item = next[position];
+        const { error: reorderError } = await client.from('profile_media')
+          .update({ position, updated_at: new Date().toISOString() })
+          .eq('user_id', userId).eq('kind', 'post').eq('storage_path', item.storagePath || '');
+        if (reorderError) Alert.alert('Gallery update warning', reorderError.message);
+      }
     }
   };
 
