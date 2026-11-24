@@ -16,8 +16,8 @@ type SearchVideo = { id: string; caption: string | null; media_path: string; cre
 type PublishedPost = { id: string; post_type: 'photo' | 'video' | 'text'; caption: string | null; media_path: string | null; created_at: string; visibility: string; content_category: string | null; media: Media };
 type PublicProfile = { id: string; username: string; display_name: string; bio: string | null; profession_category: string | null; website_url?: string | null; activity_status?: string | null; is_private?: boolean; account_type?: 'personal' | 'business'; business_name?: string | null; business_category?: string | null; business_description?: string | null };
 type FollowRequest = { follower_id: string; username: string; display_name: string; requested_at: string };
-type ChatMessage = { id: string; conversation_id: string; sender_id: string; body: string; created_at: string };
-type ChatThread = { id: string; user_one_id: string; user_two_id: string; updated_at: string; otherUser: PublicProfile };
+type ChatMessage = { id: string; conversation_id: string; sender_id: string; body: string; created_at: string; read_at?: string | null };
+type ChatThread = { id: string; user_one_id: string; user_two_id: string; updated_at: string; unread_count?: number; otherUser: PublicProfile };
 
 const C = {
   bg: '#FFFFFF', panel: '#FFFFFF', panel2: '#FFFFFF', text: '#172B3A',
@@ -580,10 +580,15 @@ export default function App() {
       profiles = (result.data || []) as PublicProfile[];
     }
     const byId = new Map(profiles.map(profile => [profile.id, profile]));
+    const conversationIds = (rows || []).map((row: any) => row.id);
+    const unreadResult = conversationIds.length ? await supabase.from('messages').select('conversation_id').in('conversation_id', conversationIds).neq('sender_id', userId).is('read_at', null) : { data: [], error: null };
+    if (unreadResult.error) { setChatLoading(false); Alert.alert('Unread messages could not load', unreadResult.error.message); return; }
+    const unreadCounts = new Map<string, number>();
+    (unreadResult.data || []).forEach((message: any) => unreadCounts.set(message.conversation_id, (unreadCounts.get(message.conversation_id) || 0) + 1));
     const threads = (rows || []).map((row: any) => {
       const otherUserId = row.user_one_id === userId ? row.user_two_id : row.user_one_id;
       const otherUser = byId.get(otherUserId);
-      return otherUser ? { ...row, otherUser } as ChatThread : null;
+      return otherUser ? { ...row, unread_count: unreadCounts.get(row.id) || 0, otherUser } as ChatThread : null;
     }).filter((item: ChatThread | null): item is ChatThread => item !== null);
     setChatThreads(threads);
     setChatLoading(false);
@@ -632,12 +637,20 @@ export default function App() {
     setChatLoading(true);
     setChatMessages([]);
     const messagesResult = await supabase.from('messages')
-      .select('id, conversation_id, sender_id, body, created_at')
+       .select('id, conversation_id, sender_id, body, created_at, read_at')
       .eq('conversation_id', thread.id).order('created_at', { ascending: true }).limit(200);
     setChatLoading(false);
     if (messagesResult.error) {
       Alert.alert('Could not load messages', messagesResult.error.message);
-    } else setChatMessages((messagesResult.data || []) as ChatMessage[]);
+    } else {
+      setChatMessages((messagesResult.data || []) as ChatMessage[]);
+      const { error: readError } = await supabase.rpc('mark_conversation_read', { target_conversation_id: thread.id });
+      if (readError) Alert.alert('Read status could not update', readError.message);
+      else {
+        const readAt = new Date().toISOString();
+        setChatMessages(old => old.map(message => message.sender_id !== userId && !message.read_at ? { ...message, read_at: readAt } : message));
+      }
+    }
     setSelectedProfile(null);
     setTab('Inbox');
     await loadInbox();
@@ -660,7 +673,7 @@ export default function App() {
     }
     const { data, error } = await supabase.from('messages')
       .insert({ conversation_id: activeChat.id, sender_id: senderId, body })
-      .select('id, conversation_id, sender_id, body, created_at').single();
+      .select('id, conversation_id, sender_id, body, created_at, read_at').single();
     if (error) {
       setChatSending(false);
       Alert.alert('Message not sent', error.message);
@@ -668,7 +681,6 @@ export default function App() {
     }
     setChatMessages(old => [...old, data as ChatMessage]);
     setChatDraft('');
-    await supabase.from('conversations').update({ updated_at: new Date().toISOString() }).eq('id', activeChat.id);
     setChatSending(false);
     void loadInbox();
   };
@@ -677,6 +689,29 @@ export default function App() {
     if (tab === 'Inbox') void loadInbox();
     if (tab === 'Profile') void loadFollowRequests();
   }, [tab]);
+
+  useEffect(() => {
+    if (!supabase || tab !== 'Inbox' || !currentUserId) return;
+    const channel = supabase.channel('inbox-live-' + currentUserId)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, payload => {
+        const incoming = payload.new as ChatMessage;
+        if (activeChat?.id === incoming.conversation_id) {
+          setChatMessages(old => old.some(message => message.id === incoming.id) ? old : [...old, incoming]);
+          if (incoming.sender_id !== currentUserId) {
+            void supabase!.rpc('mark_conversation_read', { target_conversation_id: incoming.conversation_id });
+          }
+        }
+        void loadInbox();
+      })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'messages' }, payload => {
+        const updated = payload.new as ChatMessage;
+        if (activeChat?.id === updated.conversation_id) {
+          setChatMessages(old => old.map(message => message.id === updated.id ? { ...message, read_at: updated.read_at } : message));
+        }
+      })
+      .subscribe();
+    return () => { void supabase!.removeChannel(channel); };
+  }, [tab, currentUserId, activeChat?.id]);
 
   const saveProfile = async () => {
     const client = supabase;
@@ -1174,7 +1209,7 @@ export default function App() {
               const mine = message.sender_id === currentUserId;
               return <View key={message.id} style={{ alignSelf: mine ? 'flex-end' : 'flex-start', maxWidth: '84%', backgroundColor: mine ? '#E5F4FF' : '#F3F6F8', borderRadius: 16, paddingHorizontal: 13, paddingVertical: 9 }}>
                 <Text style={{ color: C.text, fontSize: 14 }}>{message.body}</Text>
-                <Text style={{ color: C.muted, fontSize: 9, marginTop: 4, textAlign: 'right' }}>{new Date(message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</Text>
+                <Text style={{ color: C.muted, fontSize: 9, marginTop: 4, textAlign: 'right' }}>{new Date(message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}{mine && message.read_at ? ' · Seen' : ''}</Text>
               </View>;
             })}
         </ScrollView>
@@ -1201,6 +1236,7 @@ export default function App() {
                 <Text style={s.personName}>{thread.otherUser.display_name}</Text>
                 <Text style={s.personUsername}>@{thread.otherUser.username}</Text>
               </View>
+              {!!thread.unread_count && <View style={{ minWidth: 22, height: 22, borderRadius: 11, backgroundColor: C.cyan, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6 }}><Text style={{ color: '#fff', fontSize: 11, fontWeight: '700' }}>{thread.unread_count > 99 ? '99+' : thread.unread_count}</Text></View>}
               <Ionicons name="chevron-forward" size={18} color={C.muted}/>
             </Pressable>)}
           </ScrollView>}
