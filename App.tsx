@@ -198,7 +198,12 @@ export default function App() {
         <View style={s.actions}>
           {isOwnProfile ? <>
             <Pressable style={s.primary} onPress={() => setEditing(true)}><Ionicons name="create-outline" color="#fff" size={17}/><Text style={s.primaryText}>Edit Profile</Text></Pressable>
-            <Pressable style={s.secondary} onPress={() => Alert.alert('Settings', 'Profile settings will be connected in the next backend step.')}><Ionicons name="settings-outline" color={C.text} size={17}/><Text style={s.secondaryText}>Settings</Text></Pressable>
+            <Pressable style={s.secondary} onPress={() => Alert.alert('Account settings', 'Choose an account action.', [
+              { text: 'Cancel', style: 'cancel' },
+              { text: 'Sign out', style: 'destructive', onPress: () => {
+                if (supabase) supabase.auth.signOut().catch(error => Alert.alert('Sign out failed', error.message));
+              }},
+            ])}><Ionicons name="settings-outline" color={C.text} size={17}/><Text style={s.secondaryText}>Settings</Text></Pressable>
           </> : <>
             <Pressable style={s.primary} onPress={() => Alert.alert('Follow', 'Follow action will work after account and backend connection.')}><Ionicons name="person-add-outline" color="#fff" size={17}/><Text style={s.primaryText}>Follow</Text></Pressable>
             <Pressable style={s.secondary} onPress={() => Alert.alert('Message', 'Messaging will work after chat backend connection.')}><Ionicons name="chatbubble-ellipses-outline" color={C.text} size={17}/><Text style={s.secondaryText}>Message</Text></Pressable>
