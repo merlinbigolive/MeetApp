@@ -28,7 +28,7 @@ function CoverMediaSlide({ media }: { media: Media }) {
 
 export default function App() {
   const [tab, setTab] = useState<Tab>('Profile');
-  const [name, setName] = useState('MeetApp User');
+  const [name, setName] = useState('USay User');
   const [username, setUsername] = useState('your_username');
   const [bio, setBio] = useState('Creating connections, sharing ideas and meeting amazing people.');
   const [website, setWebsite] = useState('https://example.com');
@@ -63,7 +63,7 @@ export default function App() {
     }
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) {
-      Alert.alert('Permission needed', 'Allow MeetApp to access your phone gallery.');
+      Alert.alert('Permission needed', 'Allow USay to access your phone gallery.');
       return;
     }
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -115,7 +115,7 @@ export default function App() {
 
   const Profile = () => (
     <ScrollView contentContainerStyle={s.profileScroll} showsVerticalScrollIndicator={false}>
-      <View style={s.top}><Text style={s.pageTitle}>ꂵꏂꏂ꓄ꋬꉣꉣ</Text></View>
+      <View style={s.top}><Text style={s.pageTitle}>꒤ꇙꋬꌦ</Text></View>
       <View style={s.identity}>
         <View style={s.coverBackdrop}>
           {covers[0]?.type === 'image' ? <Image source={{uri:covers[0].uri}} style={s.coverBackdropImage}/> :
@@ -167,7 +167,7 @@ export default function App() {
   );
 
   const SimpleScreen = ({ title, subtitle }: {title:string;subtitle:string}) => (
-    <View style={s.simple}><Text style={s.pageTitle}>{title}</Text><View style={s.card}><Text style={s.sectionTitle}>{subtitle}</Text><Text style={s.hint}>This section will be connected to MeetApp accounts and services in the next build step.</Text></View></View>
+    <View style={s.simple}><Text style={s.pageTitle}>{title}</Text><View style={s.card}><Text style={s.sectionTitle}>{subtitle}</Text><Text style={s.hint}>This section will be connected to USay accounts and services in the next build step.</Text></View></View>
   );
 
   return (
@@ -175,7 +175,7 @@ export default function App() {
       <StatusBar barStyle="dark-content" backgroundColor={C.bg}/>
       <View style={{flex:1}}>
         {tab === 'Profile' ? <Profile/> :
-          tab === 'Home' ? <SimpleScreen title="MeetApp" subtitle="Your people, one place."/> :
+          tab === 'Home' ? <SimpleScreen title="USay" subtitle="Your people, one place."/> :
           tab === 'Public' ? <SimpleScreen title="Public Feed" subtitle="Discover community posts."/> :
           tab === 'Create' ? <SimpleScreen title="Create" subtitle="Share a photo, video or update."/> :
           <SimpleScreen title="Inbox" subtitle="Your chats and calls."/>}
