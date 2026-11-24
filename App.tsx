@@ -108,24 +108,33 @@ export default function App() {
   }, []);
 
   const saveProfile = async () => {
-    if (supabase) {
-      const { data: authData } = await supabase.auth.getSession();
-      const userId = authData.session?.user.id;
-      if (userId) {
-        const { error } = await supabase.from('profiles').update({
-          display_name: name.trim(),
-          username: username.trim().replace(/^@/, ''),
-          bio: bio.trim(),
-          website_url: website.trim() || null,
-          profession_category: occupation.trim() || null,
-          activity_status: activity.toLowerCase(),
-          updated_at: new Date().toISOString(),
-        }).eq('id', userId);
-        if (error) {
-          Alert.alert('Profile not saved', error.message);
-          return;
-        }
-      }
+    const client = supabase;
+    if (!client) {
+      Alert.alert('Cloud not configured', 'Connect Supabase before saving profile changes.');
+      return;
+    }
+    const { data: authData, error: sessionError } = await client.auth.getSession();
+    if (sessionError) {
+      Alert.alert('Profile not saved', sessionError.message);
+      return;
+    }
+    const userId = authData.session?.user.id;
+    if (!userId) {
+      Alert.alert('Sign in required', 'Please sign in again before saving your profile.');
+      return;
+    }
+    const { error } = await client.from('profiles').update({
+      display_name: name.trim(),
+      username: username.trim().replace(/^@/, ''),
+      bio: bio.trim(),
+      website_url: website.trim() || null,
+      profession_category: occupation.trim() || null,
+      activity_status: activity.toLowerCase(),
+      updated_at: new Date().toISOString(),
+    }).eq('id', userId);
+    if (error) {
+      Alert.alert('Profile not saved', error.message);
+      return;
     }
     setEditing(false);
     Alert.alert('Profile saved', 'Your profile details have been saved.');
