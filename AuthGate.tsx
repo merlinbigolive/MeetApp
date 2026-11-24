@@ -9,6 +9,7 @@ import { supabase } from './supabase';
 export default function AuthGate({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [checking, setChecking] = useState(true);
+  const [profileReady, setProfileReady] = useState(false);
   const [email, setEmail] = useState('');
   const [code, setCode] = useState('');
   const [sent, setSent] = useState(false);
@@ -37,29 +38,43 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
-    if (!session || !supabase) return;
+    if (!session || !supabase) {
+      setProfileReady(false);
+      return;
+    }
+    let active = true;
     const client = supabase;
+    setProfileReady(false);
     const createProfileIfMissing = async () => {
-      const { data, error } = await client
-        .from('profiles').select('id').eq('id', session.user.id).maybeSingle();
-      if (error) {
-        setMessage('Login successful, but profile setup needs the database security SQL to be applied.');
-        return;
-      }
-      if (!data) {
-        const emailName = (session.user.email || 'usayuser').split('@')[0]
-          .toLowerCase().replace(/[^a-z0-9_]/g, '').slice(0, 18) || 'usayuser';
-        const username = emailName + '_' + session.user.id.slice(0, 6);
-        const displayName = session.user.user_metadata?.display_name || emailName;
-        const { error: insertError } = await client.from('profiles').insert({
-          id: session.user.id,
-          username,
-          display_name: displayName,
-        });
-        if (insertError) setMessage('Account created. Profile setup will finish after the database SQL is applied.');
+      try {
+        const { data, error } = await client
+          .from('profiles').select('id').eq('id', session.user.id).maybeSingle();
+        if (error) {
+          if (active) setMessage('Login successful, but profile setup could not be checked: ' + error.message);
+          return;
+        }
+        if (!data) {
+          const emailName = (session.user.email || 'usayuser').split('@')[0]
+            .toLowerCase().replace(/[^a-z0-9_]/g, '').slice(0, 18) || 'usayuser';
+          const username = emailName + '_' + session.user.id.slice(0, 6);
+          const displayName = session.user.user_metadata?.display_name || emailName;
+          const { error: insertError } = await client.from('profiles').insert({
+            id: session.user.id,
+            username,
+            display_name: displayName,
+          });
+          if (insertError && active) {
+            setMessage('Login successful, but profile setup failed: ' + insertError.message);
+          }
+        }
+      } catch (error: any) {
+        if (active) setMessage('Profile setup failed: ' + (error?.message || 'Please try again.'));
+      } finally {
+        if (active) setProfileReady(true);
       }
     };
     createProfileIfMissing();
+    return () => { active = false; };
   }, [session]);
 
   const sendCode = async () => {
@@ -105,6 +120,9 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
   };
 
   if (checking) {
+    return <View style={styles.loading}><ActivityIndicator size="large" color="#258FEA" /></View>;
+  }
+  if (session && !profileReady) {
     return <View style={styles.loading}><ActivityIndicator size="large" color="#258FEA" /></View>;
   }
   if (session) return <>{children}</>;
