@@ -161,10 +161,9 @@ export default function App() {
     let active = true;
     const loadOtherProfile = async () => {
       setLoadingOtherProfile(true);
-      const [mediaResult, followingResult, followerResult] = await Promise.all([
+      const [mediaResult, countsResult] = await Promise.all([
         supabase!.from('profile_media').select('id, kind, position, storage_path, media_type, original_name').eq('user_id', selectedProfile.id).order('position', { ascending: true }),
-        supabase!.from('follows').select('follower_id', { count: 'exact', head: true }).eq('follower_id', selectedProfile.id),
-        supabase!.from('follows').select('followed_id', { count: 'exact', head: true }).eq('followed_id', selectedProfile.id),
+        supabase!.rpc('get_profile_follow_counts', { target_user_id: selectedProfile.id }).maybeSingle(),
       ]);
       if (!active) return;
       if (mediaResult.error) Alert.alert('Could not load profile media', mediaResult.error.message);
@@ -181,10 +180,9 @@ export default function App() {
         covers: valid.filter(item => item.kind === 'cover').sort((a,b) => a.position-b.position).map(item => item.media).slice(0,3),
         posts: valid.filter(item => item.kind === 'post').sort((a,b) => a.position-b.position).map(item => item.media).slice(0,3),
       });
-      if (followingResult.error) Alert.alert('Could not load following count', followingResult.error.message);
-      if (followerResult.error) Alert.alert('Could not load follower count', followerResult.error.message);
-      setOtherFollowingCount(followingResult.count || 0);
-      setOtherFollowerCount(followerResult.count || 0);
+      if (countsResult.error) Alert.alert('Could not load profile counts', countsResult.error.message);
+      setOtherFollowingCount(Number(countsResult.data?.following_count || 0));
+      setOtherFollowerCount(Number(countsResult.data?.follower_count || 0));
       setLoadingOtherProfile(false);
     };
     loadOtherProfile();
