@@ -1,7 +1,7 @@
 
 {
   "expo": {
-    "name": "Meetapp",
+    "name": "USay",
     "slug": "meetapp",
     "scheme": "meetapp",
     "version": "1.0.0",
@@ -22,8 +22,8 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "Allow MeetApp to access your photos.",
-          "cameraPermission": "Allow MeetApp to use your camera."
+          "photosPermission": "Allow USay to access your photos.",
+          "cameraPermission": "Allow USay to use your camera."
         }
       ]
     ]
