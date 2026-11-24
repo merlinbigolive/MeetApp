@@ -39,6 +39,8 @@ export default function App() {
   const [avatar, setAvatar] = useState<Media | null>(null);
   const [covers, setCovers] = useState<Media[]>([]);
   const [posts, setPosts] = useState<Media[]>([]);
+  const [followingCount, setFollowingCount] = useState(0);
+  const [followerCount, setFollowerCount] = useState(0);
   const [editing, setEditing] = useState(false);
   const [viewer, setViewer] = useState<Media | null>(null);
   const [coverExpanded, setCoverExpanded] = useState(false);
@@ -72,6 +74,15 @@ export default function App() {
       setBio(data.bio || '');
       setWebsite(data.website_url || '');
       setOccupation(data.profession_category || '');
+
+      const [followingResult, followerResult] = await Promise.all([
+        supabase.from('follows').select('*', { count: 'exact', head: true }).eq('follower_id', userId),
+        supabase.from('follows').select('*', { count: 'exact', head: true }).eq('followed_id', userId),
+      ]);
+      if (!active) return;
+      if (!followingResult.error) setFollowingCount(followingResult.count ?? 0);
+      if (!followerResult.error) setFollowerCount(followerResult.count ?? 0);
+
       if (data.activity_status) {
         const status = data.activity_status.toLowerCase();
         setActivity(status.charAt(0).toUpperCase() + status.slice(1));
@@ -113,6 +124,25 @@ export default function App() {
       Alert.alert('Cloud not configured', 'Connect Supabase before saving profile changes.');
       return;
     }
+    const cleanName = name.trim();
+    const cleanUsername = username.trim().replace(/^@/, '').toLowerCase();
+    const cleanWebsite = website.trim();
+    if (!cleanName || cleanName.length > 40) {
+      Alert.alert('Check display name', 'Enter a display name between 1 and 40 characters.');
+      return;
+    }
+    if (!/^[a-z0-9_]{3,25}$/.test(cleanUsername)) {
+      Alert.alert('Check username', 'Username must be 3–25 characters and use only lowercase letters, numbers, or underscores.');
+      return;
+    }
+    if (bio.trim().length > 300) {
+      Alert.alert('Bio too long', 'Your bio can contain up to 300 characters.');
+      return;
+    }
+    if (cleanWebsite && !/^(https?:\/\/)?([\w-]+\.)+[a-z]{2,}(\/[^\s]*)?$/i.test(cleanWebsite)) {
+      Alert.alert('Check website', 'Enter a valid website address.');
+      return;
+    }
     const { data: authData, error: sessionError } = await client.auth.getSession();
     if (sessionError) {
       Alert.alert('Profile not saved', sessionError.message);
@@ -124,10 +154,10 @@ export default function App() {
       return;
     }
     const { error } = await client.from('profiles').update({
-      display_name: name.trim(),
-      username: username.trim().replace(/^@/, ''),
+      display_name: cleanName,
+      username: cleanUsername,
       bio: bio.trim(),
-      website_url: website.trim() || null,
+      website_url: cleanWebsite || null,
       profession_category: occupation.trim() || null,
       activity_status: activity.toLowerCase(),
       updated_at: new Date().toISOString(),
@@ -306,9 +336,9 @@ export default function App() {
       </View>
       <View style={s.profileBody}>
         <View style={s.stats}>
-          <View style={s.stat}><Text style={s.statNum}>128</Text><Text style={s.statLabel}>Following</Text></View>
-          <View style={s.stat}><Text style={s.statNum}>2,450</Text><Text style={s.statLabel}>Followers</Text></View>
-          <View style={s.stat}><Text style={s.statNum}>8,920</Text><Text style={s.statLabel}>Likes</Text></View>
+          <View style={s.stat}><Text style={s.statNum}>{followingCount.toLocaleString()}</Text><Text style={s.statLabel}>Following</Text></View>
+          <View style={s.stat}><Text style={s.statNum}>{followerCount.toLocaleString()}</Text><Text style={s.statLabel}>Followers</Text></View>
+          <View style={s.stat}><Text style={s.statNum}>—</Text><Text style={s.statLabel}>Likes</Text></View>
         </View>
         <View style={s.actions}>
           {isOwnProfile ? <>
@@ -367,6 +397,7 @@ export default function App() {
           {[[name,setName,'Display name'],[username,setUsername,'Username'],[bio,setBio,'Bio'],[website,setWebsite,'Website'],[occupation,setOccupation,'Occupation']].map(([value,setter,label]:any) =>
             <View key={label} style={s.field}><Text style={s.fieldLabel}>{label}</Text><TextInput value={value} onChangeText={setter} placeholder={label} placeholderTextColor={C.muted} style={s.input} multiline={label==='Bio'} /></View>
           )}
+          <Text style={s.hint}>Username: 3–25 lowercase letters, numbers or underscores. Bio: up to 300 characters.</Text>
           <Text style={s.fieldLabel}>Activity status</Text>
           <View style={s.activityGrid}>{['Available','Busy','Work','Drive','Gym','School','College'].map(x=><Pressable key={x} onPress={()=>setActivity(x)} style={[s.activityChip,activity===x&&s.activityActive]}><Text style={[s.activityText,activity===x&&{color:C.cyan}]}>{x}</Text></Pressable>)}</View>
           <Pressable style={s.primary} onPress={saveProfile}><Text style={s.primaryText}>Save profile</Text></Pressable>
