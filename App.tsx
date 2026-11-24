@@ -14,7 +14,7 @@ type Tab = 'Home' | 'Public' | 'Create' | 'Inbox' | 'Profile';
 type SearchCategory = 'People' | 'Videos' | 'Reels' | 'Trending' | 'Funny' | 'Vlogs' | 'Cinema' | 'Creators';
 type SearchVideo = { id: string; caption: string | null; media_path: string; created_at: string; user_id: string; content_category: string; like_count: number; view_count: number };
 type PublishedPost = { id: string; post_type: 'photo' | 'video' | 'text'; caption: string | null; media_path: string | null; created_at: string; visibility: string; content_category: string | null; media: Media };
-type PublicProfile = { id: string; username: string; display_name: string; bio: string | null; profession_category: string | null; website_url?: string | null; activity_status?: string | null };
+type PublicProfile = { id: string; username: string; display_name: string; bio: string | null; profession_category: string | null; website_url?: string | null; activity_status?: string | null; account_type?: 'personal' | 'business'; business_name?: string | null; business_category?: string | null; business_description?: string | null };
 type ChatMessage = { id: string; conversation_id: string; sender_id: string; body: string; created_at: string };
 type ChatThread = { id: string; user_one_id: string; user_two_id: string; updated_at: string; otherUser: PublicProfile };
 
@@ -53,6 +53,10 @@ export default function App() {
   const [bio, setBio] = useState('Creating connections, sharing ideas and meeting amazing people.');
   const [website, setWebsite] = useState('https://example.com');
   const [occupation, setOccupation] = useState('');
+  const [accountType, setAccountType] = useState<'personal' | 'business'>('personal');
+  const [businessName, setBusinessName] = useState('');
+  const [businessCategory, setBusinessCategory] = useState('');
+  const [businessDescription, setBusinessDescription] = useState('');
   const [activity, setActivity] = useState('Available');
   const [avatar, setAvatar] = useState<Media | null>(null);
   const [covers, setCovers] = useState<Media[]>([]);
@@ -151,7 +155,7 @@ export default function App() {
       if (!userId) return;
       const { data, error } = await supabase
         .from('profiles')
-        .select('username, display_name, bio, website_url, profession_category, activity_status')
+        .select('username, display_name, bio, website_url, profession_category, activity_status, account_type, business_name, business_category, business_description')
         .eq('id', userId)
         .maybeSingle();
       if (!active || error || !data) return;
@@ -160,6 +164,10 @@ export default function App() {
       setBio(data.bio || '');
       setWebsite(data.website_url || '');
       setOccupation(data.profession_category || '');
+      setAccountType(data.account_type === 'business' ? 'business' : 'personal');
+      setBusinessName(data.business_name || '');
+      setBusinessCategory(data.business_category || '');
+      setBusinessDescription(data.business_description || '');
 
       const [followingResult, followerResult, likesResult] = await Promise.all([
         supabase.from('follows').select('*', { count: 'exact', head: true }).eq('follower_id', userId),
@@ -245,7 +253,7 @@ export default function App() {
         return;
       }
       const [profilesResult, followsResult] = await Promise.all([
-        supabase!.from('profiles').select('id, username, display_name, bio, profession_category, website_url, activity_status').neq('id', userId).order('created_at', { ascending: false }).limit(50),
+        supabase!.from('profiles').select('id, username, display_name, bio, profession_category, website_url, activity_status, account_type, business_name, business_category, business_description').neq('id', userId).order('created_at', { ascending: false }).limit(50),
         supabase!.from('follows').select('followed_id').eq('follower_id', userId),
       ]);
       if (!active) return;
@@ -652,6 +660,16 @@ export default function App() {
       Alert.alert('Bio too long', 'Your bio can contain up to 300 characters.');
       return;
     }
+    const cleanBusinessName = businessName.trim();
+    const cleanBusinessCategory = businessCategory.trim();
+    if (accountType === 'business' && (!cleanBusinessName || !cleanBusinessCategory)) {
+      Alert.alert('Business details required', 'Enter your business name and category before switching to a professional business account.');
+      return;
+    }
+    if (cleanBusinessName.length > 80 || cleanBusinessCategory.length > 60 || businessDescription.trim().length > 500) {
+      Alert.alert('Business details too long', 'Business name: 80 characters, category: 60, description: 500.');
+      return;
+    }
     if (cleanWebsite && !/^(https?:\/\/)?([\w-]+\.)+[a-z]{2,}(\/[^\s]*)?$/i.test(cleanWebsite)) {
       Alert.alert('Check website', 'Enter a valid website address.');
       return;
@@ -672,6 +690,10 @@ export default function App() {
       bio: bio.trim(),
       website_url: cleanWebsite || null,
       profession_category: occupation.trim() || null,
+      account_type: accountType,
+      business_name: accountType === 'business' ? cleanBusinessName : null,
+      business_category: accountType === 'business' ? cleanBusinessCategory : null,
+      business_description: accountType === 'business' ? businessDescription.trim() || null : null,
       activity_status: activity.toLowerCase(),
       updated_at: new Date().toISOString(),
     }).eq('id', userId);
@@ -856,7 +878,9 @@ export default function App() {
         </Animated.View>
         <View style={s.nameLine}><Text style={s.name}>{name}</Text></View>
         <Text style={s.username}>@{username.replace(/^@/, '')}</Text>
+        {accountType === 'business' && <View style={s.businessTag}><Ionicons name="briefcase-outline" size={13} color={C.cyan}/><Text style={s.businessTagText}>Professional Business Account</Text></View>}
         <Text style={s.bio}>{bio}</Text>
+        {accountType === 'business' && !!businessName && <View style={s.businessInfo}><Text style={s.businessName}>{businessName}</Text>{!!businessCategory && <Text style={s.personBio}>{businessCategory}</Text>}{!!businessDescription && <Text style={s.infoText}>{businessDescription}</Text>}</View>}
         {!!website && <Pressable onPress={openWebsite} style={s.websiteLine}><Ionicons name="link" color={C.cyan} size={15}/><Text style={s.website}>{website}</Text></Pressable>}
          
       </Animated.View>
@@ -933,7 +957,9 @@ export default function App() {
         </Animated.View>
         <View style={s.nameLine}><Text style={s.name}>{selectedProfile.display_name}</Text></View>
         <Text style={s.username}>@{selectedProfile.username}</Text>
+        {selectedProfile.account_type === 'business' && <View style={s.businessTag}><Ionicons name="briefcase-outline" size={13} color={C.cyan}/><Text style={s.businessTagText}>Professional Business Account</Text></View>}
         {!!selectedProfile.bio && <Text style={s.bio}>{selectedProfile.bio}</Text>}
+        {selectedProfile.account_type === 'business' && !!selectedProfile.business_name && <View style={s.businessInfo}><Text style={s.businessName}>{selectedProfile.business_name}</Text>{!!selectedProfile.business_category && <Text style={s.personBio}>{selectedProfile.business_category}</Text>}{!!selectedProfile.business_description && <Text style={s.infoText}>{selectedProfile.business_description}</Text>}</View>}}
         {!!selectedProfile.website_url && <Pressable onPress={openOtherWebsite} style={s.websiteLine}><Ionicons name="link" color={C.cyan} size={15}/><Text style={s.website}>{selectedProfile.website_url}</Text></Pressable>}
       </View>
       <View style={s.profileBody}>
@@ -1152,6 +1178,17 @@ export default function App() {
       <Modal visible={editing} transparent animationType="slide" onRequestClose={() => setEditing(false)}>
         <View style={s.modalShade}><ScrollView style={s.editSheet} contentContainerStyle={{paddingBottom:28}}>
           <View style={s.modalTop}><Text style={s.sectionTitle}>Edit Profile</Text><Pressable onPress={() => setEditing(false)}><Ionicons name="close" size={24} color={C.text}/></Pressable></View>
+          <Text style={s.fieldLabel}>Account type</Text>
+          <View style={s.activityGrid}>
+            <Pressable onPress={() => setAccountType('personal')} style={[s.activityChip,accountType==='personal'&&s.activityActive]}><Text style={[s.activityText,accountType==='personal'&&{color:C.cyan}]}>Personal</Text></Pressable>
+            <Pressable onPress={() => setAccountType('business')} style={[s.activityChip,accountType==='business'&&s.activityActive]}><Text style={[s.activityText,accountType==='business'&&{color:C.cyan}]}>Professional / Business</Text></Pressable>
+          </View>
+          {accountType === 'business' && <>
+            <Text style={s.hint}>Switch to a professional business account for a business-focused public profile. This is free and does not grant a paid verification badge.</Text>
+            {[[businessName,setBusinessName,'Business name'],[businessCategory,setBusinessCategory,'Business category'],[businessDescription,setBusinessDescription,'Business description']].map(([value,setter,label]:any) =>
+              <View key={label} style={s.field}><Text style={s.fieldLabel}>{label}</Text><TextInput value={value} onChangeText={setter} placeholder={label} placeholderTextColor={C.muted} style={s.input} multiline={label==='Business description'} /></View>
+            )}
+          </>}
           {[[name,setName,'Display name'],[username,setUsername,'Username'],[bio,setBio,'Bio'],[website,setWebsite,'Website'],[occupation,setOccupation,'Occupation']].map(([value,setter,label]:any) =>
             <View key={label} style={s.field}><Text style={s.fieldLabel}>{label}</Text><TextInput value={value} onChangeText={setter} placeholder={label} placeholderTextColor={C.muted} style={s.input} multiline={label==='Bio'} /></View>
           )}
@@ -1223,6 +1260,7 @@ const s = StyleSheet.create({
   coverHeader:{flexDirection:'row',alignItems:'center',justifyContent:'space-between'},
   eyebrow:{color:C.cyan,fontSize:9,fontWeight:'900',letterSpacing:1.5},sectionTitle:{color:C.text,fontSize:16,fontWeight:'900'},
   mutedSmall:{color:C.muted,fontSize:11,marginTop:3},coverCount:{color:C.cyan,fontWeight:'800',fontSize:12},
+  businessTag:{flexDirection:'row',alignItems:'center',gap:5,marginTop:5,paddingHorizontal:10,paddingVertical:5,borderRadius:12,backgroundColor:'#EAF5FF'},businessTagText:{color:C.cyan,fontSize:10,fontWeight:'800'},businessInfo:{alignItems:'center',gap:4,marginTop:7,maxWidth:'90%'},businessName:{color:C.text,fontSize:15,fontWeight:'900'},
   mediaRow:{flexDirection:'row',gap:8},publishedTile:{width:118,gap:5},publishedImage:{width:118,height:132,borderRadius:12,backgroundColor:'#EAF5FF'},publishedVideo:{width:118,height:132,borderRadius:12,backgroundColor:'#6FAFD0',alignItems:'center',justifyContent:'center',gap:4},publishedCaption:{color:C.muted,fontSize:10,lineHeight:14},tile:{flex:1,aspectRatio:.9,borderRadius:13,borderWidth:1,borderColor:'#D8EAF7',borderStyle:'dashed',backgroundColor:C.panel2,alignItems:'center',justifyContent:'center',overflow:'hidden'},
   tileImage:{width:'100%',height:'100%'},tileLabel:{color:C.muted,fontSize:10,marginTop:5,fontWeight:'700'},
   videoTile:{alignItems:'center',justifyContent:'center',gap:4},videoText:{color:C.cyan,fontSize:9,fontWeight:'900'},
