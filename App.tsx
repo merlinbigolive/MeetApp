@@ -695,7 +695,7 @@ export default function App() {
     if (!supabase || tab !== 'Profile' || !currentUserId) return;
     const channel = supabase.channel('follow-requests-' + currentUserId)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'follows' }, payload => {
-        const row = (payload.new || payload.old) as { followed_id?: string } | undefined;
+        const row = (payload.eventType === 'DELETE' ? payload.old : payload.new) as { followed_id?: string } | undefined;
         if (row?.followed_id === currentUserId) void loadFollowRequests();
       })
       .subscribe();
