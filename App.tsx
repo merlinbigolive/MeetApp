@@ -11,6 +11,7 @@ import { supabase } from './supabase';
 type Media = { uri: string; type: 'image' | 'video'; name?: string; size?: number; storagePath?: string };
 type CloudMediaRow = { id: string; kind: 'avatar' | 'cover' | 'post'; position: number; storage_path: string; media_type: 'image' | 'video'; original_name: string | null; };
 type Tab = 'Home' | 'Public' | 'Create' | 'Inbox' | 'Profile';
+type PublicProfile = { id: string; username: string; display_name: string; bio: string | null; profession_category: string | null };
 
 const C = {
   bg: '#FFFFFF', panel: '#FFFFFF', panel2: '#FFFFFF', text: '#172B3A',
@@ -41,6 +42,11 @@ export default function App() {
   const [posts, setPosts] = useState<Media[]>([]);
   const [followingCount, setFollowingCount] = useState(0);
   const [followerCount, setFollowerCount] = useState(0);
+  const [publicProfiles, setPublicProfiles] = useState<PublicProfile[]>([]);
+  const [followedUserIds, setFollowedUserIds] = useState<string[]>([]);
+  const [profileSearch, setProfileSearch] = useState('');
+  const [loadingProfiles, setLoadingProfiles] = useState(false);
+  const [followBusyIds, setFollowBusyIds] = useState<string[]>([]);
   const [editing, setEditing] = useState(false);
   const [viewer, setViewer] = useState<Media | null>(null);
   const [coverExpanded, setCoverExpanded] = useState(false);
@@ -117,6 +123,53 @@ export default function App() {
     loadCloudProfile();
     return () => { active = false; };
   }, []);
+
+  useEffect(() => {
+    if (tab !== 'Public' || !supabase) return;
+    let active = true;
+    const loadDiscoverProfiles = async () => {
+      setLoadingProfiles(true);
+      const { data: authData, error: authError } = await supabase!.auth.getSession();
+      const userId = authData.session?.user.id;
+      if (authError || !userId) {
+        if (active) setLoadingProfiles(false);
+        return;
+      }
+      const [profilesResult, followsResult] = await Promise.all([
+        supabase!.from('profiles').select('id, username, display_name, bio, profession_category').neq('id', userId).order('created_at', { ascending: false }).limit(50),
+        supabase!.from('follows').select('followed_id').eq('follower_id', userId),
+      ]);
+      if (!active) return;
+      if (profilesResult.error) Alert.alert('Could not load people', profilesResult.error.message);
+      else setPublicProfiles((profilesResult.data || []) as PublicProfile[]);
+      if (followsResult.error) Alert.alert('Could not load follows', followsResult.error.message);
+      else setFollowedUserIds((followsResult.data || []).map(row => row.followed_id));
+      setLoadingProfiles(false);
+    };
+    loadDiscoverProfiles();
+    return () => { active = false; };
+  }, [tab]);
+
+  const toggleFollow = async (profile: PublicProfile) => {
+    if (!supabase || followBusyIds.includes(profile.id)) return;
+    const { data: authData, error: authError } = await supabase.auth.getSession();
+    const userId = authData.session?.user.id;
+    if (authError || !userId) {
+      Alert.alert('Sign in required', 'Please sign in again to follow people.');
+      return;
+    }
+    setFollowBusyIds(old => [...old, profile.id]);
+    const isFollowing = followedUserIds.includes(profile.id);
+    const result = isFollowing
+      ? await supabase.from('follows').delete().eq('follower_id', userId).eq('followed_id', profile.id)
+      : await supabase.from('follows').insert({ follower_id: userId, followed_id: profile.id });
+    setFollowBusyIds(old => old.filter(id => id !== profile.id));
+    if (result.error) {
+      Alert.alert(isFollowing ? 'Unfollow failed' : 'Follow failed', result.error.message);
+      return;
+    }
+    setFollowedUserIds(old => isFollowing ? old.filter(id => id !== profile.id) : [...old, profile.id]);
+  };
 
   const saveProfile = async () => {
     const client = supabase;
@@ -368,6 +421,27 @@ export default function App() {
     </ScrollView>
   );
 
+  const DiscoverScreen = () => {
+    const filteredProfiles = publicProfiles.filter(profile => {
+      const query = profileSearch.trim().toLowerCase();
+      return !query || profile.username.toLowerCase().includes(query) || profile.display_name.toLowerCase().includes(query);
+    });
+    return <ScrollView contentContainerStyle={s.discoverScroll} keyboardShouldPersistTaps="handled">
+      <Text style={s.pageTitle}>Discover</Text>
+      <Text style={s.hint}>Find people and connect with the USay community.</Text>
+      <TextInput value={profileSearch} onChangeText={setProfileSearch} placeholder="Search name or username" placeholderTextColor={C.muted} style={s.input}/>
+      {loadingProfiles ? <Text style={s.hint}>Loading people…</Text> : filteredProfiles.length === 0 ? <Text style={s.hint}>No profiles found. Try another search or check back later.</Text> : filteredProfiles.map(profile => {
+        const following = followedUserIds.includes(profile.id);
+        const busy = followBusyIds.includes(profile.id);
+        return <View key={profile.id} style={s.personRow}>
+          <View style={s.personAvatar}><Ionicons name="person" size={22} color={C.cyan}/></View>
+          <View style={s.personDetails}><Text style={s.personName}>{profile.display_name}</Text><Text style={s.personUsername}>@{profile.username}</Text>{!!profile.bio && <Text style={s.personBio} numberOfLines={2}>{profile.bio}</Text>}</View>
+          <Pressable disabled={busy} onPress={() => toggleFollow(profile)} style={[s.followButton, following && s.followingButton]}><Text style={[s.followButtonText, following && s.followingButtonText]}>{busy ? '...' : following ? 'Following' : 'Follow'}</Text></Pressable>
+        </View>;
+      })}
+    </ScrollView>;
+  };
+
   const SimpleScreen = ({ title, subtitle }: {title:string;subtitle:string}) => (
     <View style={s.simple}><Text style={s.pageTitle}>{title}</Text><View style={s.card}><Text style={s.sectionTitle}>{subtitle}</Text><Text style={s.hint}>This section will be connected to USay accounts and services in the next build step.</Text></View></View>
   );
@@ -378,7 +452,7 @@ export default function App() {
       <View style={{flex:1}}>
         {tab === 'Profile' ? <Profile/> :
           tab === 'Home' ? <SimpleScreen title="USay" subtitle="Your people, one place."/> :
-          tab === 'Public' ? <SimpleScreen title="Public Feed" subtitle="Discover community posts."/> :
+          tab === 'Public' ? <DiscoverScreen/> :
           tab === 'Create' ? <SimpleScreen title="Create" subtitle="Share a photo, video or update."/> :
           <SimpleScreen title="Inbox" subtitle="Your chats and calls."/>}
       </View>
@@ -425,6 +499,13 @@ export default function App() {
 
 const s = StyleSheet.create({
   root:{flex:1,backgroundColor:C.bg}, scroll:{padding:16,paddingBottom:22,gap:14},
+  discoverScroll:{padding:20,paddingTop:54,paddingBottom:30,gap:14},
+  personRow:{flexDirection:'row',alignItems:'center',gap:10,paddingVertical:12,borderBottomWidth:1,borderBottomColor:C.border},
+  personAvatar:{width:46,height:46,borderRadius:23,backgroundColor:'#EAF5FF',alignItems:'center',justifyContent:'center'},
+  personDetails:{flex:1,gap:2},personName:{color:C.text,fontSize:14,fontWeight:'800'},personUsername:{color:C.muted,fontSize:11},personBio:{color:'#526B7D',fontSize:11},
+  followButton:{minWidth:84,paddingHorizontal:12,paddingVertical:9,borderRadius:10,backgroundColor:C.pink,alignItems:'center'},
+  followingButton:{backgroundColor:'#EAF5FF',borderWidth:1,borderColor:'#CDE8FA'},
+  followButtonText:{color:'#FFFFFF',fontSize:11,fontWeight:'800'},followingButtonText:{color:C.cyan},
   profileScroll:{paddingBottom:24,gap:0}, profileBody:{paddingHorizontal:16,gap:16},
   coverCarousel:{height:190,width:'100%',backgroundColor:C.panel2},
   coverSlide:{height:190,alignItems:'center',justifyContent:'center',backgroundColor:C.panel2,overflow:'hidden'},
