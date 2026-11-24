@@ -328,7 +328,7 @@ export default function App() {
           {isOwnProfile && <View style={s.camera}><Ionicons name="camera" size={13} color="#fff"/></View>}
         </Pressable>
         </Animated.View>
-        <View style={s.nameLine}><Text style={s.name}>{name}</Text><View style={s.verified}><Ionicons name="checkmark" size={12} color="#FFFFFF"/></View></View>
+        <View style={s.nameLine}><Text style={s.name}>{name}</Text></View>
         <Text style={s.username}>@{username.replace(/^@/, '')}</Text>
         <Text style={s.bio}>{bio}</Text>
         {!!website && <Pressable onPress={openWebsite} style={s.websiteLine}><Ionicons name="link" color={C.cyan} size={15}/><Text style={s.website}>{website}</Text></Pressable>}
