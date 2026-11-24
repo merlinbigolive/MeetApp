@@ -15,7 +15,8 @@ type CloudMediaRow = { id: string; kind: 'avatar' | 'cover' | 'post'; position: 
 type Tab = 'Home' | 'Public' | 'Create' | 'Inbox' | 'Profile';
 type SearchCategory = 'People' | 'Videos' | 'Reels' | 'Trending' | 'Funny' | 'Vlogs' | 'Cinema' | 'Creators';
 type SearchVideo = { id: string; caption: string | null; media_path: string; created_at: string; user_id: string; content_category: string; like_count: number; view_count: number };
-type PublishedPost = { id: string; post_type: 'photo' | 'video' | 'text'; caption: string | null; media_path: string | null; created_at: string; visibility: string; content_category: string | null; like_count: number; viewer_liked: boolean; media: Media };
+type PublishedPost = { id: string; post_type: 'photo' | 'video' | 'text'; caption: string | null; media_path: string | null; created_at: string; visibility: string; content_category: string | null; like_count: number; viewer_liked: boolean; comment_count: number; media: Media };
+type PostComment = { id: string; post_id: string; user_id: string; body: string; created_at: string; username: string; display_name: string };
 type PublicProfile = { id: string; username: string; display_name: string; bio: string | null; profession_category: string | null; website_url?: string | null; activity_status?: string | null; is_private?: boolean; account_type?: 'personal' | 'business'; business_name?: string | null; business_category?: string | null; business_description?: string | null };
 type FollowRequest = { follower_id: string; username: string; display_name: string; requested_at: string };
 type ChatMessage = { id: string; conversation_id: string; sender_id: string; body: string; created_at: string; read_at?: string | null; message_type?: 'text' | 'voice'; audio_path?: string | null; audio_url?: string | null; transcript?: string | null };
@@ -92,6 +93,11 @@ export default function App() {
   const [publicVideos, setPublicVideos] = useState<SearchVideo[]>([]);
   const [ownPublishedPosts, setOwnPublishedPosts] = useState<PublishedPost[]>([]);
   const [otherPublishedPosts, setOtherPublishedPosts] = useState<PublishedPost[]>([]);
+  const [commentPost, setCommentPost] = useState<PublishedPost | null>(null);
+  const [postComments, setPostComments] = useState<PostComment[]>([]);
+  const [commentDraft, setCommentDraft] = useState('');
+  const [commentsLoading, setCommentsLoading] = useState(false);
+  const [commentSending, setCommentSending] = useState(false);
   const [postsRefreshKey, setPostsRefreshKey] = useState(0);
   const [likedVideoIds, setLikedVideoIds] = useState<string[]>([]);
   const [likeBusyIds, setLikeBusyIds] = useState<string[]>([]);
@@ -609,6 +615,68 @@ export default function App() {
       : item));
   };
 
+  const fetchPostCommentCounts = async (postIds: string[]) => {
+    const client = supabase;
+    if (!client || !postIds.length) return {} as Record<string, number>;
+    const { data, error } = await client.from('post_comments').select('post_id').in('post_id', postIds);
+    if (error) { console.warn('Could not load post comment counts:', error.message); return {} as Record<string, number>; }
+    return (data || []).reduce((counts: Record<string, number>, row: any) => {
+      counts[row.post_id] = (counts[row.post_id] || 0) + 1;
+      return counts;
+    }, {} as Record<string, number>);
+  };
+
+  const loadPostComments = async (postId: string) => {
+    const client = supabase;
+    if (!client) return;
+    setCommentsLoading(true);
+    const { data, error } = await client.from('post_comments')
+      .select('id, post_id, user_id, body, created_at')
+      .eq('post_id', postId).order('created_at', { ascending: true }).limit(100);
+    if (error) {
+      setCommentsLoading(false);
+      Alert.alert('Could not load comments', error.message);
+      return;
+    }
+    const rows = data || [];
+    const userIds = [...new Set(rows.map((row: any) => row.user_id))];
+    const profilesResult = userIds.length
+      ? await client.from('profiles').select('id, username, display_name').in('id', userIds)
+      : { data: [], error: null };
+    const profilesById = new Map((profilesResult.data || []).map((profile: any) => [profile.id, profile]));
+    setPostComments(rows.map((row: any) => {
+      const profile = profilesById.get(row.user_id) as any;
+      return { ...row, username: profile?.username || 'user', display_name: profile?.display_name || 'User' } as PostComment;
+    }));
+    setCommentsLoading(false);
+  };
+
+  const openPostComments = (post: PublishedPost) => {
+    setCommentPost(post);
+    setCommentDraft('');
+    setPostComments([]);
+    void loadPostComments(post.id);
+  };
+
+  const sendPostComment = async () => {
+    const client = supabase;
+    const post = commentPost;
+    const body = commentDraft.trim();
+    if (!client || !post || !body || commentSending) return;
+    if (body.length > 2000) { Alert.alert('Comment too long', 'Comments can contain up to 2,000 characters.'); return; }
+    const { data: authData, error: authError } = await client.auth.getSession();
+    const userId = authData.session?.user.id;
+    if (authError || !userId) { Alert.alert('Sign in required', 'Please sign in again to comment.'); return; }
+    setCommentSending(true);
+    const { error } = await client.from('post_comments').insert({ post_id: post.id, user_id: userId, body });
+    setCommentSending(false);
+    if (error) { Alert.alert('Could not add comment', error.message); return; }
+    setCommentDraft('');
+    setOwnPublishedPosts(old => old.map(item => item.id === post.id ? { ...item, comment_count: item.comment_count + 1 } : item));
+    setOtherPublishedPosts(old => old.map(item => item.id === post.id ? { ...item, comment_count: item.comment_count + 1 } : item));
+    void loadPostComments(post.id);
+  };
+
   const togglePublishedPostLike = async (post: PublishedPost, isOtherProfile: boolean) => {
     const client = supabase;
     if (!client || likeBusyIds.includes(post.id)) return;
@@ -1073,7 +1141,7 @@ export default function App() {
     </Pressable>
   );
 
-  const PublishedPostTile = ({ post, onPress, onLike }: { post: PublishedPost; onPress: () => void; onLike: () => void }) => (
+  const PublishedPostTile = ({ post, onPress, onLike, onComments }: { post: PublishedPost; onPress: () => void; onLike: () => void; onComments: () => void }) => (
     <View style={s.publishedTile}>
       <Pressable onPress={onPress}>
         {post.media.type === 'image'
@@ -1081,10 +1149,16 @@ export default function App() {
           : <View style={s.publishedVideo}><Ionicons name="play-circle" size={34} color="#FFFFFF"/><Text style={s.videoText}>VIDEO</Text></View>}
       </Pressable>
       {!!post.caption && <Text style={s.publishedCaption} numberOfLines={2}>{post.caption}</Text>}
-      <Pressable onPress={onLike} disabled={likeBusyIds.includes(post.id)} style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingVertical: 4, alignSelf: 'flex-start' }}>
-        <Ionicons name={post.viewer_liked ? 'heart' : 'heart-outline'} size={17} color={post.viewer_liked ? '#E34B69' : C.muted}/>
-        <Text style={{ color: C.muted, fontSize: 11, fontWeight: '700' }}>{post.like_count.toLocaleString()}</Text>
-      </Pressable>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+        <Pressable onPress={onLike} disabled={likeBusyIds.includes(post.id)} style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingVertical: 4 }}>
+          <Ionicons name={post.viewer_liked ? 'heart' : 'heart-outline'} size={17} color={post.viewer_liked ? '#E34B69' : C.muted}/>
+          <Text style={{ color: C.muted, fontSize: 11, fontWeight: '700' }}>{post.like_count.toLocaleString()}</Text>
+        </Pressable>
+        <Pressable onPress={onComments} style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingVertical: 4 }}>
+          <Ionicons name="chatbubble-outline" size={16} color={C.muted}/>
+          <Text style={{ color: C.muted, fontSize: 11, fontWeight: '700' }}>{post.comment_count.toLocaleString()}</Text>
+        </Pressable>
+      </View>
     </View>
   );
 
@@ -1149,7 +1223,7 @@ export default function App() {
         <View style={s.section}>
           <View style={s.sectionHeading}><Text style={s.sectionTitle}>Posts</Text><Text style={s.coverCount}>{ownPublishedPosts.length}</Text></View>
           {ownPublishedPosts.length ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 9 }}>
-            {ownPublishedPosts.map(post => <PublishedPostTile key={post.id} post={post} onPress={() => setViewer(post.media)} onLike={() => void togglePublishedPostLike(post, false)}/>)}
+            {ownPublishedPosts.map(post => <PublishedPostTile key={post.id} post={post} onPress={() => setViewer(post.media)} onLike={() => void togglePublishedPostLike(post, false)} onComments={() => openPostComments(post)}/>)}
           </ScrollView> : <Text style={s.hint}>Your published photos and videos will appear here.</Text>}
         </View>
         {!!posts.length && <View style={s.section}>
@@ -1224,7 +1298,7 @@ export default function App() {
           <View style={s.section}>
             <View style={s.sectionHeading}><Text style={s.sectionTitle}>Posts</Text><Text style={s.coverCount}>{otherPublishedPosts.length}</Text></View>
             {loadingOtherProfile ? <Text style={s.hint}>Loading posts…</Text> : otherPublishedPosts.length ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 9 }}>
-              {otherPublishedPosts.map(post => <PublishedPostTile key={post.id} post={post} onPress={() => setViewer(post.media)} onLike={() => void togglePublishedPostLike(post, true)}/>)}
+              {otherPublishedPosts.map(post => <PublishedPostTile key={post.id} post={post} onPress={() => setViewer(post.media)} onLike={() => void togglePublishedPostLike(post, true)} onComments={() => openPostComments(post)}/>)}
             </ScrollView> : <Text style={s.hint}>No published posts yet.</Text>}
           </View>
           {!!otherProfileMedia.posts.length && <View style={s.section}>
@@ -1478,6 +1552,34 @@ export default function App() {
           </ScrollView>
         </View>
       </Modal>
+      <Modal visible={!!commentPost} transparent animationType="slide" onRequestClose={()=>setCommentPost(null)}>
+        <View style={s.commentsBackdrop}>
+          <View style={s.commentsSheet}>
+            <View style={s.commentsHeader}>
+              <Text style={s.sectionTitle}>Comments</Text>
+              <Pressable onPress={() => setCommentPost(null)}><Ionicons name="close" size={24} color={C.text}/></Pressable>
+            </View>
+            {!!commentPost?.caption && <Text style={s.commentsPostCaption} numberOfLines={2}>{commentPost.caption}</Text>}
+            <ScrollView style={s.commentsList} contentContainerStyle={{ gap: 13, paddingVertical: 10 }} keyboardShouldPersistTaps="handled">
+              {commentsLoading ? <Text style={s.hint}>Loading comments…</Text> : postComments.length ? postComments.map(comment => (
+                <View key={comment.id} style={s.commentRow}>
+                  <View style={s.commentAvatar}><Text style={s.commentAvatarText}>{(comment.display_name || 'U').slice(0,1).toUpperCase()}</Text></View>
+                  <View style={{ flex: 1, gap: 3 }}>
+                    <Text style={s.commentAuthor}>{comment.display_name} <Text style={s.commentUsername}>@{comment.username}</Text></Text>
+                    <Text style={s.commentBody}>{comment.body}</Text>
+                  </View>
+                </View>
+              )) : <Text style={s.hint}>No comments yet. Be the first to comment.</Text>}
+            </ScrollView>
+            <View style={s.commentComposer}>
+              <TextInput value={commentDraft} onChangeText={setCommentDraft} placeholder="Write a comment…" placeholderTextColor={C.muted} multiline maxLength={2000} style={s.commentInput}/>
+              <Pressable onPress={() => void sendPostComment()} disabled={!commentDraft.trim() || commentSending} style={[s.commentSend, (!commentDraft.trim() || commentSending) && { opacity: 0.45 }]}>
+                <Ionicons name="send" size={18} color="#FFFFFF"/>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
       <Modal visible={!!viewer} transparent animationType="fade" onRequestClose={()=>setViewer(null)}>
         <View style={s.viewer}><Pressable style={s.viewerClose} onPress={()=>setViewer(null)}><Ionicons name="close" size={26} color="#fff"/></Pressable>
           {viewer?.type === 'image' ? <Image source={{uri:viewer.uri}} resizeMode="contain" style={{width:'100%',height:'82%'}}/> :
@@ -1523,6 +1625,7 @@ const s = StyleSheet.create({
   eyebrow:{color:C.cyan,fontSize:9,fontWeight:'900',letterSpacing:1.5},sectionTitle:{color:C.text,fontSize:16,fontWeight:'900'},
   mutedSmall:{color:C.muted,fontSize:11,marginTop:3},coverCount:{color:C.cyan,fontWeight:'800',fontSize:12},
   businessTag:{flexDirection:'row',alignItems:'center',gap:5,marginTop:5,paddingHorizontal:10,paddingVertical:5,borderRadius:12,backgroundColor:'#EAF5FF'},businessTagText:{color:C.cyan,fontSize:10,fontWeight:'800'},businessInfo:{alignItems:'center',gap:4,marginTop:7,maxWidth:'90%'},businessName:{color:C.text,fontSize:15,fontWeight:'900'},
+  commentsBackdrop:{flex:1,backgroundColor:'#0007',justifyContent:'flex-end'},commentsSheet:{height:'72%',backgroundColor:'#FFFFFF',borderTopLeftRadius:22,borderTopRightRadius:22,paddingHorizontal:18,paddingTop:16,paddingBottom:20},commentsHeader:{flexDirection:'row',alignItems:'center',justifyContent:'space-between',paddingBottom:10,borderBottomWidth:1,borderBottomColor:C.border},commentsPostCaption:{color:C.muted,fontSize:12,paddingTop:9},commentsList:{flex:1},commentRow:{flexDirection:'row',alignItems:'flex-start',gap:10},commentAvatar:{width:32,height:32,borderRadius:16,backgroundColor:'#EAF5FF',alignItems:'center',justifyContent:'center'},commentAvatarText:{color:C.cyan,fontSize:13,fontWeight:'800'},commentAuthor:{color:C.text,fontSize:12,fontWeight:'800'},commentUsername:{color:C.muted,fontSize:10,fontWeight:'500'},commentBody:{color:C.text,fontSize:13,lineHeight:18},commentComposer:{flexDirection:'row',alignItems:'center',gap:9,borderTopWidth:1,borderTopColor:C.border,paddingTop:10},commentInput:{flex:1,minHeight:42,maxHeight:92,borderWidth:1,borderColor:C.border,borderRadius:16,paddingHorizontal:13,paddingVertical:9,color:C.text,fontSize:13},commentSend:{width:40,height:40,borderRadius:20,backgroundColor:C.cyan,alignItems:'center',justifyContent:'center'},
   mediaRow:{flexDirection:'row',gap:8},publishedTile:{width:118,gap:5},publishedImage:{width:118,height:132,borderRadius:12,backgroundColor:'#EAF5FF'},publishedVideo:{width:118,height:132,borderRadius:12,backgroundColor:'#6FAFD0',alignItems:'center',justifyContent:'center',gap:4},publishedCaption:{color:C.muted,fontSize:10,lineHeight:14},tile:{flex:1,aspectRatio:.9,borderRadius:13,borderWidth:1,borderColor:'#D8EAF7',borderStyle:'dashed',backgroundColor:C.panel2,alignItems:'center',justifyContent:'center',overflow:'hidden'},
   tileImage:{width:'100%',height:'100%'},tileLabel:{color:C.muted,fontSize:10,marginTop:5,fontWeight:'700'},
   videoTile:{alignItems:'center',justifyContent:'center',gap:4},videoText:{color:C.cyan,fontSize:9,fontWeight:'900'},
