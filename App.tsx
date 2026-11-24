@@ -10,8 +10,8 @@ type Media = { uri: string; type: 'image' | 'video'; name?: string; size?: numbe
 type Tab = 'Home' | 'Public' | 'Create' | 'Inbox' | 'Profile';
 
 const C = {
-  bg: '#090B12', panel: '#121622', panel2: '#1A2030', text: '#F7F8FC',
-  muted: '#9299AA', pink: '#FF356D', cyan: '#35D6D0', border: '#252C3D'
+  bg: '#F5FAFF', panel: '#FFFFFF', panel2: '#EAF5FF', text: '#172B3A',
+  muted: '#688398', pink: '#258FEA', cyan: '#43B8E8', border: '#D8EAF7'
 };
 
 export default function App() {
@@ -194,7 +194,7 @@ const s = StyleSheet.create({
   coverHeader:{flexDirection:'row',alignItems:'center',justifyContent:'space-between'},
   eyebrow:{color:C.cyan,fontSize:9,fontWeight:'900',letterSpacing:1.5},sectionTitle:{color:C.text,fontSize:16,fontWeight:'900'},
   mutedSmall:{color:C.muted,fontSize:11,marginTop:3},coverCount:{color:C.cyan,fontWeight:'800',fontSize:12},
-  mediaRow:{flexDirection:'row',gap:8},tile:{flex:1,aspectRatio:.9,borderRadius:13,borderWidth:1,borderColor:'#3A4658',borderStyle:'dashed',backgroundColor:C.panel2,alignItems:'center',justifyContent:'center',overflow:'hidden'},
+  mediaRow:{flexDirection:'row',gap:8},tile:{flex:1,aspectRatio:.9,borderRadius:13,borderWidth:1,borderColor:'#D8EAF7',borderStyle:'dashed',backgroundColor:C.panel2,alignItems:'center',justifyContent:'center',overflow:'hidden'},
   tileImage:{width:'100%',height:'100%'},tileLabel:{color:C.muted,fontSize:10,marginTop:5,fontWeight:'700'},
   videoTile:{alignItems:'center',justifyContent:'center',gap:4},videoText:{color:C.cyan,fontSize:9,fontWeight:'900'},
   remove:{position:'absolute',top:5,right:5,width:23,height:23,borderRadius:12,backgroundColor:'#0009',alignItems:'center',justifyContent:'center'},
@@ -204,13 +204,13 @@ const s = StyleSheet.create({
   camera:{position:'absolute',right:-1,bottom:0,width:27,height:27,borderRadius:14,backgroundColor:C.pink,borderWidth:2,borderColor:C.panel,alignItems:'center',justifyContent:'center'},
   nameLine:{flexDirection:'row',alignItems:'center',gap:6},name:{color:C.text,fontSize:21,fontWeight:'900'},
   verified:{width:17,height:17,borderRadius:9,backgroundColor:C.cyan,alignItems:'center',justifyContent:'center'},
-  username:{color:C.muted,fontSize:12,marginTop:4},bio:{color:'#D3D8E2',fontSize:12,lineHeight:18,textAlign:'center',marginTop:10},
+  username:{color:C.muted,fontSize:12,marginTop:4},bio:{color:'#526B7D',fontSize:12,lineHeight:18,textAlign:'center',marginTop:10},
   websiteLine:{flexDirection:'row',alignItems:'center',gap:6,marginTop:8},website:{color:C.cyan,fontSize:12,fontWeight:'700'},
   stats:{flexDirection:'row',borderTopWidth:1,borderBottomWidth:1,borderColor:C.border,paddingVertical:14},
   stat:{flex:1,alignItems:'center'},statNum:{color:C.text,fontSize:17,fontWeight:'900'},statLabel:{color:C.muted,fontSize:10,marginTop:4},
   actions:{flexDirection:'row',gap:9},primary:{flex:1,minHeight:44,borderRadius:13,backgroundColor:C.pink,alignItems:'center',justifyContent:'center',flexDirection:'row',gap:7},
   primaryText:{color:'#fff',fontWeight:'800',fontSize:13},secondary:{flex:1,minHeight:44,borderRadius:13,backgroundColor:C.panel2,borderWidth:1,borderColor:C.border,alignItems:'center',justifyContent:'center',flexDirection:'row',gap:7},
-  secondaryText:{color:C.text,fontSize:13,fontWeight:'800'},infoLine:{flexDirection:'row',alignItems:'center',gap:10},infoText:{color:'#D3D8E2',fontSize:12},
+  secondaryText:{color:C.text,fontSize:13,fontWeight:'800'},infoLine:{flexDirection:'row',alignItems:'center',gap:10},infoText:{color:'#526B7D',fontSize:12},
   footerNote:{color:C.muted,fontSize:10,lineHeight:15,paddingHorizontal:3},nav:{height:66,backgroundColor:C.panel,borderTopWidth:1,borderColor:C.border,flexDirection:'row',alignItems:'center',justifyContent:'space-around',paddingBottom:5},
   navItem:{flex:1,alignItems:'center',justifyContent:'center',gap:3},navLabel:{fontSize:9,color:C.muted,fontWeight:'700'},
   simple:{flex:1,backgroundColor:C.bg,padding:20,paddingTop:55,gap:18},modalShade:{flex:1,backgroundColor:'#000B',justifyContent:'flex-end'},
