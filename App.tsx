@@ -1310,7 +1310,7 @@ export default function App() {
         </ScrollView>
         <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 8, paddingTop: 10, borderTopWidth: 1, borderColor: C.border }}>
           <TextInput value={chatDraft} onChangeText={setChatDraft} placeholder="Write a message…" placeholderTextColor={C.muted} multiline style={[s.input, { flex: 1, maxHeight: 110, minHeight: 44, paddingVertical: 10 }]}/>
-          <Pressable disabled={voiceSending} onPress={() => voiceRecording ? stopVoiceRecording() : void startVoiceRecording()} style={[s.secondary, { width: 44, minHeight: 44, padding: 0, opacity: voiceSending ? 0.55 : 1 }]}><Ionicons name={voiceRecording ? 'stop-circle' : 'mic-outline'} size={19} color={voiceRecording ? '#D33' : C.cyan}/></Pressable>
+          <Pressable disabled={voiceSending} onLongPress={() => Alert.alert('Voice recognition language', 'Choose the language you will speak.', [{ text: 'Hindi', onPress: () => setVoiceLanguage('hi-IN') }, { text: 'English', onPress: () => setVoiceLanguage('en-IN') }, { text: 'Cancel', style: 'cancel' }])} onPress={() => voiceRecording ? stopVoiceRecording() : void startVoiceRecording()} style={[s.secondary, { width: 44, minHeight: 44, padding: 0, opacity: voiceSending ? 0.55 : 1 }]}><Ionicons name={voiceRecording ? 'stop-circle' : 'mic-outline'} size={19} color={voiceRecording ? '#D33' : C.cyan}/></Pressable>
           <Pressable disabled={!chatDraft.trim() || chatSending} onPress={() => void sendChatMessage()} style={[s.primary, { flex: 0, width: 48, minHeight: 44, opacity: !chatDraft.trim() || chatSending ? 0.55 : 1 }]}>
             <Ionicons name="send" size={18} color="#FFFFFF"/>
           </Pressable>
