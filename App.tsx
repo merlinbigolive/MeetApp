@@ -232,7 +232,7 @@ const s = StyleSheet.create({
   videoTile:{alignItems:'center',justifyContent:'center',gap:4},videoText:{color:C.cyan,fontSize:9,fontWeight:'900'},
   remove:{position:'absolute',top:5,right:5,width:23,height:23,borderRadius:12,backgroundColor:'#0009',alignItems:'center',justifyContent:'center'},
   hint:{color:C.muted,fontSize:10,lineHeight:15},identity:{alignItems:'center',paddingTop:18,paddingBottom:14,position:'relative',overflow:'hidden'},
-  coverBackdrop:{position:'absolute',top:0,left:0,right:0,height:118,backgroundColor:'#B9E2F8',overflow:'hidden'},
+  coverBackdrop:{position:'absolute',top:0,left:0,right:0,height:134,backgroundColor:'#B9E2F8',overflow:'hidden'},
   coverBackdropImage:{width:'100%',height:'100%',resizeMode:'cover'},
   coverBackdropVideo:{width:'100%',height:'100%',backgroundColor:'#70B6D8',alignItems:'center',justifyContent:'center'},
   coverBackdropEmpty:{flex:1,backgroundColor:'#D9F0FF'},
