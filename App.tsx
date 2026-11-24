@@ -162,7 +162,8 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (!supabase || !currentUserId) return;
+    const supabaseClient = supabase;
+    if (!supabaseClient || !currentUserId) return;
     let active = true;
     const registerPushToken = async () => {
       try {
@@ -176,7 +177,7 @@ export default function App() {
         }
         const tokenResult = await Notifications.getExpoPushTokenAsync({ projectId });
         if (!active) return;
-        const { error } = await supabase.from('user_push_tokens').upsert({
+        const { error } = await supabaseClient.from('user_push_tokens').upsert({
           user_id: currentUserId,
           expo_push_token: tokenResult.data,
           sound_enabled: messageSoundEnabled,
