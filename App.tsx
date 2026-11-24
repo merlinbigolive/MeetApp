@@ -190,7 +190,7 @@ export default function App() {
     };
     void registerPushToken();
     return () => { active = false; };
-  }, [currentUserId]);
+  }, [currentUserId, messageSoundEnabled]);
 
   const setMessageNotificationSound = async (enabled: boolean) => {
     setMessageSoundEnabled(enabled);
