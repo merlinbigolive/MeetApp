@@ -8,7 +8,8 @@ import * as ImagePicker from 'expo-image-picker';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { supabase } from './supabase';
 
-type Media = { uri: string; type: 'image' | 'video'; name?: string; size?: number };
+type Media = { uri: string; type: 'image' | 'video'; name?: string; size?: number; storagePath?: string };
+type CloudMediaRow = { id: string; kind: 'avatar' | 'cover' | 'post'; position: number; storage_path: string; media_type: 'image' | 'video'; original_name: string | null; };
 type Tab = 'Home' | 'Public' | 'Create' | 'Inbox' | 'Profile';
 
 const C = {
@@ -75,6 +76,32 @@ export default function App() {
         const status = data.activity_status.toLowerCase();
         setActivity(status.charAt(0).toUpperCase() + status.slice(1));
       }
+
+      const { data: mediaRows, error: mediaError } = await supabase
+        .from('profile_media')
+        .select('id, kind, position, storage_path, media_type, original_name')
+        .eq('user_id', userId)
+        .order('position', { ascending: true });
+      if (!active || mediaError || !mediaRows) return;
+      const hydrated = await Promise.all((mediaRows as CloudMediaRow[]).map(async row => {
+        const { data: signed, error: signedError } = await supabase!.storage
+          .from('usay-media').createSignedUrl(row.storage_path, 60 * 60);
+        if (signedError || !signed?.signedUrl) return null;
+        return {
+          row,
+          media: {
+            uri: signed.signedUrl,
+            type: row.media_type,
+            name: row.original_name || undefined,
+            storagePath: row.storage_path,
+          } as Media,
+        };
+      }));
+      if (!active) return;
+      const valid = hydrated.filter((item): item is NonNullable<typeof item> => item !== null);
+      setAvatar(valid.find(item => item.row.kind === 'avatar')?.media || null);
+      setCovers(valid.filter(item => item.row.kind === 'cover').map(item => item.media).slice(0, 3));
+      setPosts(valid.filter(item => item.row.kind === 'post').map(item => item.media).slice(0, 3));
     };
     loadCloudProfile();
     return () => { active = false; };
@@ -132,19 +159,90 @@ export default function App() {
       Alert.alert('Video size limit', 'Please choose a video that is 1 MB or smaller. If its size cannot be checked, choose a photo instead.');
       return;
     }
-    const media: Media = { uri: a.uri, type, name: a.fileName ?? undefined, size: a.fileSize ?? undefined };
-    if (kind === 'avatar') setAvatar(media);
-    if (kind === 'cover') setCovers(old => index === undefined
-      ? [...old, media].slice(0, 3)
-      : old.map((m, i) => i === index ? media : m));
-    if (kind === 'post') setPosts(old => index === undefined
-      ? [...old, media].slice(0, 3)
-      : old.map((m, i) => i === index ? media : m));
+    const client = supabase;
+    if (!client) {
+      Alert.alert('Cloud not configured', 'Connect Supabase before uploading profile media.');
+      return;
+    }
+    const { data: authData } = await client.auth.getSession();
+    const userId = authData.session?.user.id;
+    if (!userId) {
+      Alert.alert('Sign in required', 'Please sign in before uploading profile media.');
+      return;
+    }
+    try {
+      const mimeType = a.mimeType || (type === 'video' ? 'video/mp4' : 'image/jpeg');
+      const extension = mimeType.split('/')[1]?.replace('jpeg', 'jpg').split(';')[0] || (type === 'video' ? 'mp4' : 'jpg');
+      const fileResponse = await fetch(a.uri);
+      if (!fileResponse.ok) throw new Error('Could not read the selected media from this device.');
+      const fileData = await fileResponse.arrayBuffer();
+      const storagePath = `${userId}/${kind}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${extension}`;
+      const { error: uploadError } = await client.storage.from('usay-media').upload(storagePath, fileData, {
+        contentType: mimeType,
+        upsert: false,
+      });
+      if (uploadError) throw uploadError;
+
+      const position = kind === 'avatar' ? 0 : (index ?? (kind === 'cover' ? covers.length : posts.length));
+      const { data: previous } = await client.from('profile_media')
+        .select('storage_path').eq('user_id', userId).eq('kind', kind).eq('position', position).maybeSingle();
+      const { error: saveError } = await client.from('profile_media').upsert({
+        user_id: userId,
+        kind,
+        position,
+        storage_path: storagePath,
+        media_type: type,
+        original_name: a.fileName ?? null,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'user_id,kind,position' });
+      if (saveError) {
+        await client.storage.from('usay-media').remove([storagePath]);
+        throw saveError;
+      }
+      if (previous?.storage_path) await client.storage.from('usay-media').remove([previous.storage_path]);
+      const { data: signed, error: signedError } = await client.storage.from('usay-media').createSignedUrl(storagePath, 60 * 60);
+      if (signedError || !signed?.signedUrl) throw signedError || new Error('Could not create a media preview URL.');
+      const media: Media = { uri: signed.signedUrl, type, name: a.fileName ?? undefined, size: a.fileSize ?? undefined, storagePath };
+      if (kind === 'avatar') setAvatar(media);
+      if (kind === 'cover') setCovers(old => index === undefined
+        ? [...old, media].slice(0, 3)
+        : old.map((m, i) => i === index ? media : m));
+      if (kind === 'post') setPosts(old => index === undefined
+        ? [...old, media].slice(0, 3)
+        : old.map((m, i) => i === index ? media : m));
+      Alert.alert('Uploaded', 'Your media is now saved to your USay account.');
+    } catch (error: any) {
+      Alert.alert('Upload failed', error?.message || 'Please try again.');
+    }
   };
 
-  const removeMedia = (kind: 'cover' | 'post', index: number) => {
-    if (kind === 'cover') setCovers(old => old.filter((_, i) => i !== index));
-    else setPosts(old => old.filter((_, i) => i !== index));
+  const removeMedia = async (kind: 'cover' | 'post', index: number) => {
+    const client = supabase;
+    const media = kind === 'cover' ? covers[index] : posts[index];
+    if (!client || !media) return;
+    const { data: authData } = await client.auth.getSession();
+    const userId = authData.session?.user.id;
+    if (!userId) return;
+    const { error } = await client.from('profile_media').delete()
+      .eq('user_id', userId).eq('kind', kind).eq('position', index);
+    if (error) {
+      Alert.alert('Could not remove media', error.message);
+      return;
+    }
+    if (media.storagePath) await client.storage.from('usay-media').remove([media.storagePath]);
+    if (kind === 'cover') {
+      const next = covers.filter((_, i) => i !== index);
+      setCovers(next);
+      await Promise.all(next.map((item, position) => client.from('profile_media')
+        .update({ position, updated_at: new Date().toISOString() })
+        .eq('user_id', userId).eq('kind', 'cover').eq('storage_path', item.storagePath || '')));
+    } else {
+      const next = posts.filter((_, i) => i !== index);
+      setPosts(next);
+      await Promise.all(next.map((item, position) => client.from('profile_media')
+        .update({ position, updated_at: new Date().toISOString() })
+        .eq('user_id', userId).eq('kind', 'post').eq('storage_path', item.storagePath || '')));
+    }
   };
 
   const openWebsite = () => {
@@ -218,7 +316,7 @@ export default function App() {
           {!!occupation && <View style={s.infoLine}><Ionicons name="briefcase-outline" color={C.cyan} size={18}/><Text style={s.infoText}>{occupation}</Text></View>}
           <View style={s.infoLine}><Ionicons name="time-outline" color={C.cyan} size={18}/><Text style={s.infoText}>{activity}</Text></View>
         </View>
-        <Text style={s.footerNote}>Profile edits and media are currently stored on this device only. Cloud sync will be connected in the backend step.</Text>
+        <Text style={s.footerNote}>Profile details and uploaded media are synced with your USay account.</Text>
       </View>
     </ScrollView>
   );
