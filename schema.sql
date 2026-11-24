@@ -170,7 +170,23 @@ using (
 drop policy if exists "comments_insert_self" on public.post_comments;
 create policy "comments_insert_self" on public.post_comments
 for insert to authenticated
-with check (user_id = auth.uid());
+with check (
+  user_id = auth.uid()
+  and exists (
+    select 1 from public.posts p
+    where p.id = post_comments.post_id
+      and (
+        p.user_id = auth.uid()
+        or (p.visibility = 'public' and exists (
+          select 1 from public.profiles pr where pr.id = p.user_id and pr.is_private = false
+        ))
+        or (p.visibility = 'followers' and exists (
+          select 1 from public.follows f
+          where f.follower_id = auth.uid() and f.followed_id = p.user_id
+        ))
+      )
+  )
+);
 
 drop policy if exists "comments_delete_self" on public.post_comments;
 create policy "comments_delete_self" on public.post_comments
