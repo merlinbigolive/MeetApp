@@ -142,8 +142,10 @@ export default function App() {
         const saved = await AsyncStorage.getItem(NOTIFICATION_SOUND_KEY);
         const enabled = saved === null ? true : saved === 'true';
         if (active) setMessageSoundEnabled(enabled);
-        const permission = await Notifications.getPermissionsAsync();
-        if (!permission.granted) await Notifications.requestPermissionsAsync();
+        if (enabled) {
+          const permission = await Notifications.getPermissionsAsync();
+          if (!permission.granted) await Notifications.requestPermissionsAsync();
+        }
         await Notifications.setNotificationChannelAsync(CUCKOO_SOUND_CHANNEL, {
           name: 'Messages - Cuckoo sound', importance: Notifications.AndroidImportance.HIGH,
           sound: CUCKOO_SOUND_FILE, vibrationPattern: [0, 180, 100, 180],
