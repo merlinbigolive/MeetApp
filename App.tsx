@@ -284,14 +284,16 @@ export default function App() {
       }
       const engagementResult = await supabase!.rpc('get_profile_post_engagement', { target_post_ids: validPosts.map(post => post.id) });
       if (!active) return;
+      const commentCounts = await fetchPostCommentCounts(validPosts.map(post => post.id));
+      if (!active) return;
       if (engagementResult.error) {
         Alert.alert('Could not load post likes', engagementResult.error.message);
-        setOwnPublishedPosts(validPosts.map(post => ({ ...post, like_count: 0, viewer_liked: false })));
+        setOwnPublishedPosts(validPosts.map(post => ({ ...post, like_count: 0, viewer_liked: false, comment_count: commentCounts[post.id] || 0 })));
       } else {
         const engagementById = new Map<string, any>((engagementResult.data || []).map((item: any) => [item.post_id, item] as [string, any]));
         setOwnPublishedPosts(validPosts.map(post => {
           const engagement = engagementById.get(post.id) as any;
-          return { ...post, like_count: Number(engagement?.like_count || 0), viewer_liked: !!engagement?.viewer_liked };
+          return { ...post, like_count: Number(engagement?.like_count || 0), viewer_liked: !!engagement?.viewer_liked, comment_count: commentCounts[post.id] || 0 };
         }));
       }
     };
@@ -445,14 +447,16 @@ export default function App() {
       if (validPublishedPosts.length) {
         const engagementResult = await supabase!.rpc('get_profile_post_engagement', { target_post_ids: validPublishedPosts.map(post => post.id) });
         if (!active) return;
+        const commentCounts = await fetchPostCommentCounts(validPublishedPosts.map(post => post.id));
+        if (!active) return;
         if (engagementResult.error) {
           Alert.alert('Could not load post likes', engagementResult.error.message);
-          setOtherPublishedPosts(validPublishedPosts.map(post => ({ ...post, like_count: 0, viewer_liked: false })));
+          setOtherPublishedPosts(validPublishedPosts.map(post => ({ ...post, like_count: 0, viewer_liked: false, comment_count: commentCounts[post.id] || 0 })));
         } else {
           const engagementById = new Map<string, any>((engagementResult.data || []).map((item: any) => [item.post_id, item] as [string, any]));
           setOtherPublishedPosts(validPublishedPosts.map(post => {
             const engagement = engagementById.get(post.id) as any;
-            return { ...post, like_count: Number(engagement?.like_count || 0), viewer_liked: !!engagement?.viewer_liked };
+            return { ...post, like_count: Number(engagement?.like_count || 0), viewer_liked: !!engagement?.viewer_liked, comment_count: commentCounts[post.id] || 0 };
           }));
         }
       } else {
@@ -643,7 +647,7 @@ export default function App() {
     const profilesResult = userIds.length
       ? await client.from('profiles').select('id, username, display_name').in('id', userIds)
       : { data: [], error: null };
-    const profilesById = new Map((profilesResult.data || []).map((profile: any) => [profile.id, profile]));
+    const profilesById = new Map<string, any>((profilesResult.data || []).map((profile: any) => [profile.id, profile] as [string, any]));
     setPostComments(rows.map((row: any) => {
       const profile = profilesById.get(row.user_id) as any;
       return { ...row, username: profile?.username || 'user', display_name: profile?.display_name || 'User' } as PostComment;
