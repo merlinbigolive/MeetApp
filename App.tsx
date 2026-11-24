@@ -11,7 +11,7 @@ import { supabase } from './supabase';
 type Media = { uri: string; type: 'image' | 'video'; name?: string; size?: number; storagePath?: string };
 type CloudMediaRow = { id: string; kind: 'avatar' | 'cover' | 'post'; position: number; storage_path: string; media_type: 'image' | 'video'; original_name: string | null; };
 type Tab = 'Home' | 'Public' | 'Create' | 'Inbox' | 'Profile';
-type SearchCategory = 'People' | 'Videos' | 'Trending' | 'Funny' | 'Reels';
+type SearchCategory = 'People' | 'Videos' | 'Reels' | 'Trending' | 'Funny' | 'Vlogs' | 'Cinema' | 'Creators';
 type SearchVideo = { id: string; caption: string | null; media_path: string; created_at: string; user_id: string };
 type PublicProfile = { id: string; username: string; display_name: string; bio: string | null; profession_category: string | null; website_url?: string | null; activity_status?: string | null };
 
@@ -589,7 +589,7 @@ export default function App() {
       (profile.profession_category || '').toLowerCase().includes(query)
     );
     const filteredVideos = publicVideos.filter(video => (video.caption || '').toLowerCase().includes(query));
-    const categories: SearchCategory[] = ['People', 'Videos', 'Trending', 'Funny', 'Reels'];
+    const categories: SearchCategory[] = ['People', 'Videos', 'Reels', 'Trending', 'Funny', 'Vlogs', 'Cinema', 'Creators'];
     return <ScrollView contentContainerStyle={s.discoverScroll} keyboardShouldPersistTaps="handled">
       <Text style={s.pageTitle}>Search</Text>
       <View style={s.searchBox}>
@@ -623,7 +623,7 @@ export default function App() {
           <Ionicons name="chevron-forward" size={18} color={C.muted}/>
         </Pressable>)}
       </> : <View style={s.searchComingSoon}>
-        <Ionicons name={searchCategory === 'Trending' ? 'trending-up' : searchCategory === 'Funny' ? 'happy-outline' : 'videocam-outline'} size={32} color={C.cyan}/>
+        <Ionicons name={searchCategory === 'Trending' ? 'trending-up' : searchCategory === 'Funny' ? 'happy-outline' : searchCategory === 'Creators' ? 'people-outline' : searchCategory === 'Cinema' ? 'film-outline' : 'videocam-outline'} size={32} color={C.cyan}/>
         <Text style={s.sectionTitle}>{searchCategory} search</Text>
         <Text style={s.hint}>{searchCategory} discovery is coming in the next content update.</Text>
       </View>}
