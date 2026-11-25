@@ -1650,7 +1650,7 @@ export default function App() {
   };
 
   const LiveScreen = () => {
-    const countries = Array.from(new Map(liveCreators.map(creator => [creator.country_code, { code: creator.country_code, name: creator.country_name }])).values()).sort((a,b) => a.name.localeCompare(b.name));
+    const countries = Array.from(new Map(liveCreators.map(creator => [creator.country_code, { code: creator.country_code, name: creator.country_name }] as const)).values()).sort((a,b) => a.name.localeCompare(b.name));
     const visibleCreators = liveCountry === 'ALL' ? liveCreators : liveCreators.filter(creator => creator.country_code === liveCountry);
     return <ScrollView contentContainerStyle={s.liveScroll}>
       <View style={s.liveHeader}>
