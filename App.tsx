@@ -1758,6 +1758,7 @@ export default function App() {
               <View style={s.personAvatar}>{post.authorAvatar?.type === 'image' ? <Image source={{uri:post.authorAvatar.uri}} style={{width:'100%',height:'100%',borderRadius:24}}/> : <Ionicons name="person" size={21} color={C.cyan}/>}</View>
               <View style={{flex:1,gap:2}}><Text style={s.personName}>{post.author.display_name}</Text><Text style={s.personUsername}>@{post.author.username.replace(/[@#]/g,'')} · {new Date(post.created_at).toLocaleDateString()}</Text>{post.author.account_type === 'business' && <Text style={s.personBio}>{post.author.business_name || post.author.business_category || 'Business account'}</Text>}</View>
             </Pressable>
+            {!followedUserIds.includes(post.author.id) && <Pressable disabled={followBusyIds.includes(post.author.id)} onPress={() => void toggleFollow(post.author)} style={[s.feedFollowButton, pendingFollowIds.includes(post.author.id) && s.followingButton]}><Text style={[s.feedFollowText, pendingFollowIds.includes(post.author.id) && s.followingButtonText]}>{followBusyIds.includes(post.author.id) ? '…' : pendingFollowIds.includes(post.author.id) ? 'Requested' : 'Follow'}</Text></Pressable>}
             <Pressable onPress={() => Alert.alert('Post options', 'Choose an action for this post.', [{text:'Not interested',onPress:()=>setFeedPosts(old=>old.filter(item=>item.id!==post.id))},{text:'Report',onPress:()=>Alert.alert('Report received','This post has been flagged for review.')},{text:'Cancel',style:'cancel'}])} style={{padding:8}}><Ionicons name="ellipsis-horizontal" size={21} color={C.text}/></Pressable>
           </View>
           {!!post.caption && <Text style={s.feedCaption}>{post.caption}</Text>}
@@ -2202,7 +2203,7 @@ const s = StyleSheet.create({
   feedHeader:{flexDirection:'row',alignItems:'center',justifyContent:'space-between'},
   feedComposer:{flexDirection:'row',alignItems:'center',gap:10,padding:12,borderRadius:16,backgroundColor:'#FFFFFF',borderWidth:1,borderColor:C.border},
   feedPost:{backgroundColor:'#FFFFFF',borderRadius:18,borderWidth:1,borderColor:C.border,padding:12,gap:10},
-  feedPostHeader:{flexDirection:'row',alignItems:'center',gap:8},feedCaption:{color:C.text,fontSize:13,lineHeight:19},
+  feedPostHeader:{flexDirection:'row',alignItems:'center',gap:8},feedFollowButton:{paddingHorizontal:12,paddingVertical:7,borderRadius:10,backgroundColor:'#EAF5FF'},feedFollowText:{color:C.cyan,fontSize:11,fontWeight:'800'},feedCaption:{color:C.text,fontSize:13,lineHeight:19},
   feedMedia:{width:'100%',height:340,borderRadius:13,backgroundColor:'#EAF5FF'},
   feedActions:{flexDirection:'row',alignItems:'center',gap:17,paddingTop:2},feedAction:{flexDirection:'row',alignItems:'center',gap:5,paddingVertical:5},feedActionText:{color:C.text,fontSize:11,fontWeight:'700'},
   longVideosScroll:{padding:18,paddingTop:50,paddingBottom:30,gap:14},
