@@ -735,7 +735,7 @@ export default function App() {
         authorIds.length ? supabase!.from('profile_media').select('user_id, storage_path, media_type, original_name').in('user_id', authorIds).eq('kind', 'avatar') : Promise.resolve({ data: [], error: null }),
       ]);
       if (!active) return;
-      const authors = new Map<string, PublicProfile>((profileResult.data || []).filter((p: any) => !p.is_private).map((p: any) => [p.id, p as PublicProfile]));
+      const authors = new Map<string, PublicProfile>((profileResult.data || []).filter((p: any) => !p.is_private).map((p: any) => [p.id, p as PublicProfile] as const));
       const visibleRows = rows.filter((row: any) => authors.has(row.user_id));
       const avatarEntries = await Promise.all((avatarResult.data || []).map(async (row: any) => {
         const { data } = await supabase!.storage.from('usay-media').createSignedUrl(row.storage_path, 3600);
