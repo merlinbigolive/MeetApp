@@ -2,6 +2,11 @@ name: Deploy MEEi message push function
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/deploy-supabase-push.yml'
+      - 'supabase/functions/send-message-push/**'
 
 jobs:
   deploy:
