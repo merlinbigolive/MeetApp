@@ -1784,7 +1784,7 @@ export default function App() {
         (profile.profession_category || '').toLowerCase().includes(query)) &&
       (searchCategory !== 'Creators' || /(creator|influencer|youtub|content)/i.test(profile.profession_category || ''))
     );
-    const filteredVideos = publicVideos.filter(video => (video.caption || '').toLowerCase().includes(query));
+    const filteredVideos = publicVideos;
     const categories: SearchCategory[] = ['Reels', 'People', 'Videos', 'Trending', 'Funny', 'Vlogs', 'Cinema', 'Creators'];
     const openSearchVideo = (video: SearchVideo) => {
       const uri = videoUrls[video.id];
@@ -1843,7 +1843,7 @@ export default function App() {
       <View style={s.feedHeader}><View><Text style={s.pageTitle}>Videos</Text><Text style={s.searchSubtitle}>Long-form videos from MEEi creators</Text></View><View style={s.searchHeaderIcon}><Ionicons name="play" size={20} color={C.cyan}/></View></View>
       <View style={s.searchBox}><Ionicons name="search" size={19} color={C.muted}/><TextInput value={profileSearch} onChangeText={setProfileSearch} placeholder="Search long videos, topics or creators" placeholderTextColor={C.muted} style={s.searchInput}/>{!!profileSearch && <Pressable onPress={()=>setProfileSearch('')}><Ionicons name="close-circle" size={19} color={C.muted}/></Pressable>}</View>
       {loadingVideos ? <View style={s.searchEmpty}><Text style={s.hint}>Finding videos…</Text></View> : videos.length === 0 ? <View style={s.searchEmpty}><Ionicons name="film-outline" size={38} color={C.cyan}/><Text style={s.sectionTitle}>No long videos yet</Text><Text style={s.hint}>Public long-form videos will appear here.</Text></View> :
-        videos.filter(video=>(video.caption||'').toLowerCase().includes(profileSearch.toLowerCase())).map(video=><Pressable key={video.id} onPress={()=>{const uri=videoUrls[video.id];if(uri){void supabase?.rpc('record_public_post_view',{target_post_id:video.id});setViewer({uri,type:'video',storagePath:video.media_path});}}} style={s.longVideoCard}>
+        videos.map(video=><Pressable key={video.id} onPress={()=>{const uri=videoUrls[video.id];if(uri){void supabase?.rpc('record_public_post_view',{target_post_id:video.id});setViewer({uri,type:'video',storagePath:video.media_path});}}} style={s.longVideoCard}>
           {videoUrls[video.id] ? <LongVideoPreview uri={videoUrls[video.id]}/> : <View style={s.longVideoThumbFallback}><Ionicons name="play-circle" size={42} color="#FFFFFF"/></View>}
           <View style={{flex:1,gap:5}}><Text style={s.personName} numberOfLines={2}>{video.caption || 'MEEi video'}</Text><Text style={s.personUsername}>{video.view_count.toLocaleString()} views · {new Date(video.created_at).toLocaleDateString()}</Text><Text style={s.personBio}>MEEi creator video</Text></View>
         </Pressable>)}
