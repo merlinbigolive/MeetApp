@@ -168,6 +168,23 @@ export default function LiveBroadcastModal({ visible, sessionId, creatorName, on
     }
   };
 
+  const toggleModerator = async () => {
+    if (!isCreator || !selectedViewer || !chatSessionId || !supabase || moderationBusy) return;
+    setModerationBusy(true);
+    const { data, error } = await supabase.rpc("set_live_moderator", {
+      target_session_id: chatSessionId,
+      target_user_id: selectedViewer.user_id,
+      make_moderator: !selectedIsModerator,
+    });
+    setModerationBusy(false);
+    if (error || data !== true) {
+      Alert.alert("Moderator update failed", error?.message || "Please try again.");
+      return;
+    }
+    setSelectedIsModerator(!selectedIsModerator);
+    Alert.alert("Live moderator", selectedIsModerator ? "Moderator access removed." : "This viewer is now an authorized moderator.");
+  };
+
   const moderateViewer = (action: "mute" | "kickout" | "block") => {
     if (!selectedViewer || !chatSessionId || !supabase || !canModerate || moderationBusy) return;
     const labels = {
@@ -334,7 +351,7 @@ export default function LiveBroadcastModal({ visible, sessionId, creatorName, on
                     {canModerate && <Pressable onPress={() => setShowViewerMenu(v => !v)} style={styles.moreButton}><Text style={styles.moreButtonText}>⋮</Text></Pressable>}
                   </View>
                   {!!selectedViewer?.bio && <Text style={styles.profileBio}>{selectedViewer.bio}</Text>}
-                  {showViewerMenu && canModerate && <View style={styles.viewerMenu}>
+                  {showViewerMenu && canModerate && <View style={styles.viewerMenu}>\n                    {isCreator && <Pressable disabled={moderationBusy} onPress={toggleModerator} style={styles.viewerMenuItem}><Text style={styles.viewerMenuText}>{selectedIsModerator ? "Remove moderator access" : "Make Live moderator"}</Text></Pressable>}
                     <Pressable disabled={moderationBusy} onPress={() => moderateViewer("mute")} style={styles.viewerMenuItem}><Text style={styles.viewerMenuText}>Mute for 12 hours</Text></Pressable>
                     <Pressable disabled={moderationBusy} onPress={() => moderateViewer("kickout")} style={styles.viewerMenuItem}><Text style={styles.viewerMenuText}>Kick out for 12 hours</Text></Pressable>
                     <Pressable disabled={moderationBusy} onPress={() => moderateViewer("block")} style={styles.viewerMenuItem}><Text style={[styles.viewerMenuText,{color:"#D83B4B"}]}>Block permanently</Text></Pressable>
