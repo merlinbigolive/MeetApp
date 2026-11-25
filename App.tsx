@@ -300,6 +300,9 @@ export default function App() {
   const [searchCategory, setSearchCategory] = useState<SearchCategory>('Reels');
   const [publicVideos, setPublicVideos] = useState<SearchVideo[]>([]);
   const [feedPosts, setFeedPosts] = useState<FeedPost[]>([]);
+  const [savedPostIds, setSavedPostIds] = useState<string[]>([]);
+  const [savedPostBusyIds, setSavedPostBusyIds] = useState<string[]>([]);
+  const [reportBusyIds, setReportBusyIds] = useState<string[]>([]);
   const [loadingFeed, setLoadingFeed] = useState(false);
   const [ownPublishedPosts, setOwnPublishedPosts] = useState<PublishedPost[]>([]);
   const [otherPublishedPosts, setOtherPublishedPosts] = useState<PublishedPost[]>([]);
@@ -717,6 +720,14 @@ export default function App() {
         if (active) setLoadingFeed(false);
         return;
       }
+      const { data: savedRows, error: savedError } = await supabase!.from('saved_posts').select('post_id').eq('user_id', authData.session.user.id);
+      if (!active) return;
+      if (savedError) {
+        console.warn('Saved posts could not be loaded:', savedError.message);
+        setSavedPostIds([]);
+      } else {
+        setSavedPostIds((savedRows || []).map((row: any) => row.post_id));
+      }
       const { data: postRows, error } = await supabase!.from('posts')
         .select('id, post_type, caption, media_path, created_at, visibility, content_category, user_id')
         .eq('visibility', 'public').not('media_path', 'is', null)
@@ -1087,6 +1098,59 @@ export default function App() {
     setOwnPublishedPosts(old => old.map(item => item.id === post.id ? { ...item, comment_count: item.comment_count + 1 } : item));
     setOtherPublishedPosts(old => old.map(item => item.id === post.id ? { ...item, comment_count: item.comment_count + 1 } : item));
     void loadPostComments(post.id);
+  };
+
+  const toggleSavedPost = async (postId: string) => {
+    const client = supabase;
+    if (!client || savedPostBusyIds.includes(postId)) return;
+    const { data: authData, error: authError } = await client.auth.getSession();
+    const userId = authData.session?.user.id;
+    if (authError || !userId) {
+      Alert.alert('Sign in required', 'Please sign in again to save posts.');
+      return;
+    }
+    const isSaved = savedPostIds.includes(postId);
+    setSavedPostBusyIds(old => [...old, postId]);
+    const result = isSaved
+      ? await client.from('saved_posts').delete().eq('post_id', postId).eq('user_id', userId)
+      : await client.from('saved_posts').insert({ post_id: postId, user_id: userId });
+    setSavedPostBusyIds(old => old.filter(id => id !== postId));
+    if (result.error) {
+      Alert.alert('Could not update saved posts', result.error.message);
+      return;
+    }
+    setSavedPostIds(old => isSaved ? old.filter(id => id !== postId) : [...old, postId]);
+  };
+
+  const submitPostReport = async (post: FeedPost, reason: 'spam' | 'harassment' | 'hate' | 'violence' | 'nudity' | 'scam' | 'copyright' | 'other') => {
+    const client = supabase;
+    if (!client || reportBusyIds.includes(post.id)) return;
+    const { data: authData, error: authError } = await client.auth.getSession();
+    const userId = authData.session?.user.id;
+    if (authError || !userId) {
+      Alert.alert('Sign in required', 'Please sign in again to report a post.');
+      return;
+    }
+    if (post.author.id === userId) {
+      Alert.alert('Cannot report your own post', 'You can report content posted by another account.');
+      return;
+    }
+    setReportBusyIds(old => [...old, post.id]);
+    const { error } = await client.from('post_reports').insert({
+      reporter_id: userId,
+      post_id: post.id,
+      reason,
+    });
+    setReportBusyIds(old => old.filter(id => id !== post.id));
+    if (error?.code === '23505') {
+      Alert.alert('Already reported', 'You have already reported this post. The report remains available for moderation review.');
+      return;
+    }
+    if (error) {
+      Alert.alert('Report not submitted', error.message);
+      return;
+    }
+    Alert.alert('Report submitted', 'Thank you. Your report has been recorded for moderation review.');
   };
 
   const togglePublishedPostLike = async (post: PublishedPost, isOtherProfile: boolean) => {
@@ -1759,7 +1823,21 @@ export default function App() {
               <View style={{flex:1,gap:2}}><Text style={s.personName}>{post.author.display_name}</Text><Text style={s.personUsername}>@{post.author.username.replace(/[@#]/g,'')} · {new Date(post.created_at).toLocaleDateString()}</Text>{post.author.account_type === 'business' && <Text style={s.personBio}>{post.author.business_name || post.author.business_category || 'Business account'}</Text>}</View>
             </Pressable>
             {!followedUserIds.includes(post.author.id) && <Pressable disabled={followBusyIds.includes(post.author.id)} onPress={() => void toggleFollow(post.author)} style={[s.feedFollowButton, pendingFollowIds.includes(post.author.id) && s.followingButton]}><Text style={[s.feedFollowText, pendingFollowIds.includes(post.author.id) && s.followingButtonText]}>{followBusyIds.includes(post.author.id) ? '…' : pendingFollowIds.includes(post.author.id) ? 'Requested' : 'Follow'}</Text></Pressable>}
-            <Pressable onPress={() => Alert.alert('Post options', 'Choose an action for this post.', [{text:'Not interested',onPress:()=>setFeedPosts(old=>old.filter(item=>item.id!==post.id))},{text:'Report',onPress:()=>Alert.alert('Report feature pending','Report submission will be connected to the moderation backend before launch.')},{text:'Cancel',style:'cancel'}])} style={{padding:8}}><Ionicons name="ellipsis-horizontal" size={21} color={C.text}/></Pressable>
+            <Pressable onPress={() => Alert.alert('Post options', 'Choose an action for this post.', [
+              { text: 'Not interested', onPress: () => setFeedPosts(old => old.filter(item => item.id !== post.id)) },
+              { text: 'Report', onPress: () => Alert.alert('Report post', 'Select the closest reason.', [
+                { text: 'Spam or misleading', onPress: () => void submitPostReport(post, 'spam') },
+                { text: 'Harassment or bullying', onPress: () => void submitPostReport(post, 'harassment') },
+                { text: 'Hate or hateful conduct', onPress: () => void submitPostReport(post, 'hate') },
+                { text: 'Violence or dangerous acts', onPress: () => void submitPostReport(post, 'violence') },
+                { text: 'Nudity or sexual content', onPress: () => void submitPostReport(post, 'nudity') },
+                { text: 'Scam or fraud', onPress: () => void submitPostReport(post, 'scam') },
+                { text: 'Copyright concern', onPress: () => void submitPostReport(post, 'copyright') },
+                { text: 'Other', onPress: () => void submitPostReport(post, 'other') },
+                { text: 'Cancel', style: 'cancel' },
+              ]) },
+              { text: 'Cancel', style: 'cancel' },
+            ])} style={{padding:8}}><Ionicons name="ellipsis-horizontal" size={21} color={C.text}/></Pressable>
           </View>
           {!!post.caption && <Text style={s.feedCaption}>{post.caption}</Text>}
           {post.post_type === 'video' ? <FeedVideoMedia uri={post.media.uri} onPress={() => setViewer(post.media)}/> :
@@ -1769,7 +1847,7 @@ export default function App() {
             <Pressable onPress={() => openPostComments(post)} style={s.feedAction}><Ionicons name="chatbubble-outline" size={21} color={C.text}/><Text style={s.feedActionText}>{post.comment_count}</Text></Pressable>
             <Pressable onPress={() => void Share.share({message: (post.caption || 'Check out this post on MEEi') + ' · MEEi'})} style={s.feedAction}><Ionicons name="paper-plane-outline" size={21} color={C.text}/><Text style={s.feedActionText}>Share</Text></Pressable>
             <View style={{flex:1}}/>
-            <Pressable onPress={() => Alert.alert('Saved', 'Save-to-collection will be available with the saved posts feature.')} style={{padding:6}}><Ionicons name="bookmark-outline" size={21} color={C.text}/></Pressable>
+            <Pressable disabled={savedPostBusyIds.includes(post.id)} onPress={() => void toggleSavedPost(post.id)} accessibilityRole="button" accessibilityLabel={savedPostIds.includes(post.id) ? 'Remove saved post' : 'Save post'} style={{padding:6}}><Ionicons name={savedPostIds.includes(post.id) ? 'bookmark' : 'bookmark-outline'} size={21} color={savedPostIds.includes(post.id) ? C.pink : C.text}/></Pressable>
           </View>
         </View>)}
     </ScrollView>
