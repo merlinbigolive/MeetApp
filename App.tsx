@@ -30,6 +30,8 @@ type FollowRequest = { follower_id: string; username: string; display_name: stri
 type ChatMessage = { id: string; conversation_id: string; sender_id: string; body: string; created_at: string; read_at?: string | null; message_type?: 'text' | 'voice'; audio_path?: string | null; audio_url?: string | null; transcript?: string | null };
 type ChatThread = { id: string; user_one_id: string; user_two_id: string; updated_at: string; unread_count?: number; otherUser: PublicProfile };
 
+const LONG_VIDEOS_PUBLIC_ENABLED = false; // Keep the completed Long Videos experience private until monetization is ready.
+
 const CUCKOO_SOUND_FILE = 'cuckoo_default_natural.wav';
 const CUCKOO_SOUND_CHANNEL = 'messages-cuckoo-sound';
 const SILENT_MESSAGE_CHANNEL = 'messages-silent';
@@ -715,7 +717,7 @@ export default function App() {
 
   useEffect(() => {
     const videoCategories: SearchCategory[] = ['Videos', 'Reels', 'Trending', 'Funny', 'Vlogs', 'Cinema'];
-    if ((tab !== 'Search' && tab !== 'Videos') || !videoCategories.includes(searchCategory) || !supabase) return;
+    if ((tab !== 'Search' && (tab !== 'Videos' || !LONG_VIDEOS_PUBLIC_ENABLED)) || !videoCategories.includes(searchCategory) || !supabase) return;
     let active = true;
     const loadSearchVideos = async () => {
       setLoadingVideos(true);
@@ -2202,13 +2204,13 @@ export default function App() {
         {selectedProfile ? <OtherProfileScreen/> : tab === 'Profile' ? <Profile/> :
           tab === 'Home' || tab === 'Public' ? <PublicFeedScreen/> :
           tab === 'Search' ? <DiscoverScreen/> :
-          tab === 'Videos' ? <LongVideosScreen/> :
+          tab === 'Videos' ? (LONG_VIDEOS_PUBLIC_ENABLED ? <LongVideosScreen/> : <Profile/>) :
           tab === 'Live' ? <LiveScreen/> :
           tab === 'Create' ? <CreateScreen/> :
           <InboxScreen/>}
       </View>
       <View style={s.nav}>
-        {(['Home','Search','Live','Videos'] as const).map((item) => {
+        {(['Home','Search','Live', ...(LONG_VIDEOS_PUBLIC_ENABLED ? ['Videos' as const] : [])] as const).map((item) => {
           const icons = { Home: 'home-outline', Search: 'search-outline', Live: 'radio-outline', Videos: 'play-circle-outline' } as const;
           return <Pressable key={item} style={s.navItem} onPress={() => { setSelectedProfile(null); setTab(item); }}>
             <Ionicons name={icons[item]} size={21} color={tab === item ? C.pink : C.muted}/>
