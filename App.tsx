@@ -12,6 +12,7 @@ import { useVideoPlayer, VideoView } from 'expo-video';
 import { useAudioPlayer, useAudioPlayerStatus } from 'expo-audio';
 import { ExpoSpeechRecognitionModule, useSpeechRecognitionEvent } from 'expo-speech-recognition';
 import { supabase } from './supabase';
+import LiveBroadcastModal from './LiveBroadcastModal';
 
 type Media = { uri: string; type: 'image' | 'video'; name?: string; size?: number; mimeType?: string; storagePath?: string };
 type CloudMediaRow = { id: string; kind: 'avatar' | 'cover' | 'post'; position: number; storage_path: string; media_type: 'image' | 'video'; original_name: string | null; };
@@ -210,6 +211,8 @@ function CuckooOpeningExperience() {
 export default function App() {
   const [tab, setTab] = useState<Tab>('Profile');
   const [createMenuVisible, setCreateMenuVisible] = useState(false);
+  const [liveStudioVisible, setLiveStudioVisible] = useState(false);
+  const [liveJoinSessionId, setLiveJoinSessionId] = useState<string | null>(null);
   const [name, setName] = useState('MEEi User');
   const [username, setUsername] = useState('your_username');
   const [bio, setBio] = useState('Creating connections, sharing ideas and meeting amazing people.');
@@ -1684,8 +1687,8 @@ export default function App() {
         <View style={s.liveGrid}>{visibleCreators.map(creator => {
           const uri = liveMediaUrls[creator.session_id];
           return <Pressable key={creator.session_id} onPress={() => {
-            if (creator.playback_url) setViewer({ uri: creator.playback_url, type: 'video' });
-            else setSelectedProfile({ id: creator.user_id, username: creator.username, display_name: creator.display_name, bio: null, profession_category: creator.profession_category });
+            setLiveJoinSessionId(creator.session_id);
+            setLiveStudioVisible(true);
           }} style={s.liveCard}>
             {uri ? <Image source={{ uri }} style={s.liveCardImage} resizeMode="cover"/> : <View style={s.liveCardFallback}><Ionicons name="person" size={34} color="#FFFFFF"/></View>}
             <View style={s.liveCardShade}/>
@@ -1804,6 +1807,7 @@ export default function App() {
     <View style={s.root}>
       <StatusBar barStyle="dark-content" backgroundColor={C.bg}/>
       <CuckooOpeningExperience />
+      <LiveBroadcastModal visible={liveStudioVisible} sessionId={liveJoinSessionId} creatorName={name} onClose={() => { setLiveStudioVisible(false); setLiveJoinSessionId(null); }} />
       <View style={{flex:1}}>
         {selectedProfile ? <OtherProfileScreen/> : tab === 'Profile' ? <Profile/> :
           tab === 'Home' ? <SimpleScreen title="MEEi" subtitle="Your people, one place."/> :
@@ -1842,7 +1846,7 @@ export default function App() {
               <View style={s.createMenuText}><Text style={s.createMenuTitle}>Create Reel</Text><Text style={s.createMenuSubtitle}>Make and publish a short video</Text></View>
               <Ionicons name="chevron-forward" size={18} color={C.muted}/>
             </Pressable>
-            <Pressable style={s.createMenuOption} onPress={() => { setCreateMenuVisible(false); Alert.alert('Go Live', 'Live broadcasting is not connected yet. The live creator flow will be enabled after the streaming setup is complete.'); }}>
+            <Pressable style={s.createMenuOption} onPress={() => { setCreateMenuVisible(false); setLiveJoinSessionId(null); setLiveStudioVisible(true); }}>
               <View style={[s.createMenuIcon,{backgroundColor:'#FFF0F0'}]}><Ionicons name="radio" size={23} color="#E34D59"/></View>
               <View style={s.createMenuText}><Text style={s.createMenuTitle}>Go Live</Text><Text style={s.createMenuSubtitle}>Start a live video with your audience</Text></View>
               <Ionicons name="chevron-forward" size={18} color={C.muted}/>
