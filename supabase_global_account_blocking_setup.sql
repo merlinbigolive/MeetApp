@@ -235,7 +235,7 @@ as $$
   from public.profiles p
   where auth.uid() is not null
     and p.id <> auth.uid()
-    and not public.is_blocked_between(auth.uid(), p.id)
+    and not public.is_blocked_for_current_user(p.id)
   order by p.created_at desc
   limit 100;
 $$;
