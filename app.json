@@ -9,13 +9,22 @@
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.meetapp.social"
+      "bundleIdentifier": "com.meetapp.social",
+      "infoPlist": {
+        "NSCameraUsageDescription": "MEEi uses your camera to broadcast live video and join video experiences.",
+        "NSMicrophoneUsageDescription": "MEEi uses your microphone for live broadcasts and voice chat."
+      }
     },
     "android": {
       "package": "com.meetapp.social",
       "adaptiveIcon": {
         "backgroundColor": "#F5FAFF"
-      }
+      },
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS"
+      ]
     },
     "plugins": [
       [
@@ -49,7 +58,9 @@
             "com.google.android.googlequicksearchbox"
           ]
         }
-      ]
+      ],
+      "@livekit/react-native-expo-plugin",
+      "@config-plugins/react-native-webrtc"
     ]
   }
 }
