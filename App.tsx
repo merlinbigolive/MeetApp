@@ -217,6 +217,42 @@ export function MEEiOpeningExperience({ onComplete }: { onComplete?: () => void 
   );
 }
 
+
+const CHAT_EMOJI_CATEGORIES = [
+  { label: 'Smileys', icon: '😀', emojis: '😀 😃 😄 😁 😆 😅 😂 🤣 🥲 😊 😇 🙂 🙃 😉 😌 😍 🥰 😘 😋 😛 😜 🤪 🤗 🤔 🫡 🤭 🫢 😎 🥳 😭 😢 😤 😡 🤯 🥹 🫶'.split(' ') },
+  { label: 'Gestures', icon: '👋', emojis: '👋 🤚 🖐️ ✋ 🖖 👌 🤌 🤏 ✌️ 🤞 🫰 🤟 🤘 🤙 👈 👉 👆 👇 ☝️ 👍 👎 ✊ 👊 🤛 🤜 👏 🙌 👐 🤝 🙏 💪'.split(' ') },
+  { label: 'Hearts', icon: '❤️', emojis: '❤️ 🩷 🧡 💛 💚 💙 🩵 💜 🤎 🖤 🩶 🤍 💔 ❤️‍🔥 ❤️‍🩹 💕 💞 💓 💗 💖 💘 💝 💟'.split(' ') },
+  { label: 'Animals', icon: '🐶', emojis: '🐶 🐱 🐭 🐹 🐰 🦊 🐻 🐼 🐻‍❄️ 🐨 🐯 🦁 🐮 🐷 🐸 🐵 🐔 🐧 🐦 🦄 🐝 🦋 🐢 🐬 🦖'.split(' ') },
+  { label: 'Food', icon: '🍕', emojis: '🍎 🍉 🍇 🍓 🫐 🍒 🍑 🥭 🍍 🥥 🥑 🍕 🍔 🍟 🌮 🍜 🍣 🍩 🍪 🎂 🍫 ☕ 🧋'.split(' ') },
+  { label: 'Activities', icon: '⚽', emojis: '⚽ 🏀 🏈 ⚾ 🎾 🏐 🏓 🏸 🥊 🏆 🎮 🎯 🎲 🎨 🎤 🎧 🎬 🎸 🎹 🏋️ 🚴 🧘'.split(' ') },
+  { label: 'Objects', icon: '✨', emojis: '✨ ⭐ 🌟 💫 🔥 💯 🎉 🎊 🎁 🎈 💎 👑 🚀 ✈️ 🚗 📱 💻 📸 💡 🔔 📌 ❤️'.split(' ') },
+];
+
+function ChatEmojiPicker({ onSelect }: { onSelect: (emoji: string) => void }) {
+  const [category, setCategory] = useState('Smileys');
+  const active = CHAT_EMOJI_CATEGORIES.find(item => item.label === category) || CHAT_EMOJI_CATEGORIES[0];
+  return (
+    <View style={{ backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#E2E9EF', borderRadius: 16, padding: 10, marginBottom: 8 }}>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingBottom: 9 }}>
+        {CHAT_EMOJI_CATEGORIES.map(item => (
+          <Pressable key={item.label} onPress={() => setCategory(item.label)} accessibilityRole="button" accessibilityLabel={item.label}
+            style={{ minWidth: 42, height: 36, paddingHorizontal: 9, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: category === item.label ? '#E7F4FF' : '#F5F8FB', borderWidth: 1, borderColor: category === item.label ? '#8BCBFA' : '#EDF1F5' }}>
+            <Text style={{ fontSize: 19 }}>{item.icon}</Text>
+          </Pressable>
+        ))}
+      </ScrollView>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'flex-start' }}>
+        {active.emojis.map((emoji, index) => (
+          <Pressable key={active.label + index} onPress={() => onSelect(emoji)} accessibilityRole="button" accessibilityLabel={'Insert ' + emoji}
+            style={{ width: '12.5%', minWidth: 34, height: 42, alignItems: 'center', justifyContent: 'center' }}>
+            <Text style={{ fontSize: 25 }}>{emoji}</Text>
+          </Pressable>
+        ))}
+      </View>
+    </View>
+  );
+}
+
 export default function App() {
   const [tab, setTab] = useState<Tab>('Profile');
   const [createMenuVisible, setCreateMenuVisible] = useState(false);
@@ -273,6 +309,7 @@ export default function App() {
   const [activeChat, setActiveChat] = useState<ChatThread | null>(null);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [chatDraft, setChatDraft] = useState('');
+  const [emojiPickerVisible, setEmojiPickerVisible] = useState(false);
   const [chatLoading, setChatLoading] = useState(false);
   const [chatSending, setChatSending] = useState(false);
   const [voiceRecording, setVoiceRecording] = useState(false);
@@ -1777,7 +1814,11 @@ export default function App() {
               </View>;
             })}
         </ScrollView>
+        {emojiPickerVisible && <ChatEmojiPicker onSelect={emoji => setChatDraft(old => old + emoji)}/>}
         <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 8, paddingTop: 10, borderTopWidth: 1, borderColor: '#E5EBF0', backgroundColor: '#F4F7FA' }}>
+          <Pressable onPress={() => setEmojiPickerVisible(old => !old)} accessibilityRole="button" accessibilityLabel={emojiPickerVisible ? 'Close emoji picker' : 'Open emoji picker'} style={{ width: 42, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: emojiPickerVisible ? '#E7F4FF' : '#FFFFFF', borderWidth: 1, borderColor: '#E2E9EF' }}>
+            <Ionicons name={emojiPickerVisible ? 'close' : 'happy-outline'} size={22} color={C.cyan}/>
+          </Pressable>
           <TextInput value={chatDraft} onChangeText={setChatDraft} placeholder="Message" placeholderTextColor={C.muted} multiline style={[s.input, { flex: 1, maxHeight: 110, minHeight: 44, paddingVertical: 10, borderRadius: 24, backgroundColor: '#FFFFFF', borderColor: '#E2E9EF', paddingHorizontal: 16 }]}/>
           <Pressable disabled={voiceSending} onLongPress={() => Alert.alert('Voice recognition language', 'Choose the language you will speak.', [{ text: 'Hindi', onPress: () => setVoiceLanguage('hi-IN') }, { text: 'English', onPress: () => setVoiceLanguage('en-IN') }, { text: 'Cancel', style: 'cancel' }])} onPress={() => voiceRecording ? stopVoiceRecording() : void startVoiceRecording()} style={[s.secondary, { width: 44, minHeight: 44, padding: 0, opacity: voiceSending ? 0.55 : 1 }]}><Ionicons name={voiceRecording ? 'stop-circle' : 'mic-outline'} size={19} color={voiceRecording ? '#D33' : C.cyan}/></Pressable>
           <Pressable disabled={!chatDraft.trim() || chatSending} onPress={() => void sendChatMessage()} style={[s.primary, { flex: 0, width: 48, minHeight: 44, opacity: !chatDraft.trim() || chatSending ? 0.55 : 1 }]}>
