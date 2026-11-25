@@ -16,22 +16,22 @@ create index if not exists user_blocks_blocked_idx
 alter table public.user_blocks enable row level security;
 
 -- A SECURITY DEFINER helper avoids exposing the block graph and avoids RLS recursion.
-create or replace function public.is_blocked_between(user_a uuid, user_b uuid)
+create or replace function public.is_blocked_for_current_user(other_user_id uuid)
 returns boolean
 language sql
 stable
 security definer
 set search_path = public
 as $$
-  select user_a is not null and user_b is not null and user_a <> user_b
+  select auth.uid() is not null and other_user_id is not null and other_user_id <> auth.uid()
     and exists (
       select 1 from public.user_blocks b
-      where (b.blocker_id = user_a and b.blocked_id = user_b)
-         or (b.blocker_id = user_b and b.blocked_id = user_a)
+      where (b.blocker_id = auth.uid() and b.blocked_id = other_user_id)
+         or (b.blocker_id = other_user_id and b.blocked_id = auth.uid())
     );
 $$;
 
-revoke all on function public.is_blocked_between(uuid, uuid) from public;
+revoke all on function public.is_blocked_for_current_user(uuid) from public;
 grant execute on function public.is_blocked_between(uuid, uuid) to authenticated;
 
 drop policy if exists "user_blocks_read_own" on public.user_blocks;
@@ -111,17 +111,17 @@ grant execute on function public.get_my_blocked_users() to authenticated;
 drop policy if exists "global_block_profiles_select" on public.profiles;
 create policy "global_block_profiles_select" on public.profiles
 as restrictive for select to authenticated
-using (id = auth.uid() or not public.is_blocked_between(auth.uid(), id));
+using (id = auth.uid() or not public.is_blocked_for_current_user(id));
 
 drop policy if exists "global_block_follows_insert" on public.follows;
 create policy "global_block_follows_insert" on public.follows
 as restrictive for insert to authenticated
-with check (not public.is_blocked_between(auth.uid(), followed_id));
+with check (not public.is_blocked_for_current_user(followed_id));
 
 drop policy if exists "global_block_posts_select" on public.posts;
 create policy "global_block_posts_select" on public.posts
 as restrictive for select to authenticated
-using (user_id = auth.uid() or not public.is_blocked_between(auth.uid(), user_id));
+using (user_id = auth.uid() or not public.is_blocked_for_current_user(user_id));
 
 drop policy if exists "global_block_posts_insert" on public.posts;
 create policy "global_block_posts_insert" on public.posts
@@ -136,7 +136,7 @@ using (
   or not exists (
     select 1 from public.posts p
     where p.id = post_comments.post_id
-      and public.is_blocked_between(auth.uid(), p.user_id)
+      and public.is_blocked_for_current_user(p.user_id)
   )
 );
 
@@ -161,7 +161,7 @@ drop policy if exists "global_block_conversations_select" on public.conversation
 create policy "global_block_conversations_select" on public.conversations
 as restrictive for select to authenticated
 using (
-  not public.is_blocked_between(auth.uid(),
+  not public.is_blocked_for_current_user(
     case when user_one_id = auth.uid() then user_two_id else user_one_id end)
 );
 
@@ -180,7 +180,7 @@ using (
   exists (
     select 1 from public.conversations c
     where c.id = messages.conversation_id
-      and not public.is_blocked_between(auth.uid(),
+      and not public.is_blocked_for_current_user(
         case when c.user_one_id = auth.uid() then c.user_two_id else c.user_one_id end)
   )
 );
