@@ -2001,7 +2001,7 @@ export default function App() {
           <InboxScreen/>}
       </View>
       <View style={s.nav}>
-        {(['Home','Search','Live','Videos'] as Tab[]).map((item) => {
+        {(['Home','Search','Live','Videos'] as const).map((item) => {
           const icons = { Home: 'home-outline', Search: 'search-outline', Live: 'radio-outline', Videos: 'play-circle-outline' } as const;
           return <Pressable key={item} style={s.navItem} onPress={() => { setSelectedProfile(null); setTab(item); }}>
             <Ionicons name={icons[item]} size={21} color={tab === item ? C.pink : C.muted}/>
