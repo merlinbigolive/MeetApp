@@ -60,3 +60,12 @@ begin
   return new;
 end;
 $function$;
+
+-- Rename legacy internal trigger/function identifiers after the MEEi secret is active.
+alter function public.notify_cuckoo_message_push()
+rename to notify_meei_message_push;
+
+drop trigger if exists send_cuckoo_push_after_message_insert on public.messages;
+create trigger send_meei_push_after_message_insert
+after insert on public.messages
+for each row execute function public.notify_meei_message_push();
