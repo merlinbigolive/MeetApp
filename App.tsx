@@ -23,6 +23,7 @@ type LiveCreator = { session_id: string; user_id: string; username: string; disp
 type PublishedPost = { id: string; post_type: 'photo' | 'video' | 'text'; caption: string | null; media_path: string | null; created_at: string; visibility: string; content_category: string | null; like_count: number; viewer_liked: boolean; comment_count: number; media: Media };
 type FeedPost = PublishedPost & { author: PublicProfile; authorAvatar?: Media | null };
 type PostComment = { id: string; post_id: string; user_id: string; body: string; created_at: string; username: string; display_name: string };
+type PostReactionSummary = { counts: Record<string, number>; mine: string | null };
 type PublicProfile = { id: string; username: string; display_name: string; bio: string | null; profession_category: string | null; website_url?: string | null; activity_status?: string | null; is_private?: boolean; account_type?: 'personal' | 'business'; business_name?: string | null; business_category?: string | null; business_description?: string | null };
 type FollowRequest = { follower_id: string; username: string; display_name: string; requested_at: string };
 type ChatMessage = { id: string; conversation_id: string; sender_id: string; body: string; created_at: string; read_at?: string | null; message_type?: 'text' | 'voice'; audio_path?: string | null; audio_url?: string | null; transcript?: string | null };
@@ -241,6 +242,24 @@ const CHAT_EMOJI_CATEGORIES = [
   { label: 'Objects', icon: '✨', emojis: '✨ ⭐ 🌟 💫 🔥 💯 🎉 🎊 🎁 🎈 💎 👑 🚀 ✈️ 🚗 📱 💻 📸 💡 🔔 📌 ❤️'.split(' ') },
 ];
 
+const POST_REACTION_EMOJIS = ['❤️','😂','😍','🔥','👏','😮','😢','👍','🎉','🤔','🥰','🙏','💯','🤩','😡','🫶'];
+
+function PostReactionPicker({ visible, onClose, onSelect }: { visible: boolean; onClose: () => void; onSelect: (emoji: string) => void }) {
+  return <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+    <Pressable onPress={onClose} style={{ flex: 1, backgroundColor: '#0008', justifyContent: 'flex-end' }}>
+      <Pressable onPress={() => {}} style={{ backgroundColor: '#FFFFFF', borderTopLeftRadius: 22, borderTopRightRadius: 22, padding: 20, paddingBottom: 30, gap: 14 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+          <Text style={{ color: '#172B3A', fontSize: 16, fontWeight: '900' }}>React to post</Text>
+          <Pressable onPress={onClose} hitSlop={10}><Ionicons name="close" size={23} color="#526B7D"/></Pressable>
+        </View>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', rowGap: 12 }}>
+          {POST_REACTION_EMOJIS.map(emoji => <Pressable key={emoji} onPress={() => onSelect(emoji)} style={{ width: '23%', minHeight: 54, borderRadius: 13, backgroundColor: '#F4F9FD', alignItems: 'center', justifyContent: 'center' }}><Text style={{ fontSize: 29 }}>{emoji}</Text></Pressable>)}
+        </View>
+      </Pressable>
+    </Pressable>
+  </Modal>;
+}
+
 function ChatEmojiPicker({ onSelect }: { onSelect: (emoji: string) => void }) {
   const [category, setCategory] = useState('Smileys');
   const active = CHAT_EMOJI_CATEGORIES.find(item => item.label === category) || CHAT_EMOJI_CATEGORIES[0];
@@ -301,6 +320,8 @@ export default function App() {
   const [publicVideos, setPublicVideos] = useState<SearchVideo[]>([]);
   const [feedPosts, setFeedPosts] = useState<FeedPost[]>([]);
   const [savedPostIds, setSavedPostIds] = useState<string[]>([]);
+  const [postReactionSummaries, setPostReactionSummaries] = useState<Record<string, PostReactionSummary>>({});
+  const [reactionPostId, setReactionPostId] = useState<string | null>(null);
   const [savedPostBusyIds, setSavedPostBusyIds] = useState<string[]>([]);
   const [reportBusyIds, setReportBusyIds] = useState<string[]>([]);
   const [reportPost, setReportPost] = useState<FeedPost | null>(null);
@@ -765,12 +786,23 @@ export default function App() {
       if (!active) return;
       const valid = hydrated.filter((post): post is FeedPost => post !== null);
       if (valid.length) {
-        const [engagement, commentCounts] = await Promise.all([
+        const [engagement, commentCounts, reactionsResult] = await Promise.all([
           supabase!.rpc('get_profile_post_engagement', { target_post_ids: valid.map(post => post.id) }),
           fetchPostCommentCounts(valid.map(post => post.id)),
+          supabase!.from('post_reactions').select('post_id,user_id,emoji').in('post_id', valid.map(post => post.id)),
         ]);
         if (!active) return;
         const byId = new Map<string, any>((engagement.data || []).map((item: any) => [item.post_id, item]));
+        const reactionMap: Record<string, PostReactionSummary> = {};
+        valid.forEach(post => { reactionMap[post.id] = { counts: {}, mine: null }; });
+        if (reactionsResult.error) console.warn('Post reactions could not be loaded:', reactionsResult.error.message);
+        else (reactionsResult.data || []).forEach((reaction: any) => {
+          const summary = reactionMap[reaction.post_id];
+          if (!summary) return;
+          summary.counts[reaction.emoji] = (summary.counts[reaction.emoji] || 0) + 1;
+          if (reaction.user_id === authData.session!.user.id) summary.mine = reaction.emoji;
+        });
+        setPostReactionSummaries(reactionMap);
         setFeedPosts(valid.map(post => {
           const item = byId.get(post.id);
           return { ...post, like_count: Number(item?.like_count || 0), viewer_liked: !!item?.viewer_liked, comment_count: commentCounts[post.id] || 0 };
@@ -1099,6 +1131,30 @@ export default function App() {
     setOwnPublishedPosts(old => old.map(item => item.id === post.id ? { ...item, comment_count: item.comment_count + 1 } : item));
     setOtherPublishedPosts(old => old.map(item => item.id === post.id ? { ...item, comment_count: item.comment_count + 1 } : item));
     void loadPostComments(post.id);
+  };
+
+  const togglePostReaction = async (postId: string, emoji: string) => {
+    const client = supabase;
+    if (!client || !POST_REACTION_EMOJIS.includes(emoji)) return;
+    const { data: authData, error: authError } = await client.auth.getSession();
+    const userId = authData.session?.user.id;
+    if (authError || !userId) { Alert.alert('Sign in required', 'Please sign in again to react to posts.'); return; }
+    const current = postReactionSummaries[postId] || { counts: {}, mine: null };
+    const previous = current.mine;
+    const result = previous === emoji
+      ? await client.from('post_reactions').delete().eq('post_id', postId).eq('user_id', userId)
+      : await client.from('post_reactions').upsert({ post_id: postId, user_id: userId, emoji }, { onConflict: 'post_id,user_id' });
+    if (result.error) { Alert.alert('Reaction not saved', result.error.message); return; }
+    setPostReactionSummaries(old => {
+      const base = old[postId] || { counts: {}, mine: null };
+      const counts = { ...base.counts };
+      if (previous) counts[previous] = Math.max(0, (counts[previous] || 0) - 1);
+      const nextMine = previous === emoji ? null : emoji;
+      if (nextMine) counts[nextMine] = (counts[nextMine] || 0) + 1;
+      Object.keys(counts).forEach(key => { if (!counts[key]) delete counts[key]; });
+      return { ...old, [postId]: { counts, mine: nextMine } };
+    });
+    setReactionPostId(null);
   };
 
   const toggleSavedPost = async (postId: string) => {
@@ -1840,6 +1896,13 @@ export default function App() {
             <View style={{flex:1}}/>
             <Pressable disabled={savedPostBusyIds.includes(post.id)} onPress={() => void toggleSavedPost(post.id)} accessibilityRole="button" accessibilityLabel={savedPostIds.includes(post.id) ? 'Remove saved post' : 'Save post'} style={{padding:6}}><Ionicons name={savedPostIds.includes(post.id) ? 'bookmark' : 'bookmark-outline'} size={21} color={savedPostIds.includes(post.id) ? C.pink : C.text}/></Pressable>
           </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingTop: 2 }}>
+            <Pressable onPress={() => setReactionPostId(post.id)} style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingVertical: 4, paddingHorizontal: 8, borderRadius: 14, backgroundColor: '#F4F9FD' }}>
+              <Text style={{ fontSize: 15 }}>{postReactionSummaries[post.id]?.mine || '😊'}</Text>
+              <Text style={{ color: C.muted, fontSize: 11, fontWeight: '700' }}>React</Text>
+            </Pressable>
+            {Object.entries(postReactionSummaries[post.id]?.counts || {}).sort((a,b) => b[1]-a[1]).slice(0,4).map(([emoji,count]) => <Pressable key={emoji} onPress={() => setReactionPostId(post.id)} style={{ flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 7, paddingVertical: 4, borderRadius: 13, backgroundColor: postReactionSummaries[post.id]?.mine === emoji ? '#E7F4FF' : '#F7F9FB', borderWidth: postReactionSummaries[post.id]?.mine === emoji ? 1 : 0, borderColor: '#9DD6F4' }}><Text style={{ fontSize: 14 }}>{emoji}</Text><Text style={{ color: C.muted, fontSize: 10, fontWeight: '700' }}>{count}</Text></Pressable>)}
+          </View>
         </View>)}
     </ScrollView>
   );
@@ -2289,6 +2352,7 @@ export default function App() {
           </View>
         </View>
       </Modal>
+      <PostReactionPicker visible={!!reactionPostId} onClose={() => setReactionPostId(null)} onSelect={emoji => { if (reactionPostId) void togglePostReaction(reactionPostId, emoji); }}/>
       <Modal visible={!!viewer} transparent animationType="fade" onRequestClose={()=>setViewer(null)}>
         <View style={s.viewer}><Pressable style={s.viewerClose} onPress={()=>setViewer(null)}><Ionicons name="close" size={26} color="#fff"/></Pressable>
           {viewer?.type === 'image' ? <Image source={{uri:viewer.uri}} resizeMode="contain" style={{width:'100%',height:'82%'}}/> :
