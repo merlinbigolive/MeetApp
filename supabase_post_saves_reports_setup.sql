@@ -35,7 +35,7 @@ with check (
           select 1 from public.follows f
           where f.follower_id = auth.uid()
             and f.followed_id = p.user_id
-            and coalesce(f.status, 'accepted') = 'accepted'
+            and coalesce(to_jsonb(f)->>'status', 'accepted') = 'accepted'
         ))
       )
   )
@@ -85,7 +85,7 @@ with check (
           select 1 from public.follows f
           where f.follower_id = auth.uid()
             and f.followed_id = p.user_id
-            and coalesce(f.status, 'accepted') = 'accepted'
+            and coalesce(to_jsonb(f)->>'status', 'accepted') = 'accepted'
         ))
       )
   )
