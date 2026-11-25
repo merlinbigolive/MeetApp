@@ -31,7 +31,6 @@ export default function LiveBroadcastModal({ visible, sessionId, creatorName, on
   const [chatDraft, setChatDraft] = useState("");
   const [chatBusy, setChatBusy] = useState(false);
   const [selectedViewer, setSelectedViewer] = useState<MiniProfile | null>(null);
-  const [profileBusy, setProfileBusy] = useState(false);
   const [moderationBusy, setModerationBusy] = useState(false);
   const [showViewerMenu, setShowViewerMenu] = useState(false);
   const isCreator = !sessionId;
@@ -111,7 +110,6 @@ export default function LiveBroadcastModal({ visible, sessionId, creatorName, on
 
   const openViewerProfile = async (viewerId: string) => {
     if (!supabase || !chatSessionId || !viewerId) return;
-    setProfileBusy(true);
     setShowViewerMenu(false);
     try {
       let profile: any = null;
@@ -129,10 +127,15 @@ export default function LiveBroadcastModal({ visible, sessionId, creatorName, on
       }
       if (!profile) throw new Error("This profile is unavailable.");
       let avatarUrl: string | null = null;
-      const { data: media } = await supabase.from("profile_media")
-        .select("storage_path").eq("user_id", viewerId).eq("kind", "avatar")
+      const { data: avatarMedia } = await supabase.from("profile_media")
+        .select("storage_path,media_type").eq("user_id", viewerId).eq("kind", "avatar")
         .order("position", { ascending: true }).limit(1).maybeSingle();
-      const path = profile.avatar_path || media?.storage_path;
+      const { data: coverMedia } = !profile.avatar_path && !avatarMedia?.storage_path
+        ? await supabase.from("profile_media").select("storage_path,media_type")
+            .eq("user_id", viewerId).eq("kind", "cover").eq("media_type", "image")
+            .order("position", { ascending: true }).limit(1).maybeSingle()
+        : { data: null };
+      const path = profile.avatar_path || avatarMedia?.storage_path || coverMedia?.storage_path;
       if (path) {
         const { data: signed } = await supabase.storage.from("usay-media").createSignedUrl(path, 900);
         avatarUrl = signed?.signedUrl || null;
@@ -146,8 +149,6 @@ export default function LiveBroadcastModal({ visible, sessionId, creatorName, on
       });
     } catch (error: any) {
       Alert.alert("Profile unavailable", error?.message || "Could not load this profile.");
-    } finally {
-      setProfileBusy(false);
     }
   };
 
