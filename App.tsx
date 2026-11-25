@@ -991,7 +991,7 @@ export default function App() {
           setFeedPosts(old => old.filter(item => item.author.id !== profile.id));
           if (activeChat && activeChat.otherUser.id === profile.id) { setActiveChat(null); setChatMessages([]); }
           setSelectedProfile(null);
-          Alert.alert('Account blocked', 'This account has been blocked. You can unblock it later from your blocked accounts list.');
+          Alert.alert('Account blocked', 'This account has been blocked.');
         } },
       ],
     );
