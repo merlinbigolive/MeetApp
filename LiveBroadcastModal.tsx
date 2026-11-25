@@ -351,7 +351,7 @@ export default function LiveBroadcastModal({ visible, sessionId, creatorName, on
                     {canModerate && <Pressable onPress={() => setShowViewerMenu(v => !v)} style={styles.moreButton}><Text style={styles.moreButtonText}>⋮</Text></Pressable>}
                   </View>
                   {!!selectedViewer?.bio && <Text style={styles.profileBio}>{selectedViewer.bio}</Text>}
-                  {showViewerMenu && canModerate && <View style={styles.viewerMenu}>\n                    {isCreator && <Pressable disabled={moderationBusy} onPress={toggleModerator} style={styles.viewerMenuItem}><Text style={styles.viewerMenuText}>{selectedIsModerator ? "Remove Admin access" : "Make Live Admin"}</Text></Pressable>}
+                  {showViewerMenu && canModerate && <View style={styles.viewerMenu}>\n                    {isCreator && <Pressable disabled={moderationBusy} onPress={toggleModerator} style={styles.viewerMenuItem}><Text style={styles.viewerMenuText}>{selectedIsModerator ? "Remove Admin" : "Set as Admin"}</Text></Pressable>}
                     <Pressable disabled={moderationBusy} onPress={() => moderateViewer("mute")} style={styles.viewerMenuItem}><Text style={styles.viewerMenuText}>Mute for 12 hours</Text></Pressable>
                     <Pressable disabled={moderationBusy} onPress={() => moderateViewer("kickout")} style={styles.viewerMenuItem}><Text style={styles.viewerMenuText}>Kick out for 12 hours</Text></Pressable>
                     <Pressable disabled={moderationBusy} onPress={() => moderateViewer("block")} style={styles.viewerMenuItem}><Text style={[styles.viewerMenuText,{color:"#D83B4B"}]}>Block permanently</Text></Pressable>
