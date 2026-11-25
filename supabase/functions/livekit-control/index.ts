@@ -61,7 +61,7 @@ Deno.serve(async (request) => {
       const token = new AccessToken(livekitApiKey, livekitApiSecret, {
         identity: user.id,
         name: (displayName || "MEEi member").slice(0, 64),
-        ttl: "10m",
+        ttl: "6h",
       });
       token.addGrant({
         roomJoin: true,
