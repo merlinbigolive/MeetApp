@@ -151,7 +151,7 @@ export default function LiveBroadcastModal({ visible, sessionId, creatorName, on
               serverUrl={credentials.url}
               token={credentials.token}
               connect={true}
-              audio={true}
+              audio={isCreator}
               video={isCreator}
               options={{ adaptiveStream: { pixelDensity: "screen" } }}
             >
