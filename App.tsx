@@ -993,6 +993,10 @@ export default function App() {
           const { error } = await supabase!.rpc('block_user', { target_user_id: profile.id });
           if (error) { Alert.alert('Could not block account', error.message); return; }
           setPublicProfiles(old => old.filter(item => item.id !== profile.id));
+          setLiveCreators(old => old.filter(item => item.user_id !== profile.id));
+          setFollowedUserIds(old => old.filter(id => id !== profile.id));
+          setPendingFollowIds(old => old.filter(id => id !== profile.id));
+          setChatThreads(old => old.filter(thread => thread.otherUser.id !== profile.id));
           setFeedPosts(old => old.filter(item => item.author.id !== profile.id));
           if (activeChat && activeChat.otherUser.id === profile.id) { setActiveChat(null); setChatMessages([]); }
           setSelectedProfile(null);
