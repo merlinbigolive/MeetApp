@@ -86,12 +86,13 @@ as $$
     and pr.is_private = false
     and p.media_path is not null
     and (
-      category_filter = 'trending'
+      category_filter in ('trending', 'all')
       or p.content_category = category_filter
     )
     and (
       nullif(trim(search_text), '') is null
       or coalesce(p.caption, '') ilike '%' || trim(search_text) || '%'
+      or coalesce(p.content_category, '') ilike '%' || trim(search_text) || '%'
     )
   order by
     case when category_filter = 'trending' then
