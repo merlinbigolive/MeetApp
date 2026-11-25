@@ -38,11 +38,12 @@ export default function LiveBroadcastModal({ visible, sessionId, creatorName, on
   const isCreator = !sessionId;
 
   useEffect(() => {
-    if (!visible || !sessionId || !supabase) return;
+    const client = supabase;
+    if (!visible || !sessionId || !client) return;
     let cancelled = false;
     const join = async () => {
       setBusy(true);
-      const { data, error } = await supabase.functions.invoke("livekit-control", {
+      const { data, error } = await client.functions.invoke("livekit-control", {
         body: { action: "join", session_id: sessionId },
       });
       if (cancelled) return;
