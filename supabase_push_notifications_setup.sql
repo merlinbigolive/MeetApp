@@ -57,7 +57,7 @@ begin
 end;
 $$;
 
-create or replace function public.notify_cuckoo_message_push()
+create or replace function public.notify_meei_message_push()
 returns trigger
 language plpgsql
 security definer
@@ -90,10 +90,10 @@ begin
 end;
 $$;
 
-drop trigger if exists send_cuckoo_push_after_message_insert on public.messages;
-create trigger send_cuckoo_push_after_message_insert
+drop trigger if exists send_meei_push_after_message_insert on public.messages;
+create trigger send_meei_push_after_message_insert
 after insert on public.messages
-for each row execute function public.notify_cuckoo_message_push();
+for each row execute function public.notify_meei_message_push();
 
 -- Copy this value into the GitHub Actions secret MEEI_PUSH_WEBHOOK_SECRET.
 select decrypted_secret as meei_push_webhook_secret
