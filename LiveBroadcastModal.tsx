@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import {
-  ActivityIndicator, Alert, Modal, Pressable, ScrollView, StyleSheet,
+  ActivityIndicator, Alert, Image, Modal, Pressable, ScrollView, StyleSheet,
   Text, TextInput, View,
 } from "react-native";
 import { AudioSession, LiveKitRoom, VideoTrack, useTracks, isTrackReference } from "@livekit/react-native";
@@ -8,6 +8,8 @@ import { Track } from "livekit-client";
 import { supabase } from "./supabase";
 
 type RoomCredentials = { url: string; token: string; room_name: string; role: "creator" | "viewer" };
+type LiveChatMessage = { id: string; user_id: string; username: string; body: string; created_at: string; avatar_path: string | null };
+type MiniProfile = { user_id: string; username: string; display_name: string; bio: string | null; avatarUrl: string | null };
 
 type Props = {
   visible: boolean;
@@ -170,8 +172,45 @@ export default function LiveBroadcastModal({ visible, sessionId, creatorName, on
                 {ending ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.endText}>{isCreator ? "End Live" : "Leave"}</Text>}
               </Pressable>
             </View>
+            <View style={styles.liveChatPanel}>
+              <ScrollView style={styles.liveChatList} contentContainerStyle={{ gap: 8 }} keyboardShouldPersistTaps="handled">
+                {chatMessages.slice(-40).map((message) => (
+                  <View key={message.id} style={styles.liveChatRow}>
+                    <Pressable onPress={() => void openViewerProfile(message.user_id)}>
+                      <Text style={styles.liveChatUsername}>{message.username.replace(/^[@#]/, "")}</Text>
+                    </Pressable>
+                    <Text style={styles.liveChatBody}>{message.body}</Text>
+                  </View>
+                ))}
+                {chatMessages.length === 0 && <Text style={styles.liveChatHint}>Be the first to say hello!</Text>}
+              </ScrollView>
+              <View style={styles.liveChatComposer}>
+                <TextInput value={chatDraft} onChangeText={setChatDraft} placeholder="Say something…" placeholderTextColor="#AFC0CF" maxLength={500} style={styles.liveChatInput} returnKeyType="send" onSubmitEditing={sendLiveMessage}/>
+                <Pressable onPress={sendLiveMessage} disabled={!chatDraft.trim() || chatBusy} style={styles.liveChatSend}><Text style={styles.liveChatSendText}>{chatBusy ? "…" : "Send"}</Text></Pressable>
+              </View>
+            </View>
             {isCreator && !activeSessionId && <Text style={styles.waiting}>Publishing camera… preparing Live discovery</Text>}
             {isCreator && !!activeSessionId && <Text style={styles.waiting}>Your broadcast is visible on MEEi Live.</Text>}
+            <Modal visible={!!selectedViewer} transparent animationType="fade" onRequestClose={() => { setSelectedViewer(null); setShowViewerMenu(false); }}>
+              <Pressable style={styles.profileBackdrop} onPress={() => { setSelectedViewer(null); setShowViewerMenu(false); }}>
+                <Pressable style={styles.profileCard} onPress={() => {}}>
+                  <View style={styles.profileCardTop}>
+                    {selectedViewer?.avatarUrl ? <Image source={{ uri: selectedViewer.avatarUrl }} style={styles.profileAvatar}/> : <View style={styles.profileAvatarFallback}><Text style={styles.profileAvatarLetter}>{selectedViewer?.display_name?.slice(0,1).toUpperCase() || "M"}</Text></View>}
+                    <View style={{ flex: 1, gap: 3 }}>
+                      <Text style={styles.profileDisplayName}>{selectedViewer?.display_name}</Text>
+                      <Text style={styles.profileUsername}>@{selectedViewer?.username}</Text>
+                    </View>
+                    {isCreator && <Pressable onPress={() => setShowViewerMenu(v => !v)} style={styles.moreButton}><Text style={styles.moreButtonText}>⋮</Text></Pressable>}
+                  </View>
+                  {!!selectedViewer?.bio && <Text style={styles.profileBio}>{selectedViewer.bio}</Text>}
+                  {showViewerMenu && isCreator && <View style={styles.viewerMenu}>
+                    <Pressable disabled={moderationBusy} onPress={() => moderateViewer("mute")} style={styles.viewerMenuItem}><Text style={styles.viewerMenuText}>Mute in Live chat</Text></Pressable>
+                    <Pressable disabled={moderationBusy} onPress={() => moderateViewer("kickout")} style={styles.viewerMenuItem}><Text style={styles.viewerMenuText}>Kick out</Text></Pressable>
+                    <Pressable disabled={moderationBusy} onPress={() => moderateViewer("block")} style={styles.viewerMenuItem}><Text style={[styles.viewerMenuText,{color:"#D83B4B"}]}>Block</Text></Pressable>
+                  </View>}
+                </Pressable>
+              </Pressable>
+            </Modal>
           </View>
         )}
       </View>
@@ -247,4 +286,28 @@ const styles = StyleSheet.create({
   endButton: { backgroundColor: "#E5394D", borderRadius: 22, paddingHorizontal: 18, paddingVertical: 12, minWidth: 84, alignItems: "center" },
   endText: { color: "#FFFFFF", fontWeight: "800" },
   waiting: { position: "absolute", bottom: 24, left: 20, right: 20, color: "#FFFFFF", textAlign: "center", backgroundColor: "#00000088", padding: 10, borderRadius: 12 },
+  liveChatPanel: { position: "absolute", left: 12, right: 12, bottom: 18, maxHeight: "38%", backgroundColor: "#071522AA", borderRadius: 16, padding: 10, gap: 8 },
+  liveChatList: { maxHeight: 150 },
+  liveChatRow: { flexDirection: "row", flexWrap: "wrap", alignItems: "baseline", gap: 7 },
+  liveChatUsername: { color: "#8FD5FF", fontSize: 12, fontWeight: "900" },
+  liveChatBody: { color: "#FFFFFF", fontSize: 12, flexShrink: 1 },
+  liveChatHint: { color: "#FFFFFF", fontSize: 12, paddingVertical: 8 },
+  liveChatComposer: { flexDirection: "row", alignItems: "center", gap: 7 },
+  liveChatInput: { flex: 1, minHeight: 40, maxHeight: 70, borderRadius: 20, paddingHorizontal: 14, color: "#FFFFFF", backgroundColor: "#FFFFFF22", borderWidth: 1, borderColor: "#FFFFFF44" },
+  liveChatSend: { backgroundColor: "#168BE8", borderRadius: 20, paddingHorizontal: 14, paddingVertical: 11 },
+  liveChatSendText: { color: "#FFFFFF", fontSize: 12, fontWeight: "900" },
+  profileBackdrop: { flex: 1, backgroundColor: "#0009", justifyContent: "center", padding: 22 },
+  profileCard: { backgroundColor: "#FFFFFF", borderRadius: 20, padding: 16, gap: 12 },
+  profileCardTop: { flexDirection: "row", alignItems: "center", gap: 11 },
+  profileAvatar: { width: 58, height: 58, borderRadius: 29, backgroundColor: "#EAF5FF" },
+  profileAvatarFallback: { width: 58, height: 58, borderRadius: 29, backgroundColor: "#EAF5FF", alignItems: "center", justifyContent: "center" },
+  profileAvatarLetter: { color: "#168BE8", fontSize: 22, fontWeight: "900" },
+  profileDisplayName: { color: "#172B3A", fontSize: 15, fontWeight: "900" },
+  profileUsername: { color: "#71879A", fontSize: 12 },
+  profileBio: { color: "#526B7D", fontSize: 12, lineHeight: 18 },
+  moreButton: { width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center", backgroundColor: "#EFF7FC" },
+  moreButtonText: { color: "#172B3A", fontSize: 24, fontWeight: "900" },
+  viewerMenu: { borderTopWidth: 1, borderTopColor: "#E8EEF3", paddingTop: 4 },
+  viewerMenuItem: { paddingVertical: 12 },
+  viewerMenuText: { color: "#172B3A", fontSize: 14, fontWeight: "700" },
 });
