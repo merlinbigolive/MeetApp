@@ -24,6 +24,7 @@ type PublishedPost = { id: string; post_type: 'photo' | 'video' | 'text'; captio
 type FeedPost = PublishedPost & { author: PublicProfile; authorAvatar?: Media | null };
 type PostComment = { id: string; post_id: string; user_id: string; body: string; created_at: string; username: string; display_name: string };
 type PostReactionSummary = { counts: Record<string, number>; mine: string | null };
+type BlockedAccount = { user_id: string; username: string; display_name: string; blocked_at: string };
 type PublicProfile = { id: string; username: string; display_name: string; bio: string | null; profession_category: string | null; website_url?: string | null; activity_status?: string | null; is_private?: boolean; account_type?: 'personal' | 'business'; business_name?: string | null; business_category?: string | null; business_description?: string | null };
 type FollowRequest = { follower_id: string; username: string; display_name: string; requested_at: string };
 type ChatMessage = { id: string; conversation_id: string; sender_id: string; body: string; created_at: string; read_at?: string | null; message_type?: 'text' | 'voice'; audio_path?: string | null; audio_url?: string | null; transcript?: string | null };
@@ -305,6 +306,10 @@ export default function App() {
   const [tab, setTab] = useState<Tab>('Profile');
   const [createMenuVisible, setCreateMenuVisible] = useState(false);
   const [legalVisible, setLegalVisible] = useState(false);
+  const [blockedAccountsVisible, setBlockedAccountsVisible] = useState(false);
+  const [blockedAccounts, setBlockedAccounts] = useState<BlockedAccount[]>([]);
+  const [blockedAccountsLoading, setBlockedAccountsLoading] = useState(false);
+  const [unblockingUserId, setUnblockingUserId] = useState<string | null>(null);
   const [liveStudioVisible, setLiveStudioVisible] = useState(false);
   const [liveJoinSessionId, setLiveJoinSessionId] = useState<string | null>(null);
   const [name, setName] = useState('MEEi User');
@@ -996,6 +1001,24 @@ export default function App() {
       ],
     );
   };
+  const loadBlockedAccounts = async () => {
+    if (!supabase) return;
+    setBlockedAccountsLoading(true);
+    const { data, error } = await supabase.rpc('get_my_blocked_users');
+    setBlockedAccountsLoading(false);
+    if (error) { Alert.alert('Blocked accounts could not load', error.message); return; }
+    setBlockedAccounts((data || []) as BlockedAccount[]);
+  };
+
+  const unblockAccount = async (account: BlockedAccount) => {
+    if (!supabase || unblockingUserId) return;
+    setUnblockingUserId(account.user_id);
+    const { data, error } = await supabase.rpc('unblock_user', { target_user_id: account.user_id });
+    setUnblockingUserId(null);
+    if (error) { Alert.alert('Could not unblock account', error.message); return; }
+    if (data) setBlockedAccounts(old => old.filter(item => item.user_id !== account.user_id));
+  };
+
   const loadFollowRequests = async () => {
     if (!supabase) return;
     const { data, error } = await supabase.rpc('get_my_follow_requests');
@@ -1801,6 +1824,7 @@ export default function App() {
                 { text: 'Light', onPress: () => setAppearanceMode('light') },
                 { text: 'Dark', onPress: () => setAppearanceMode('dark') },
               ]) },
+              { text: 'Blocked Accounts', onPress: () => { setBlockedAccountsVisible(true); void loadBlockedAccounts(); } },
               { text: 'Policies & Terms', onPress: () => setLegalVisible(true) },
               { text: 'Sign out', style: 'destructive', onPress: () => {
                 if (supabase) supabase.auth.signOut().catch(error => Alert.alert('Sign out failed', error.message));
@@ -2198,6 +2222,24 @@ export default function App() {
           <Text style={[s.navLabel, tab === item && {color:C.pink}]}>{item}</Text>
         </Pressable>)}
       </View>
+      <Modal visible={blockedAccountsVisible} animationType="slide" onRequestClose={() => setBlockedAccountsVisible(false)}>
+        <View style={{ flex: 1, backgroundColor: C.bg, paddingTop: Platform.OS === 'android' ? 28 : 54 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: C.border }}>
+            <Pressable onPress={() => setBlockedAccountsVisible(false)} style={{ padding: 6 }}><Ionicons name="arrow-back" size={24} color={C.text}/></Pressable>
+            <Text style={s.pageTitle}>Blocked Accounts</Text>
+            <View style={{ width: 36 }}/>
+          </View>
+          <ScrollView contentContainerStyle={{ padding: 18, gap: 12 }}>
+            <Text style={s.hint}>Blocked accounts cannot see your profile or posts, follow you, message you, or appear in your Live discovery. Unblocking does not automatically restore previous follows.</Text>
+            {blockedAccountsLoading ? <Text style={s.hint}>Loading blocked accounts…</Text> :
+              blockedAccounts.length === 0 ? <View style={{ alignItems: 'center', paddingVertical: 48, gap: 10 }}><Ionicons name="shield-checkmark-outline" size={42} color={C.cyan}/><Text style={s.sectionTitle}>No blocked accounts</Text><Text style={s.hint}>Accounts you block will appear here.</Text></View> :
+              blockedAccounts.map(account => <View key={account.user_id} style={[s.personRow, { paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: C.border }]}>
+                <View style={s.personDetails}><Text style={s.personName}>{account.display_name || account.username}</Text><Text style={s.personUsername}>@{account.username.replace(/[@#]/g, '')}</Text></View>
+                <Pressable disabled={unblockingUserId === account.user_id} onPress={() => void unblockAccount(account)} style={[s.followButton, s.followingButton]}><Text style={s.followingButtonText}>{unblockingUserId === account.user_id ? 'Please wait…' : 'Unblock'}</Text></Pressable>
+              </View>)}
+          </ScrollView>
+        </View>
+      </Modal>
       <Modal visible={!!reportPost} transparent animationType="fade" onRequestClose={() => setReportPost(null)}>
         <View style={{ flex: 1, backgroundColor: '#0008', justifyContent: 'center', padding: 20 }}>
           <View style={[s.card, { maxHeight: '82%', padding: 18 }]}>
