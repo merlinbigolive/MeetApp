@@ -126,7 +126,7 @@ using (user_id = auth.uid() or not public.is_blocked_for_current_user(user_id));
 drop policy if exists "global_block_posts_insert" on public.posts;
 create policy "global_block_posts_insert" on public.posts
 as restrictive for insert to authenticated
-with check (not public.is_blocked_between(auth.uid(), user_id));
+with check (not public.is_blocked_for_current_user(user_id));
 
 drop policy if exists "global_block_comments_select" on public.post_comments;
 create policy "global_block_comments_select" on public.post_comments
@@ -148,14 +148,14 @@ with check (
   and not exists (
     select 1 from public.posts p
     where p.id = post_comments.post_id
-      and public.is_blocked_between(auth.uid(), p.user_id)
+      and public.is_blocked_for_current_user(p.user_id)
   )
 );
 
 drop policy if exists "global_block_profile_media_select" on public.profile_media;
 create policy "global_block_profile_media_select" on public.profile_media
 as restrictive for select to authenticated
-using (user_id = auth.uid() or not public.is_blocked_between(auth.uid(), user_id));
+using (user_id = auth.uid() or not public.is_blocked_for_current_user(user_id));
 
 drop policy if exists "global_block_conversations_select" on public.conversations;
 create policy "global_block_conversations_select" on public.conversations
@@ -169,7 +169,7 @@ drop policy if exists "global_block_conversations_insert" on public.conversation
 create policy "global_block_conversations_insert" on public.conversations
 as restrictive for insert to authenticated
 with check (
-  not public.is_blocked_between(auth.uid(),
+  not public.is_blocked_for_current_user(
     case when user_one_id = auth.uid() then user_two_id else user_one_id end)
 );
 
@@ -193,7 +193,7 @@ with check (
   and exists (
     select 1 from public.conversations c
     where c.id = messages.conversation_id
-      and not public.is_blocked_between(auth.uid(),
+      and not public.is_blocked_for_current_user(
         case when c.user_one_id = auth.uid() then c.user_two_id else c.user_one_id end)
   )
 );
@@ -278,7 +278,7 @@ as $$
       )
       or ls.user_id = auth.uid()
     )
-    and not public.is_blocked_between(auth.uid(), ls.user_id)
+    and not public.is_blocked_for_current_user(ls.user_id)
     and not exists (
       select 1 from public.live_moderation_actions a
       where a.creator_id = ls.user_id and a.viewer_id = auth.uid()
