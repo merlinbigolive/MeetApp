@@ -92,7 +92,9 @@ Deno.serve(async (request) => {
       if (existing) {
         const fresh = Date.now() - new Date(existing.last_heartbeat_at).getTime() < 90_000;
         if (fresh) return json({ error: "You already have an active Live session." }, 409);
-        await admin.from("live_sessions").update({ status: "ended", ended_at: new Date().toISOString() }).eq("id", existing.id);
+        const { error: staleUpdateError } = await admin.from("live_sessions")
+          .update({ status: "ended", ended_at: new Date().toISOString() }).eq("id", existing.id);
+        if (staleUpdateError) throw staleUpdateError;
       }
 
       const roomName = `meei-${user.id}-${crypto.randomUUID()}`;
@@ -172,6 +174,17 @@ Deno.serve(async (request) => {
       if (!session || !session.provider_room_name) return json({ error: "This Live has ended." }, 404);
 
       if (action === "join") {
+        const { data: creatorProfile, error: creatorProfileError } = await admin
+          .from("profiles").select("is_private").eq("id", session.user_id).maybeSingle();
+        if (creatorProfileError) throw creatorProfileError;
+        if (creatorProfile?.is_private && session.user_id !== user.id) {
+          const { data: acceptedFollow, error: followError } = await admin
+            .from("follows").select("follower_id")
+            .eq("follower_id", user.id).eq("followed_id", session.user_id)
+            .eq("status", "accepted").maybeSingle();
+          if (followError) throw followError;
+          if (!acceptedFollow) return json({ error: "Follow this private creator to join their Live." }, 403);
+        }
         const { data: allowed, error: entryError } = await authClient.rpc("check_live_entry", {
           target_session_id: session.id,
         });
@@ -195,9 +208,10 @@ Deno.serve(async (request) => {
         return json({ ok: true });
       }
 
-      await admin.from("live_sessions")
+      const { error: endError } = await admin.from("live_sessions")
         .update({ status: "ended", ended_at: new Date().toISOString() })
         .eq("id", session.id);
+      if (endError) throw endError;
       try {
         await rooms.deleteRoom(session.provider_room_name);
       } catch (roomError) {
