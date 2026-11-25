@@ -27,6 +27,13 @@ export default function LiveBroadcastModal({ visible, sessionId, creatorName, on
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [ending, setEnding] = useState(false);
+  const [chatMessages, setChatMessages] = useState<LiveChatMessage[]>([]);
+  const [chatDraft, setChatDraft] = useState("");
+  const [chatBusy, setChatBusy] = useState(false);
+  const [selectedViewer, setSelectedViewer] = useState<MiniProfile | null>(null);
+  const [profileBusy, setProfileBusy] = useState(false);
+  const [moderationBusy, setModerationBusy] = useState(false);
+  const [showViewerMenu, setShowViewerMenu] = useState(false);
   const isCreator = !sessionId;
 
   useEffect(() => {
@@ -63,6 +70,113 @@ export default function LiveBroadcastModal({ visible, sessionId, creatorName, on
     }, 30_000);
     return () => clearInterval(timer);
   }, [visible, activeSessionId, isCreator]);
+
+  const chatSessionId = sessionId || activeSessionId;
+
+  useEffect(() => {
+    if (!visible || !chatSessionId || !supabase) return;
+    let cancelled = false;
+    const loadChat = async () => {
+      const { data, error } = await supabase!.rpc("get_live_chat_messages", {
+        target_session_id: chatSessionId,
+        message_limit: 60,
+      });
+      if (!cancelled && !error && Array.isArray(data)) {
+        setChatMessages([...data].reverse() as LiveChatMessage[]);
+      }
+    };
+    void loadChat();
+    const timer = setInterval(() => { void loadChat(); }, 4000);
+    return () => { cancelled = true; clearInterval(timer); };
+  }, [visible, chatSessionId]);
+
+  const sendLiveMessage = async () => {
+    if (!supabase || !chatSessionId || !chatDraft.trim() || chatBusy) return;
+    setChatBusy(true);
+    const { error } = await supabase.rpc("send_live_chat_message", {
+      target_session_id: chatSessionId,
+      message_body: chatDraft.trim(),
+    });
+    setChatBusy(false);
+    if (error) {
+      Alert.alert("Message not sent", error.message || "Please try again.");
+      return;
+    }
+    setChatDraft("");
+    const { data } = await supabase.rpc("get_live_chat_messages", {
+      target_session_id: chatSessionId, message_limit: 60,
+    });
+    if (Array.isArray(data)) setChatMessages([...data].reverse() as LiveChatMessage[]);
+  };
+
+  const openViewerProfile = async (viewerId: string) => {
+    if (!supabase || !chatSessionId || !viewerId) return;
+    setProfileBusy(true);
+    setShowViewerMenu(false);
+    try {
+      let profile: any = null;
+      if (isCreator) {
+        const { data, error } = await supabase.rpc("get_live_viewer_profile", {
+          target_session_id: chatSessionId, target_viewer_id: viewerId,
+        });
+        if (error) throw error;
+        profile = Array.isArray(data) ? data[0] : data;
+      } else {
+        const { data, error } = await supabase.from("profiles")
+          .select("id,username,display_name,bio").eq("id", viewerId).maybeSingle();
+        if (error) throw error;
+        profile = data ? { user_id: data.id, ...data } : null;
+      }
+      if (!profile) throw new Error("This profile is unavailable.");
+      let avatarUrl: string | null = null;
+      const { data: media } = await supabase.from("profile_media")
+        .select("storage_path").eq("user_id", viewerId).eq("kind", "avatar")
+        .order("position", { ascending: true }).limit(1).maybeSingle();
+      const path = profile.avatar_path || media?.storage_path;
+      if (path) {
+        const { data: signed } = await supabase.storage.from("usay-media").createSignedUrl(path, 900);
+        avatarUrl = signed?.signedUrl || null;
+      }
+      setSelectedViewer({
+        user_id: viewerId,
+        username: String(profile.username || "meei_user").replace(/^[@#]/, ""),
+        display_name: String(profile.display_name || profile.username || "MEEi member"),
+        bio: profile.bio || null,
+        avatarUrl,
+      });
+    } catch (error: any) {
+      Alert.alert("Profile unavailable", error?.message || "Could not load this profile.");
+    } finally {
+      setProfileBusy(false);
+    }
+  };
+
+  const moderateViewer = (action: "mute" | "kickout" | "block") => {
+    if (!selectedViewer || !chatSessionId || !supabase || !isCreator || moderationBusy) return;
+    const labels = {
+      mute: "Mute this viewer in Live chat for 15 minutes?",
+      kickout: "Remove this viewer from this Live? They cannot rejoin this session.",
+      block: "Block this viewer from your future Lives and remove them from this Live?",
+    };
+    Alert.alert(action === "kickout" ? "Kick out viewer" : action === "block" ? "Block viewer" : "Mute viewer", labels[action], [
+      { text: "Cancel", style: "cancel" },
+      { text: action === "block" ? "Block" : action === "kickout" ? "Kick out" : "Mute", style: action === "block" ? "destructive" : "default", onPress: async () => {
+        setModerationBusy(true);
+        const { data, error } = await supabase!.functions.invoke("livekit-control", {
+          body: { action: "moderate", session_id: chatSessionId, target_viewer_id: selectedViewer.user_id, moderation_action: action },
+        });
+        setModerationBusy(false);
+        if (error || data?.error) {
+          Alert.alert("Action failed", data?.error || error?.message || "Please try again.");
+          return;
+        }
+        setSelectedViewer(null);
+        const { data: refreshed } = await supabase!.rpc("get_live_chat_messages", { target_session_id: chatSessionId, message_limit: 60 });
+        if (Array.isArray(refreshed)) setChatMessages([...refreshed].reverse() as LiveChatMessage[]);
+        if (action === "kickout" || action === "block") Alert.alert("Viewer removed", "The viewer has been removed from this Live.");
+      } },
+    ]);
+  };
 
   useEffect(() => {
     if (!visible || !credentials) return;
