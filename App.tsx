@@ -209,6 +209,7 @@ function CuckooOpeningExperience() {
 
 export default function App() {
   const [tab, setTab] = useState<Tab>('Profile');
+  const [createMenuVisible, setCreateMenuVisible] = useState(false);
   const [name, setName] = useState('MEEi User');
   const [username, setUsername] = useState('your_username');
   const [bio, setBio] = useState('Creating connections, sharing ideas and meeting amazing people.');
@@ -1812,14 +1813,48 @@ export default function App() {
           <InboxScreen/>}
       </View>
       <View style={s.nav}>
-        {(['Home','Public','Live','Create','Inbox','Profile'] as Tab[]).map((item, i) => {
-          const icons = ['home-outline','search-outline','radio-outline','add-circle-outline','mail-outline','person-outline'] as const;
+        {(['Home','Public','Live'] as Tab[]).map((item) => {
+          const icons = { Home: 'home-outline', Public: 'search-outline', Live: 'radio-outline' } as const;
           return <Pressable key={item} style={s.navItem} onPress={() => { setSelectedProfile(null); setTab(item); }}>
-            <Ionicons name={icons[i]} size={21} color={tab === item ? C.pink : C.muted}/>
+            <Ionicons name={icons[item]} size={21} color={tab === item ? C.pink : C.muted}/>
             <Text style={[s.navLabel, tab === item && {color:C.pink}]}>{item === 'Public' ? 'Search' : item}</Text>
           </Pressable>;
         })}
+        <Pressable accessibilityRole="button" accessibilityLabel="Create" style={s.navCreateItem} onPress={() => setCreateMenuVisible(true)}>
+          <View style={s.navCreateButton}><Ionicons name="add" size={29} color="#FFFFFF"/></View>
+          <Text style={s.navLabel}>Create</Text>
+        </Pressable>
+        {(['Inbox','Profile'] as Tab[]).map((item) => <Pressable key={item} style={s.navItem} onPress={() => { setSelectedProfile(null); setTab(item); }}>
+          <Ionicons name={item === 'Inbox' ? 'mail-outline' : 'person-outline'} size={21} color={tab === item ? C.pink : C.muted}/>
+          <Text style={[s.navLabel, tab === item && {color:C.pink}]}>{item}</Text>
+        </Pressable>)}
       </View>
+      <Modal visible={createMenuVisible} transparent animationType="slide" onRequestClose={() => setCreateMenuVisible(false)}>
+        <Pressable style={s.createMenuBackdrop} onPress={() => setCreateMenuVisible(false)}>
+          <Pressable style={s.createMenuSheet} onPress={() => {}}>
+            <View style={s.createMenuHandle}/>
+            <View style={s.createMenuHeader}>
+              <View><Text style={s.sectionTitle}>Create on MEEi</Text><Text style={s.hint}>Share a moment or start a live session</Text></View>
+              <Pressable onPress={() => setCreateMenuVisible(false)}><Ionicons name="close-circle" size={25} color={C.muted}/></Pressable>
+            </View>
+            <Pressable style={s.createMenuOption} onPress={() => { setCreateMenuVisible(false); setCreateCategory('reels'); setCreateMedia(null); setCreateCaption(''); setSelectedProfile(null); setTab('Create'); }}>
+              <View style={[s.createMenuIcon,{backgroundColor:'#EAF5FF'}]}><Ionicons name="videocam" size={23} color={C.cyan}/></View>
+              <View style={s.createMenuText}><Text style={s.createMenuTitle}>Create Reel</Text><Text style={s.createMenuSubtitle}>Make and publish a short video</Text></View>
+              <Ionicons name="chevron-forward" size={18} color={C.muted}/>
+            </Pressable>
+            <Pressable style={s.createMenuOption} onPress={() => { setCreateMenuVisible(false); Alert.alert('Go Live', 'Live broadcasting is not connected yet. The live creator flow will be enabled after the streaming setup is complete.'); }}>
+              <View style={[s.createMenuIcon,{backgroundColor:'#FFF0F0'}]}><Ionicons name="radio" size={23} color="#E34D59"/></View>
+              <View style={s.createMenuText}><Text style={s.createMenuTitle}>Go Live</Text><Text style={s.createMenuSubtitle}>Start a live video with your audience</Text></View>
+              <Ionicons name="chevron-forward" size={18} color={C.muted}/>
+            </Pressable>
+            <Pressable style={s.createMenuOption} onPress={() => { setCreateMenuVisible(false); setCreateCategory('videos'); setCreateMedia(null); setCreateCaption(''); setSelectedProfile(null); setTab('Create'); }}>
+              <View style={[s.createMenuIcon,{backgroundColor:'#EAFBF3'}]}><Ionicons name="images" size={23} color="#239B68"/></View>
+              <View style={s.createMenuText}><Text style={s.createMenuTitle}>Create Post</Text><Text style={s.createMenuSubtitle}>Share a photo or a longer video</Text></View>
+              <Ionicons name="chevron-forward" size={18} color={C.muted}/>
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
       <Modal visible={editing} transparent animationType="slide" onRequestClose={() => setEditing(false)}>
         <View style={s.modalShade}><ScrollView style={s.editSheet} contentContainerStyle={{paddingBottom:28}}>
           <View style={s.modalTop}><Text style={s.sectionTitle}>Edit Profile</Text><Pressable onPress={() => setEditing(false)}><Ionicons name="close" size={24} color={C.text}/></Pressable></View>
@@ -2006,7 +2041,8 @@ const s = StyleSheet.create({
   primaryText:{color:'#fff',fontWeight:'800',fontSize:13},secondary:{flex:1,minHeight:44,borderRadius:13,backgroundColor:C.panel2,borderWidth:1,borderColor:C.border,alignItems:'center',justifyContent:'center',flexDirection:'row',gap:7},
   secondaryText:{color:C.text,fontSize:13,fontWeight:'800'},infoLine:{flexDirection:'row',alignItems:'center',gap:10},infoText:{color:'#526B7D',fontSize:12},
   footerNote:{color:C.muted,fontSize:10,lineHeight:15,paddingHorizontal:3},nav:{height:72,backgroundColor:C.panel,borderTopWidth:1,borderColor:C.border,flexDirection:'row',alignItems:'center',justifyContent:'space-around',paddingTop:2,paddingBottom:6},
-  navItem:{flex:1,alignItems:'center',justifyContent:'center',gap:3,paddingBottom:8},navLabel:{fontSize:9,color:C.muted,fontWeight:'700'},
+  navItem:{flex:1,alignItems:'center',justifyContent:'center',gap:3,paddingBottom:8},navCreateItem:{flex:1,alignItems:'center',justifyContent:'center',gap:2,paddingBottom:3},navCreateButton:{width:45,height:42,borderRadius:15,backgroundColor:C.pink,alignItems:'center',justifyContent:'center',marginTop:-15,shadowColor:C.pink,shadowOpacity:0.24,shadowRadius:7,elevation:4},navLabel:{fontSize:9,color:C.muted,fontWeight:'700'},
+  createMenuBackdrop:{flex:1,backgroundColor:'#0008',justifyContent:'flex-end},createMenuSheet:{backgroundColor:'#FFFFFF',borderTopLeftRadius:25,borderTopRightRadius:25,paddingHorizontal:20,paddingTop:12,paddingBottom:30,gap:5},createMenuHandle:{width:42,height:4,borderRadius:3,backgroundColor:'#D8E1E8',alignSelf:'center',marginBottom:10},createMenuHeader:{flexDirection:'row',alignItems:'center',justifyContent:'space-between',marginBottom:12},createMenuOption:{flexDirection:'row',alignItems:'center',gap:13,paddingVertical:12,borderBottomWidth:1,borderBottomColor:'#F0F3F5'},createMenuIcon:{width:46,height:46,borderRadius:15,alignItems:'center',justifyContent:'center'},createMenuText:{flex:1,gap:3},createMenuTitle:{color:C.text,fontSize:14,fontWeight:'900'},createMenuSubtitle:{color:C.muted,fontSize:11},
   simple:{flex:1,backgroundColor:C.bg,padding:20,paddingTop:55,gap:18},modalShade:{flex:1,backgroundColor:'#000B',justifyContent:'flex-end'},
   editSheet:{maxHeight:'90%',backgroundColor:C.panel,borderTopLeftRadius:24,borderTopRightRadius:24,padding:20},
   modalTop:{flexDirection:'row',alignItems:'center',justifyContent:'space-between',marginBottom:16},
