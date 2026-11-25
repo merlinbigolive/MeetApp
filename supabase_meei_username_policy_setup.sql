@@ -13,6 +13,8 @@ insert into public.reserved_usernames(normalized_name, reservation_group, note) 
   ('meei', 'brand', 'Official MEEi brand'),
   ('meeiapp', 'brand', 'Official MEEi app identity'),
   ('meeiofficial', 'brand', 'Official MEEi identity'),
+  ('meeisvip', 'brand', 'Official MEEi SVIP identity'),
+  ('svipteam', 'moderation', 'Official SVIP Team identity'),
   ('meeimoderation', 'moderation', 'MEEi Moderation Team'),
   ('meeimoderationteam', 'moderation', 'MEEi Moderation Team'),
   ('moderation', 'moderation', 'Moderation Team'),
