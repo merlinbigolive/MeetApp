@@ -94,7 +94,7 @@ function CoverMediaSlide({ media }: { media: Media }) {
     : <VideoView player={player} style={{ width: '100%', height: '85%' }} contentFit="contain" nativeControls />;
 }
 
-function CuckooOpeningExperience() {
+export function MEEiOpeningExperience({ onComplete }: { onComplete?: () => void }) {
   const [visible, setVisible] = useState(true);
   const [welcome, setWelcome] = useState(false);
   const [mascotVisible, setMascotVisible] = useState(false);
@@ -103,6 +103,7 @@ function CuckooOpeningExperience() {
   const mascotScale = useRef(new Animated.Value(0.72)).current;
   const mascotOpacity = useRef(new Animated.Value(0)).current;
   const mascotFloat = useRef(new Animated.Value(0)).current;
+  const mascotSway = useRef(new Animated.Value(0)).current;
   const blink = useRef(new Animated.Value(1)).current;
   const blush = useRef(new Animated.Value(0)).current;
   const welcomeOpacity = useRef(new Animated.Value(0)).current;
@@ -132,8 +133,15 @@ function CuckooOpeningExperience() {
       Animated.timing(blink, { toValue: 0, duration: 85, useNativeDriver: true }),
       Animated.timing(blink, { toValue: 1, duration: 125, useNativeDriver: true }),
     ]));
+    const swayLoop = Animated.loop(Animated.sequence([
+      Animated.timing(mascotSway, { toValue: -1, duration: 420, useNativeDriver: true }),
+      Animated.timing(mascotSway, { toValue: 1, duration: 520, useNativeDriver: true }),
+      Animated.timing(mascotSway, { toValue: 0, duration: 360, useNativeDriver: true }),
+      Animated.delay(900),
+    ]));
     floatLoop.start();
     blinkLoop.start();
+    swayLoop.start();
 
     const blushLoop = Animated.sequence([
       Animated.delay(900),
@@ -155,19 +163,20 @@ function CuckooOpeningExperience() {
       clearTimeout(welcomeTimer);
       floatLoop.stop();
       blinkLoop.stop();
+      swayLoop.stop();
       blushLoop.stop();
     };
-  }, [blink, blush, mascotFloat, mascotOpacity, mascotScale, mascotY, welcomeOpacity]);
+  }, [blink, blush, mascotFloat, mascotOpacity, mascotScale, mascotSway, mascotY, welcomeOpacity]);
 
   const continueIntoApp = () => {
-    Animated.timing(exitOpacity, { toValue: 0, duration: 420, useNativeDriver: true }).start(() => setVisible(false));
+    Animated.timing(exitOpacity, { toValue: 0, duration: 420, useNativeDriver: true }).start(() => { setVisible(false); onComplete?.(); });
   };
   if (!visible) return null;
 
   const openingMascotWidth = Math.min(width * 0.64, 270);
   const welcomeMascotWidth = Math.min(width * 0.48, 190);
   const blinkLineOpacity = blink.interpolate({ inputRange: [0, 1], outputRange: [1, 0] });
-  const blinkLineY = openingMascotWidth * 0.40;
+  const swayRotation = mascotSway.interpolate({ inputRange: [-1, 1], outputRange: ['-4deg', '4deg'] });
 
   return (
     <Animated.View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 1000, opacity: exitOpacity }}>
@@ -176,7 +185,7 @@ function CuckooOpeningExperience() {
         <View style={{ position: 'absolute', width: width * 0.92, height: width * 0.92, borderRadius: width, backgroundColor: welcome ? '#EFF9FF' : '#0075E9', bottom: -width * 0.48, left: -width * 0.35 }} />
         {!welcome ? (
           <View style={{ alignItems: 'center', justifyContent: 'center', flex: 1, width: '100%' }}>
-            <Animated.View style={{ alignItems: 'center', opacity: mascotVisible ? mascotOpacity : 0, transform: [{ translateY: Animated.add(mascotY, mascotFloat) }, { scale: mascotScale }] }}>
+            <Animated.View style={{ alignItems: 'center', opacity: mascotVisible ? mascotOpacity : 0, transform: [{ translateY: Animated.add(mascotY, mascotFloat) }, { rotate: swayRotation }, { scale: mascotScale }] }}>
               <View style={{ width: openingMascotWidth, height: openingMascotWidth * 1.245, alignItems: 'center', justifyContent: 'center' }}>
                 <Animated.Image source={require('./assets/cuckoo_mascot.webp')} resizeMode="contain" style={{ width: '100%', height: '100%' }} />
                 <Animated.View pointerEvents="none" style={{ position: 'absolute', left: '37%', top: '35%', width: '13%', height: 7, borderRadius: 8, backgroundColor: '#A77CEB', opacity: blinkLineOpacity }} />
@@ -191,7 +200,7 @@ function CuckooOpeningExperience() {
         ) : (
           <Animated.View style={{ alignItems: 'center', justifyContent: 'center', paddingHorizontal: 26, width: '100%', opacity: welcomeOpacity }}>
             <View style={{ width: welcomeMascotWidth, height: welcomeMascotWidth * 1.245, alignItems: 'center', justifyContent: 'center' }}>
-              <Animated.Image source={require('./assets/cuckoo_mascot.webp')} resizeMode="contain" style={{ width: '100%', height: '100%', transform: [{ translateY: mascotFloat }] }} />
+              <Animated.Image source={require('./assets/cuckoo_mascot.webp')} resizeMode="contain" style={{ width: '100%', height: '100%', transform: [{ translateY: mascotFloat }, { rotate: swayRotation }] }} />
               <Animated.View pointerEvents="none" style={{ position: 'absolute', left: '37%', top: '35%', width: '13%', height: 6, borderRadius: 8, backgroundColor: '#A77CEB', opacity: blinkLineOpacity }} />
               <Animated.View pointerEvents="none" style={{ position: 'absolute', left: '65%', top: '37%', width: '13%', height: 6, borderRadius: 8, backgroundColor: '#A77CEB', opacity: blinkLineOpacity }} />
             </View>
@@ -1806,7 +1815,6 @@ export default function App() {
   return (
     <View style={s.root}>
       <StatusBar barStyle="dark-content" backgroundColor={C.bg}/>
-      <CuckooOpeningExperience />
       <LiveBroadcastModal visible={liveStudioVisible} sessionId={liveJoinSessionId} creatorName={name} onClose={() => { setLiveStudioVisible(false); setLiveJoinSessionId(null); }} />
       <View style={{flex:1}}>
         {selectedProfile ? <OtherProfileScreen/> : tab === 'Profile' ? <Profile/> :
