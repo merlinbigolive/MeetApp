@@ -1,4 +1,4 @@
-name: Deploy CUCKOO message push function
+name: Deploy MEEi message push function
 
 on:
   workflow_dispatch:
@@ -18,11 +18,11 @@ jobs:
       - name: Deploy Supabase Edge Function
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-          CUCKOO_PUSH_WEBHOOK_SECRET: ${{ secrets.CUCKOO_PUSH_WEBHOOK_SECRET }}
+          MEEI_PUSH_WEBHOOK_SECRET: ${{ secrets.MEEI_PUSH_WEBHOOK_SECRET || secrets.CUCKOO_PUSH_WEBHOOK_SECRET }}
         run: |
-          if [ -z "$SUPABASE_ACCESS_TOKEN" ] || [ -z "$CUCKOO_PUSH_WEBHOOK_SECRET" ]; then
-            echo "Add SUPABASE_ACCESS_TOKEN and CUCKOO_PUSH_WEBHOOK_SECRET in GitHub Actions secrets."
+          if [ -z "$SUPABASE_ACCESS_TOKEN" ] || [ -z "$MEEI_PUSH_WEBHOOK_SECRET" ]; then
+            echo "Add SUPABASE_ACCESS_TOKEN and MEEI_PUSH_WEBHOOK_SECRET in GitHub Actions secrets."
             exit 1
           fi
-          npx --yes supabase@latest secrets set "CUCKOO_PUSH_WEBHOOK_SECRET=$CUCKOO_PUSH_WEBHOOK_SECRET" --project-ref sbzqxacibcfyyxoysseu --yes
+          npx --yes supabase@latest secrets set "MEEI_PUSH_WEBHOOK_SECRET=$MEEI_PUSH_WEBHOOK_SECRET" --project-ref sbzqxacibcfyyxoysseu --yes
           npx --yes supabase@latest functions deploy send-message-push --project-ref sbzqxacibcfyyxoysseu --yes
