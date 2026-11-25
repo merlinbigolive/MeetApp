@@ -977,6 +977,25 @@ export default function App() {
     } else setPendingFollowIds(old => old.includes(profile.id) ? old : [...old, profile.id]);
   };
 
+  const blockProfile = async (profile: PublicProfile) => {
+    if (!supabase) return;
+    Alert.alert(
+      'Block account?',
+      'You and @' + profile.username.replace(/[@#]/g, '') + ' will no longer see each other’s profiles, posts, or Live discovery, and messaging/following will be disabled.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Block', style: 'destructive', onPress: async () => {
+          const { error } = await supabase!.rpc('block_user', { target_user_id: profile.id });
+          if (error) { Alert.alert('Could not block account', error.message); return; }
+          setPublicProfiles(old => old.filter(item => item.id !== profile.id));
+          setFeedPosts(old => old.filter(item => item.author.id !== profile.id));
+          if (activeChat && activeChat.otherUser.id === profile.id) { setActiveChat(null); setChatMessages([]); }
+          setSelectedProfile(null);
+          Alert.alert('Account blocked', 'This account has been blocked. You can unblock it later from your blocked accounts list.');
+        } },
+      ],
+    );
+  };
   const loadFollowRequests = async () => {
     if (!supabase) return;
     const { data, error } = await supabase.rpc('get_my_follow_requests');
@@ -1862,6 +1881,7 @@ export default function App() {
         <View style={s.actions}>
           <Pressable disabled={busy} style={[s.primary, (following || pending) && s.followingButton]} onPress={() => toggleFollow(selectedProfile)}><Ionicons name={following ? 'checkmark' : pending ? 'time-outline' : 'person-add-outline'} color={following || pending ? C.cyan : '#fff'} size={17}/><Text style={[s.primaryText, (following || pending) && { color: C.cyan }]}>{busy ? 'Please wait…' : following ? 'Following' : pending ? 'Requested · Cancel' : 'Follow'}</Text></Pressable>
           {(!selectedProfile.is_private || following) && <Pressable style={s.secondary} onPress={() => void openChat(selectedProfile)}><Ionicons name="chatbubble-ellipses-outline" color={C.text} size={17}/><Text style={s.secondaryText}>Message</Text></Pressable>}
+          <Pressable style={[s.secondary, { borderColor: C.danger }]} onPress={() => blockProfile(selectedProfile)}><Ionicons name="ban-outline" color={C.danger} size={17}/><Text style={[s.secondaryText, { color: C.danger }]}>Block</Text></Pressable>
         </View>
         {selectedProfile.is_private && !following ? <View style={s.section}>
           <Ionicons name="lock-closed" size={26} color={C.cyan}/>
