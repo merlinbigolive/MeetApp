@@ -139,8 +139,8 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
   return (
     <KeyboardAvoidingView style={styles.root} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <View style={styles.panel}>
-        <Text style={styles.brand}>USay</Text>
-        <Text style={styles.heading}>Welcome to USay</Text>
+        <Text style={styles.brand}>MEEi</Text>
+        <Text style={styles.heading}>Welcome to MEEi</Text>
         <Text style={styles.subheading}>Sign in with your email to continue.</Text>
         {!supabase ? (
           <Text style={styles.error}>Supabase is not configured yet. Add EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY to the Expo project's environment variables.</Text>
@@ -178,7 +178,7 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
           </>
         )}
         {!!message && <Text style={styles.message}>{message}</Text>}
-        <Text style={styles.footnote}>Your email is used to secure your USay account.</Text>
+        <Text style={styles.footnote}>Your email is used to secure your MEEi account.</Text>
       </View>
     </KeyboardAvoidingView>
   );
