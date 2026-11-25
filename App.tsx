@@ -185,7 +185,7 @@ function CuckooOpeningExperience() {
               </View>
               <Text style={{ color: '#FFFFFF', fontSize: 14, fontWeight: '900', letterSpacing: 2.4, marginTop: 12 }}>HELLO THERE!</Text>
             </Animated.View>
-            {!mascotVisible && <View style={{ alignItems: 'center' }}><Text style={{ color: '#FFFFFF', fontSize: 34, fontWeight: '900', letterSpacing: 4 }}>CUCKOO</Text><Text style={{ color: '#EAF7FF', fontSize: 13, marginTop: 8 }}>Connect · Chat · Make Friends</Text></View>}
+            {!mascotVisible && <View style={{ alignItems: 'center' }}><Text style={{ color: '#FFFFFF', fontSize: 34, fontWeight: '900', letterSpacing: 4 }}>MEEi</Text><Text style={{ color: '#EAF7FF', fontSize: 13, marginTop: 8 }}>Connect · Chat · Make Friends</Text></View>}
           </View>
         ) : (
           <Animated.View style={{ alignItems: 'center', justifyContent: 'center', paddingHorizontal: 26, width: '100%', opacity: welcomeOpacity }}>
@@ -194,8 +194,8 @@ function CuckooOpeningExperience() {
               <Animated.View pointerEvents="none" style={{ position: 'absolute', left: '37%', top: '35%', width: '13%', height: 6, borderRadius: 8, backgroundColor: '#A77CEB', opacity: blinkLineOpacity }} />
               <Animated.View pointerEvents="none" style={{ position: 'absolute', left: '65%', top: '37%', width: '13%', height: 6, borderRadius: 8, backgroundColor: '#A77CEB', opacity: blinkLineOpacity }} />
             </View>
-            <Text style={{ color: '#087FEA', fontSize: 36, fontWeight: '900', letterSpacing: 1.5, marginTop: 8 }}>CUCKOO</Text>
-            <Text style={{ color: '#142E49', fontSize: 18, fontWeight: '800', marginTop: 8 }}>Welcome to CUCKOO</Text>
+            <Text style={{ color: '#087FEA', fontSize: 36, fontWeight: '900', letterSpacing: 1.5, marginTop: 8 }}>MEEi</Text>
+            <Text style={{ color: '#142E49', fontSize: 18, fontWeight: '800', marginTop: 8 }}>Welcome to MEEi</Text>
             <Text style={{ color: '#71879A', fontSize: 14, textAlign: 'center', lineHeight: 21, marginTop: 10 }}>Connect with amazing people{ '\n' }around the world!</Text>
             <Pressable onPress={continueIntoApp} style={{ marginTop: 34, width: Math.min(width - 64, 300), paddingVertical: 15, borderRadius: 28, backgroundColor: '#0789F5', alignItems: 'center', shadowColor: '#0789F5', shadowOpacity: 0.22, shadowRadius: 12, elevation: 4 }}>
               <Text style={{ color: '#FFFFFF', fontSize: 16, fontWeight: '800' }}>Continue →</Text>
@@ -209,7 +209,7 @@ function CuckooOpeningExperience() {
 
 export default function App() {
   const [tab, setTab] = useState<Tab>('Profile');
-  const [name, setName] = useState('USay User');
+  const [name, setName] = useState('MEEi User');
   const [username, setUsername] = useState('your_username');
   const [bio, setBio] = useState('Creating connections, sharing ideas and meeting amazing people.');
   const [website, setWebsite] = useState('https://example.com');
@@ -282,7 +282,7 @@ export default function App() {
         const permission = await Notifications.getPermissionsAsync();
         if (!permission.granted) await Notifications.requestPermissionsAsync();
         await Notifications.setNotificationChannelAsync(CUCKOO_SOUND_CHANNEL, {
-          name: 'Messages - Cuckoo sound', importance: Notifications.AndroidImportance.HIGH,
+          name: 'Messages - MEEi sound', importance: Notifications.AndroidImportance.HIGH,
           sound: CUCKOO_SOUND_FILE, vibrationPattern: [0, 180, 100, 180],
         });
         await Notifications.setNotificationChannelAsync(SILENT_MESSAGE_CHANNEL, {
@@ -430,7 +430,7 @@ export default function App() {
         .eq('id', userId)
         .maybeSingle();
       if (!active || error || !data) return;
-      setName(data.display_name || 'USay User');
+      setName(data.display_name || 'MEEi User');
       setUsername(data.username || 'your_username');
       setBio(data.bio || '');
       setWebsite(data.website_url || '');
@@ -789,7 +789,7 @@ export default function App() {
   const chooseCreateMedia = async () => {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) {
-      Alert.alert('Permission needed', 'Allow USay to access your phone gallery.');
+      Alert.alert('Permission needed', 'Allow MEEi to access your phone gallery.');
       return;
     }
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -852,7 +852,7 @@ export default function App() {
       setCreateCategory('videos');
       setCreateVisibility('public');
       setPostsRefreshKey(value => value + 1);
-      Alert.alert('Published', 'Your post has been published to USay.');
+      Alert.alert('Published', 'Your post has been published to MEEi.');
     } catch (error: any) {
       if (storagePath) await client.storage.from('usay-media').remove([storagePath]);
       Alert.alert('Could not publish', error?.message || 'Please try again.');
@@ -1283,7 +1283,7 @@ export default function App() {
     }
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) {
-      Alert.alert('Permission needed', 'Allow USay to access your phone gallery.');
+      Alert.alert('Permission needed', 'Allow MEEi to access your phone gallery.');
       return;
     }
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -1351,7 +1351,7 @@ export default function App() {
       if (kind === 'post') setPosts(old => index === undefined
         ? [...old, media].slice(0, 3)
         : old.map((m, i) => i === index ? media : m));
-      Alert.alert('Uploaded', 'Your media is now saved to your USay account.');
+      Alert.alert('Uploaded', 'Your media is now saved to your MEEi account.');
     } catch (error: any) {
       Alert.alert('Upload failed', error?.message || 'Please try again.');
     }
@@ -1439,7 +1439,7 @@ export default function App() {
       if (coverRevealed && y < lastProfileScrollY.current - 3) animateCoverReveal(false);
       lastProfileScrollY.current = y;
     }}>
-      <View style={s.top}><Text style={s.pageTitle}>꒤ꇙꋬꌦ</Text></View>
+      <View style={s.top}><Text style={s.pageTitle}>MEEi</Text></View>
       <Animated.View style={[s.identity, { paddingTop: coverRevealProgress.interpolate({ inputRange: [0, 1], outputRange: [76, 266] }) }]}>
         <Animated.View style={[s.coverBackdrop, { height: coverRevealProgress.interpolate({ inputRange: [0, 1], outputRange: [190, 420] }) }]}>
           {covers[0]?.type === 'image' ? <Image source={{uri:covers[0].uri}} style={s.coverBackdropImage}/> :
@@ -1480,7 +1480,7 @@ export default function App() {
         <View style={s.actions}>
           {isOwnProfile ? <>
             <Pressable style={s.primary} onPress={() => setEditing(true)}><Ionicons name="create-outline" color="#fff" size={17}/><Text style={s.primaryText}>Edit Profile</Text></Pressable>
-            <Pressable style={s.secondary} onPress={() => Alert.alert('Message notification sound', 'Choose whether new messages play your natural Cuckoo sound.', [
+            <Pressable style={s.secondary} onPress={() => Alert.alert('Message notification sound', 'Choose whether new messages play your natural bird sound.', [
               { text: 'Sound On', onPress: () => { void setMessageNotificationSound(true); } },
               { text: 'Sound Off', onPress: () => { void setMessageNotificationSound(false); } },
               { text: 'Sign out', style: 'destructive', onPress: () => {
@@ -1508,7 +1508,7 @@ export default function App() {
           {!!occupation && <View style={s.infoLine}><Ionicons name="briefcase-outline" color={C.cyan} size={18}/><Text style={s.infoText}>{occupation}</Text></View>}
           <View style={s.infoLine}><Ionicons name="time-outline" color={C.cyan} size={18}/><Text style={s.infoText}>{activity}</Text></View>
         </View>
-        <Text style={s.footerNote}>Profile details and uploaded media are synced with your USay account.</Text>
+        <Text style={s.footerNote}>Profile details and uploaded media are synced with your MEEi account.</Text>
       </View>
     </ScrollView>
   );
@@ -1531,7 +1531,7 @@ export default function App() {
     }}>
       <View style={[s.top, { justifyContent: 'space-between' }]}>
         <Pressable onPress={() => setSelectedProfile(null)} style={{ padding: 8 }}><Ionicons name="arrow-back" size={24} color={C.text}/></Pressable>
-        <Text style={s.pageTitle}>꒤ꇙꋬꌦ</Text><View style={{ width: 40 }}/>
+        <Text style={s.pageTitle}>MEEi</Text><View style={{ width: 40 }}/>
       </View>
       <View style={s.identity}>
 <Animated.View style={[s.coverBackdrop, { height: coverRevealProgress.interpolate({ inputRange: [0, 1], outputRange: [190, 420] }) }]}>
@@ -1681,7 +1681,7 @@ export default function App() {
     const CreateScreen = () => (
     <ScrollView contentContainerStyle={s.discoverScroll} keyboardShouldPersistTaps="handled">
       <Text style={s.pageTitle}>Create</Text>
-      <Text style={s.hint}>Share a photo or video with your USay community.</Text>
+      <Text style={s.hint}>Share a photo or video with your MEEi community.</Text>
       <Pressable onPress={() => void chooseCreateMedia()} style={s.createPicker}>
         {createMedia?.type === 'image' ? <Image source={{ uri: createMedia.uri }} style={s.createPreview} resizeMode="cover" /> :
           createMedia?.type === 'video' ? <View style={s.createVideoPreview}><Ionicons name="play-circle" size={48} color="#FFFFFF"/><Text style={s.primaryText}>VIDEO SELECTED</Text></View> :
@@ -1779,7 +1779,7 @@ export default function App() {
   );
 
   const SimpleScreen = ({ title, subtitle }: {title:string;subtitle:string}) => (
-    <View style={s.simple}><Text style={s.pageTitle}>{title}</Text><View style={s.card}><Text style={s.sectionTitle}>{subtitle}</Text><Text style={s.hint}>This section will be connected to USay accounts and services in the next build step.</Text></View></View>
+    <View style={s.simple}><Text style={s.pageTitle}>{title}</Text><View style={s.card}><Text style={s.sectionTitle}>{subtitle}</Text><Text style={s.hint}>This section will be connected to MEEi accounts and services in the next build step.</Text></View></View>
   );
 
   return (
@@ -1788,7 +1788,7 @@ export default function App() {
       <CuckooOpeningExperience />
       <View style={{flex:1}}>
         {selectedProfile ? <OtherProfileScreen/> : tab === 'Profile' ? <Profile/> :
-          tab === 'Home' ? <SimpleScreen title="USay" subtitle="Your people, one place."/> :
+          tab === 'Home' ? <SimpleScreen title="MEEi" subtitle="Your people, one place."/> :
           tab === 'Public' ? <DiscoverScreen/> :
           tab === 'Live' ? <LiveScreen/> :
           tab === 'Create' ? <CreateScreen/> :
