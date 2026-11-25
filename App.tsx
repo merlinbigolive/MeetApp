@@ -303,6 +303,7 @@ export default function App() {
   const [savedPostIds, setSavedPostIds] = useState<string[]>([]);
   const [savedPostBusyIds, setSavedPostBusyIds] = useState<string[]>([]);
   const [reportBusyIds, setReportBusyIds] = useState<string[]>([]);
+  const [reportPost, setReportPost] = useState<FeedPost | null>(null);
   const [loadingFeed, setLoadingFeed] = useState(false);
   const [ownPublishedPosts, setOwnPublishedPosts] = useState<PublishedPost[]>([]);
   const [otherPublishedPosts, setOtherPublishedPosts] = useState<PublishedPost[]>([]);
@@ -1825,17 +1826,7 @@ export default function App() {
             {!followedUserIds.includes(post.author.id) && <Pressable disabled={followBusyIds.includes(post.author.id)} onPress={() => void toggleFollow(post.author)} style={[s.feedFollowButton, pendingFollowIds.includes(post.author.id) && s.followingButton]}><Text style={[s.feedFollowText, pendingFollowIds.includes(post.author.id) && s.followingButtonText]}>{followBusyIds.includes(post.author.id) ? '…' : pendingFollowIds.includes(post.author.id) ? 'Requested' : 'Follow'}</Text></Pressable>}
             <Pressable onPress={() => Alert.alert('Post options', 'Choose an action for this post.', [
               { text: 'Not interested', onPress: () => setFeedPosts(old => old.filter(item => item.id !== post.id)) },
-              { text: 'Report', onPress: () => Alert.alert('Report post', 'Select the closest reason.', [
-                { text: 'Spam or misleading', onPress: () => void submitPostReport(post, 'spam') },
-                { text: 'Harassment or bullying', onPress: () => void submitPostReport(post, 'harassment') },
-                { text: 'Hate or hateful conduct', onPress: () => void submitPostReport(post, 'hate') },
-                { text: 'Violence or dangerous acts', onPress: () => void submitPostReport(post, 'violence') },
-                { text: 'Nudity or sexual content', onPress: () => void submitPostReport(post, 'nudity') },
-                { text: 'Scam or fraud', onPress: () => void submitPostReport(post, 'scam') },
-                { text: 'Copyright concern', onPress: () => void submitPostReport(post, 'copyright') },
-                { text: 'Other', onPress: () => void submitPostReport(post, 'other') },
-                { text: 'Cancel', style: 'cancel' },
-              ]) },
+              { text: 'Report', onPress: () => setReportPost(post) },
               { text: 'Cancel', style: 'cancel' },
             ])} style={{padding:8}}><Ionicons name="ellipsis-horizontal" size={21} color={C.text}/></Pressable>
           </View>
@@ -2095,6 +2086,40 @@ export default function App() {
           <Text style={[s.navLabel, tab === item && {color:C.pink}]}>{item}</Text>
         </Pressable>)}
       </View>
+      <Modal visible={!!reportPost} transparent animationType="fade" onRequestClose={() => setReportPost(null)}>
+        <View style={{ flex: 1, backgroundColor: '#0008', justifyContent: 'center', padding: 20 }}>
+          <View style={[s.card, { maxHeight: '82%', padding: 18 }]}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+              <Text style={s.sectionTitle}>Report post</Text>
+              <Pressable onPress={() => setReportPost(null)} accessibilityRole="button" accessibilityLabel="Close report form" style={{ padding: 6 }}>
+                <Ionicons name="close" size={22} color={C.text}/>
+              </Pressable>
+            </View>
+            <Text style={s.hint}>Choose the reason that best describes the issue. Your report is private.</Text>
+            <ScrollView style={{ marginTop: 10 }} keyboardShouldPersistTaps="handled">
+              {([
+                ['spam', 'Spam or misleading'],
+                ['harassment', 'Harassment or bullying'],
+                ['hate', 'Hate or hateful conduct'],
+                ['violence', 'Violence or dangerous acts'],
+                ['nudity', 'Nudity or sexual content'],
+                ['scam', 'Scam or fraud'],
+                ['copyright', 'Copyright concern'],
+                ['other', 'Other'],
+              ] as const).map(([reason, label]) => (
+                <Pressable key={reason} disabled={!reportPost || reportBusyIds.includes(reportPost.id)} onPress={() => {
+                  const target = reportPost;
+                  setReportPost(null);
+                  if (target) void submitPostReport(target, reason);
+                }} style={{ paddingVertical: 13, borderBottomWidth: 1, borderBottomColor: C.border }}>
+                  <Text style={s.infoText}>{label}</Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+            {reportPost && reportBusyIds.includes(reportPost.id) && <Text style={s.hint}>Submitting report…</Text>}
+          </View>
+        </View>
+      </Modal>
       <Modal visible={legalVisible} animationType="slide" onRequestClose={() => setLegalVisible(false)}>
         <View style={{ flex:  1, backgroundColor: C.bg }}>
           <View style={{ paddingTop: Platform.OS === 'ios' ? 52 : 18, paddingHorizontal: 18, paddingBottom: 14, borderBottomWidth: 1, borderBottomColor: C.border, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
