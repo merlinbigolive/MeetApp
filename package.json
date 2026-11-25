@@ -30,7 +30,13 @@
     "@react-native-async-storage/async-storage": "2.2.0",
     "expo-audio": "~1.0.14",
     "expo-speech-recognition": "sdk-54",
-    "expo-notifications": "~0.32.15"
+    "expo-notifications": "~0.32.15",
+    "expo-dev-client": "~6.0.21",
+    "@livekit/react-native": "^3.2.0",
+    "@livekit/react-native-expo-plugin": "^1.2.0",
+    "@livekit/react-native-webrtc": "^150.2.0",
+    "@config-plugins/react-native-webrtc": "^13.0.0",
+    "livekit-client": "^2.25.0"
   },
   "devDependencies": {
     "babel-preset-expo": "~54.0.12",
