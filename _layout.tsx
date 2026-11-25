@@ -13,7 +13,13 @@ const tabs = [
 export default function TabLayout() {
   return <Tabs screenOptions={{
     headerShown: false,
-    tabBarStyle: { backgroundColor: '#121622', borderTopColor: theme.border, height: 68, paddingTop: 8, paddingBottom: 8 },
+    tabBarStyle: {
+      backgroundColor: theme.panel,
+      borderTopColor: theme.border,
+      height: 68,
+      paddingTop: 8,
+      paddingBottom: 8,
+    },
     tabBarActiveTintColor: theme.accent,
     tabBarInactiveTintColor: theme.muted,
     tabBarLabelStyle: { fontSize: 10, fontWeight: '600' },
