@@ -117,3 +117,19 @@ grant execute on function public.get_live_viewer_profile(uuid,uuid) to authentic
 
 comment on table public.live_moderators is 'Creator-assigned moderators for MEEi Live sessions; revoked_at disables access.';
 comment on table public.live_moderation_actions is 'Mute and kickout expire after 12 hours; block persists until revoked.';
+
+create or replace function public.is_live_moderator(target_session_id uuid, target_user_id uuid)
+returns boolean language plpgsql stable security definer set search_path = public as $$
+declare host_id uuid;
+begin
+  select user_id into host_id from public.live_sessions
+  where id = target_session_id and status = 'live'
+    and last_heartbeat_at > now() - interval '90 seconds';
+  if host_id is null or auth.uid() <> host_id then
+    raise exception 'Only the Live creator can manage moderator assignments.';
+  end if;
+  return exists (select 1 from public.live_moderators
+    where creator_id = host_id and moderator_id = target_user_id and revoked_at is null);
+end; $$;
+revoke all on function public.is_live_moderator(uuid,uuid) from public;
+grant execute on function public.is_live_moderator(uuid,uuid) to authenticated;
