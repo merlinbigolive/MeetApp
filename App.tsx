@@ -42,6 +42,18 @@ const C = {
   muted: '#777777', pink: '#258FEA', cyan: '#43B8E8', border: '#EEEEEE'
 };
 
+function LongVideoPreview({ uri }: { uri: string }) {
+  const player = useVideoPlayer(uri, p => { p.loop = true; p.muted = true; });
+  return <VideoView player={player} style={s.longVideoThumb} contentFit="cover" nativeControls={false}/>;
+}
+
+function FeedVideoMedia({ uri, onPress }: { uri: string; onPress: () => void }) {
+  const player = useVideoPlayer(uri, p => { p.loop = false; p.muted = false; });
+  return <Pressable onPress={onPress} style={s.feedMedia}>
+    <VideoView player={player} style={{width:'100%',height:'100%'}} contentFit="cover" nativeControls/>
+  </Pressable>;
+}
+
 function SearchReelTile({ uri, caption, views, onPress }: { uri?: string; caption: string; views: number; onPress: () => void }) {
   const player = useVideoPlayer(uri || null, p => {
     p.loop = true;
@@ -1749,7 +1761,7 @@ export default function App() {
             <Pressable onPress={() => Alert.alert('Post options', 'Choose an action for this post.', [{text:'Not interested',onPress:()=>setFeedPosts(old=>old.filter(item=>item.id!==post.id))},{text:'Report',onPress:()=>Alert.alert('Report received','This post has been flagged for review.')},{text:'Cancel',style:'cancel'}])} style={{padding:8}}><Ionicons name="ellipsis-horizontal" size={21} color={C.text}/></Pressable>
           </View>
           {!!post.caption && <Text style={s.feedCaption}>{post.caption}</Text>}
-          {post.post_type === 'video' ? <Pressable onPress={() => setViewer(post.media)}><View style={s.feedMedia}><VideoView player={useVideoPlayer(post.media.uri, p=>{p.loop=false;})} style={{width:'100%',height:'100%'}} contentFit="cover" nativeControls/></View></Pressable> :
+          {post.post_type === 'video' ? <FeedVideoMedia uri={post.media.uri} onPress={() => setViewer(post.media)}/> :
             <Pressable onPress={() => setViewer(post.media)}><Image source={{uri:post.media.uri}} style={s.feedMedia} resizeMode="cover"/></Pressable>}
           <View style={s.feedActions}>
             <Pressable onPress={() => void togglePublishedPostLike(post,false)} style={s.feedAction}><Ionicons name={post.viewer_liked?'heart':'heart-outline'} size={23} color={post.viewer_liked?'#E64D72':C.text}/><Text style={s.feedActionText}>{post.like_count}</Text></Pressable>
@@ -1831,7 +1843,7 @@ export default function App() {
       <View style={s.searchBox}><Ionicons name="search" size={19} color={C.muted}/><TextInput value={profileSearch} onChangeText={setProfileSearch} placeholder="Search long videos, topics or creators" placeholderTextColor={C.muted} style={s.searchInput}/>{!!profileSearch && <Pressable onPress={()=>setProfileSearch('')}><Ionicons name="close-circle" size={19} color={C.muted}/></Pressable>}</View>
       {loadingVideos ? <View style={s.searchEmpty}><Text style={s.hint}>Finding videos…</Text></View> : videos.length === 0 ? <View style={s.searchEmpty}><Ionicons name="film-outline" size={38} color={C.cyan}/><Text style={s.sectionTitle}>No long videos yet</Text><Text style={s.hint}>Public long-form videos will appear here.</Text></View> :
         videos.filter(video=>(video.caption||'').toLowerCase().includes(profileSearch.toLowerCase())).map(video=><Pressable key={video.id} onPress={()=>{const uri=videoUrls[video.id];if(uri){void supabase?.rpc('record_public_post_view',{target_post_id:video.id});setViewer({uri,type:'video',storagePath:video.media_path});}}} style={s.longVideoCard}>
-          {videoUrls[video.id] ? <Image source={{uri:videoUrls[video.id]}} style={s.longVideoThumb}/> : <View style={s.longVideoThumbFallback}><Ionicons name="play-circle" size={42} color="#FFFFFF"/></View>}
+          {videoUrls[video.id] ? <LongVideoPreview uri={videoUrls[video.id]}/> : <View style={s.longVideoThumbFallback}><Ionicons name="play-circle" size={42} color="#FFFFFF"/></View>}
           <View style={{flex:1,gap:5}}><Text style={s.personName} numberOfLines={2}>{video.caption || 'MEEi video'}</Text><Text style={s.personUsername}>{video.view_count.toLocaleString()} views · {new Date(video.created_at).toLocaleDateString()}</Text><Text style={s.personBio}>MEEi creator video</Text></View>
         </Pressable>)}
     </ScrollView>;
