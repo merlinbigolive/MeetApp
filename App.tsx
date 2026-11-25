@@ -4,7 +4,7 @@ import Constants from 'expo-constants';
 import * as Notifications from 'expo-notifications';
 import {
   Alert, Image, Modal, Pressable, ScrollView, StatusBar, StyleSheet, Platform, Share,
-  Text, TextInput, View, useWindowDimensions, Animated, PanResponder
+  Text, TextInput, View, useWindowDimensions, useColorScheme, Animated, PanResponder
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
@@ -38,10 +38,17 @@ Notifications.setNotificationHandler({
   handleNotification: async () => ({ shouldShowBanner: true, shouldShowList: true, shouldPlaySound: true, shouldSetBadge: false }),
 });
 
-const C = {
-  bg: '#FFFFFF', panel: '#FFFFFF', panel2: '#FFFFFF', text: '#172B3A',
-  muted: '#777777', pink: '#258FEA', cyan: '#43B8E8', border: '#EEEEEE'
+const LIGHT_C = {
+  bg: '#FFFFFF', panel: '#FFFFFF', panel2: '#F4F9FD', text: '#172B3A',
+  muted: '#718096', pink: '#258FEA', cyan: '#43B8E8', border: '#E5EDF4',
+  success: '#22A06B', danger: '#D64545'
 };
+const DARK_C = {
+  bg: '#0B1420', panel: '#121F2D', panel2: '#1A2A3A', text: '#EAF3FA',
+  muted: '#9AAFC0', pink: '#49A9F5', cyan: '#65C7EF', border: '#2A3D50',
+  success: '#4BC58C', danger: '#FF7373'
+};
+let C = LIGHT_C;
 
 function LongVideoPreview({ uri }: { uri: string }) {
   const player = useVideoPlayer(uri, p => { p.loop = true; p.muted = true; });
@@ -286,6 +293,15 @@ function ChatEmojiPicker({ onSelect }: { onSelect: (emoji: string) => void }) {
 }
 
 export default function App() {
+  const systemColorScheme = useColorScheme();
+  const [themeMode, setThemeMode] = useState<'system' | 'light' | 'dark'>('system');
+  const activePalette = themeMode === 'system' ? (systemColorScheme === 'dark' ? DARK_C : LIGHT_C) : themeMode === 'dark' ? DARK_C : LIGHT_C;
+  C = activePalette;
+  s = createStyles(activePalette);
+  const setAppearanceMode = (mode: 'system' | 'light' | 'dark') => {
+    setThemeMode(mode);
+    void AsyncStorage.setItem('@meei/appearance_mode', mode).catch(error => console.warn('Appearance preference could not be saved:', error));
+  };
   const [tab, setTab] = useState<Tab>('Profile');
   const [createMenuVisible, setCreateMenuVisible] = useState(false);
   const [legalVisible, setLegalVisible] = useState(false);
@@ -364,6 +380,14 @@ export default function App() {
   const [translatingMessageIds, setTranslatingMessageIds] = useState<string[]>([]);
   const [currentUserId, setCurrentUserId] = useState('');
   const [messageSoundEnabled, setMessageSoundEnabled] = useState(true);
+  useEffect(() => {
+    let active = true;
+    AsyncStorage.getItem('@meei/appearance_mode').then(saved => {
+      if (active && (saved === 'system' || saved === 'light' || saved === 'dark')) setThemeMode(saved);
+    }).catch(error => console.warn('Appearance preference could not be loaded:', error));
+    return () => { active = false; };
+  }, []);
+
   useEffect(() => {
     let active = true;
     const setupMessageNotifications = async () => {
@@ -1753,12 +1777,17 @@ export default function App() {
             <Pressable style={s.secondary} onPress={() => Alert.alert('Message notification sound', 'Choose whether new messages play your natural bird sound.', [
               { text: 'Sound On', onPress: () => { void setMessageNotificationSound(true); } },
               { text: 'Sound Off', onPress: () => { void setMessageNotificationSound(false); } },
+              { text: 'Appearance', onPress: () => Alert.alert('Appearance', 'Choose how MEEi looks on this device.', [
+                { text: 'System', onPress: () => setAppearanceMode('system') },
+                { text: 'Light', onPress: () => setAppearanceMode('light') },
+                { text: 'Dark', onPress: () => setAppearanceMode('dark') },
+              ]) },
               { text: 'Policies & Terms', onPress: () => setLegalVisible(true) },
               { text: 'Sign out', style: 'destructive', onPress: () => {
                 if (supabase) supabase.auth.signOut().catch(error => Alert.alert('Sign out failed', error.message));
               }},
               { text: 'Cancel', style: 'cancel' },
-            ])}><Ionicons name="settings-outline" color={C.text} size={17}/><Text style={s.secondaryText}>Settings · Sound {messageSoundEnabled ? 'On' : 'Off'}</Text></Pressable>
+            ])}><Ionicons name="settings-outline" color={C.text} size={17}/><Text style={s.secondaryText}>Settings · {themeMode === 'system' ? 'System' : themeMode === 'dark' ? 'Dark' : 'Light'}</Text></Pressable>
           </> : <>
             <Pressable style={s.primary} onPress={() => Alert.alert('Follow', 'Follow action will work after account and backend connection.')}><Ionicons name="person-add-outline" color="#fff" size={17}/><Text style={s.primaryText}>Follow</Text></Pressable>
             <Pressable style={s.secondary} onPress={() => Alert.alert('Message', 'Messaging will work after chat backend connection.')}><Ionicons name="chatbubble-ellipses-outline" color={C.text} size={17}/><Text style={s.secondaryText}>Message</Text></Pressable>
@@ -2363,18 +2392,21 @@ export default function App() {
   );
 }
 
-const s = StyleSheet.create({
+let s: any;
+const createStyles = (palette: typeof LIGHT_C) => {
+  const C = palette;
+  return StyleSheet.create({
   root:{flex:1,backgroundColor:C.bg}, scroll:{padding:16,paddingBottom:22,gap:14},
   discoverScroll:{padding:20,paddingTop:54,paddingBottom:30,gap:14},
   feedScroll:{paddingHorizontal:14,paddingTop:48,paddingBottom:28,gap:14},
   feedHeader:{flexDirection:'row',alignItems:'center',justifyContent:'space-between'},
-  feedComposer:{flexDirection:'row',alignItems:'center',gap:10,padding:12,borderRadius:16,backgroundColor:'#FFFFFF',borderWidth:1,borderColor:C.border},
-  feedPost:{backgroundColor:'#FFFFFF',borderRadius:18,borderWidth:1,borderColor:C.border,padding:12,gap:10},
+  feedComposer:{flexDirection:'row',alignItems:'center',gap:10,padding:12,borderRadius:16,backgroundColor:C.panel,borderWidth:1,borderColor:C.border},
+  feedPost:{backgroundColor:C.panel,borderRadius:18,borderWidth:1,borderColor:C.border,padding:12,gap:10},
   feedPostHeader:{flexDirection:'row',alignItems:'center',gap:8},feedFollowButton:{paddingHorizontal:12,paddingVertical:7,borderRadius:10,backgroundColor:'#EAF5FF'},feedFollowText:{color:C.cyan,fontSize:11,fontWeight:'800'},feedCaption:{color:C.text,fontSize:13,lineHeight:19},
   feedMedia:{width:'100%',height:340,borderRadius:13,backgroundColor:'#EAF5FF'},
   feedActions:{flexDirection:'row',alignItems:'center',gap:17,paddingTop:2},feedAction:{flexDirection:'row',alignItems:'center',gap:5,paddingVertical:5},feedActionText:{color:C.text,fontSize:11,fontWeight:'700'},
   longVideosScroll:{padding:18,paddingTop:50,paddingBottom:30,gap:14},
-  longVideoCard:{flexDirection:'row',alignItems:'center',gap:12,padding:10,borderRadius:16,borderWidth:1,borderColor:C.border,backgroundColor:'#FFFFFF'},
+  longVideoCard:{flexDirection:'row',alignItems:'center',gap:12,padding:10,borderRadius:16,borderWidth:1,borderColor:C.border,backgroundColor:C.panel},
   longVideoThumb:{width:132,height:90,borderRadius:11,backgroundColor:'#EAF5FF'},longVideoThumbFallback:{width:132,height:90,borderRadius:11,backgroundColor:'#78B9DD',alignItems:'center',justifyContent:'center'},
   searchHeader:{flexDirection:'row',alignItems:'center',justifyContent:'space-between'},
   searchSubtitle:{color:C.muted,fontSize:12,marginTop:3},
@@ -2398,7 +2430,7 @@ const s = StyleSheet.create({
   livePulseDot:{width:7,height:7,borderRadius:4,backgroundColor:'#E54862'},
   livePulseText:{color:'#D93650',fontSize:9,fontWeight:'900',letterSpacing:.7},
   liveCountries:{gap:8,paddingVertical:2},
-  liveCountryChip:{paddingHorizontal:14,paddingVertical:9,borderRadius:18,borderWidth:1,borderColor:C.border,backgroundColor:'#FFFFFF'},
+  liveCountryChip:{paddingHorizontal:14,paddingVertical:9,borderRadius:18,borderWidth:1,borderColor:C.border,backgroundColor:C.panel},
   liveCountryChipActive:{backgroundColor:'#EAF5FF',borderColor:'#9DD6F4'},
   liveCountryText:{color:C.muted,fontSize:11,fontWeight:'700'},
   liveCountryTextActive:{color:C.cyan},
@@ -2418,7 +2450,7 @@ const s = StyleSheet.create({
   liveCardTitle:{color:'#FFFFFF',fontSize:10,textShadowColor:'#000A',textShadowRadius:4},
   searchBox:{minHeight:48,borderWidth:1,borderColor:C.border,borderRadius:14,paddingHorizontal:13,flexDirection:'row',alignItems:'center',gap:9,backgroundColor:'#F8FCFF'},
   searchInput:{flex:1,color:C.text,fontSize:14,paddingVertical:10},searchCategories:{gap:8,paddingVertical:3},
-  searchCategory:{paddingHorizontal:15,paddingVertical:9,borderRadius:20,borderWidth:1,borderColor:C.border,backgroundColor:'#FFFFFF'},
+  searchCategory:{paddingHorizontal:15,paddingVertical:9,borderRadius:20,borderWidth:1,borderColor:C.border,backgroundColor:C.panel},
   searchCategoryActive:{backgroundColor:'#EAF5FF',borderColor:'#9DD6F4'},searchCategoryText:{color:C.muted,fontSize:12,fontWeight:'700'},searchCategoryTextActive:{color:C.cyan},
   videoSearchRow:{flexDirection:'row',alignItems:'center',gap:12,paddingVertical:10,borderBottomWidth:1,borderBottomColor:C.border},
   videoSearchThumb:{width:78,height:88,borderRadius:12,backgroundColor:'#7BBCE0',alignItems:'center',justifyContent:'center'},
@@ -2489,4 +2521,6 @@ const s = StyleSheet.create({
   createPicker:{minHeight:220,borderWidth:1,borderColor:'#B9DDF3',borderStyle:'dashed',borderRadius:18,backgroundColor:'#F4FAFF',alignItems:'center',justifyContent:'center',gap:9,overflow:'hidden'},
   createPreview:{width:'100%',height:260},createVideoPreview:{width:'100%',height:220,backgroundColor:'#6FAFD0',alignItems:'center',justifyContent:'center',gap:8},
   createRemove:{flexDirection:'row',alignItems:'center',gap:6,alignSelf:'flex-end'}, 
-});
+  });
+};
+s = createStyles(LIGHT_C);
