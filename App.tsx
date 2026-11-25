@@ -668,7 +668,7 @@ export default function App() {
     const loadSearchVideos = async () => {
       setLoadingVideos(true);
       setVideoUrls({});
-      const categoryFilter = tab === 'Videos' ? 'videos' : (searchCategory === 'Reels' ? 'all' : searchCategory.toLowerCase());
+      const categoryFilter = tab === 'Videos' ? 'videos' : (searchCategory === 'Reels' ? (debouncedProfileSearch ? 'all' : 'reels') : searchCategory.toLowerCase());
       const { data, error } = await supabase!
         .rpc('get_public_search_posts', { category_filter: categoryFilter, search_text: debouncedProfileSearch || null });
       if (!active) return;
