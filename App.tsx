@@ -220,6 +220,7 @@ export function MEEiOpeningExperience({ onComplete }: { onComplete?: () => void 
 export default function App() {
   const [tab, setTab] = useState<Tab>('Profile');
   const [createMenuVisible, setCreateMenuVisible] = useState(false);
+  const [legalVisible, setLegalVisible] = useState(false);
   const [liveStudioVisible, setLiveStudioVisible] = useState(false);
   const [liveJoinSessionId, setLiveJoinSessionId] = useState<string | null>(null);
   const [name, setName] = useState('MEEi User');
@@ -1513,6 +1514,7 @@ export default function App() {
             <Pressable style={s.secondary} onPress={() => Alert.alert('Message notification sound', 'Choose whether new messages play your natural bird sound.', [
               { text: 'Sound On', onPress: () => { void setMessageNotificationSound(true); } },
               { text: 'Sound Off', onPress: () => { void setMessageNotificationSound(false); } },
+              { text: 'Policies & Terms', onPress: () => setLegalVisible(true) },
               { text: 'Sign out', style: 'destructive', onPress: () => {
                 if (supabase) supabase.auth.signOut().catch(error => Alert.alert('Sign out failed', error.message));
               }},
@@ -1841,6 +1843,72 @@ export default function App() {
           <Text style={[s.navLabel, tab === item && {color:C.pink}]}>{item}</Text>
         </Pressable>)}
       </View>
+      <Modal visible={legalVisible} animationType="slide" onRequestClose={() => setLegalVisible(false)}>
+        <View style={{ flex:  1, backgroundColor: C.bg }}>
+          <View style={{ paddingTop: Platform.OS === 'ios' ? 52 : 18, paddingHorizontal: 18, paddingBottom: 14, borderBottomWidth: 1, borderBottomColor: C.border, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+            <View><Text style={s.pageTitle}>Policies & Terms</Text><Text style={s.hint}>MEEi community and account rules</Text></View>
+            <Pressable onPress={() => setLegalVisible(false)} style={{ padding: 8 }}><Ionicons name="close" size={25} color={C.text}/></Pressable>
+          </View>
+          <ScrollView contentContainerStyle={{ padding: 18, paddingBottom: 36, gap: 18 }}>
+            <Text style={s.hint}>Draft for review · Last updated: 25 November 2026 · These terms must be reviewed by qualified legal counsel before public launch.</Text>
+            <View style={s.card}>
+              <Text style={s.sectionTitle}>1. Acceptance and eligibility</Text>
+              <Text style={s.infoText}>By creating an account or using MEEi, you agree to these Terms, our Privacy Policy and Community Guidelines. You must meet the minimum age required by applicable law and the age shown at sign-up. Do not use MEEi if you are not legally permitted to do so. You are responsible for accurate account information and keeping your login credentials secure.</Text>
+            </View>
+            <View style={s.card}>
+              <Text style={s.sectionTitle}>2. Respectful community and prohibited conduct</Text>
+              <Text style={s.infoText}>Do not post, stream, send or promote illegal content, threats, harassment, hate, bullying, sexual exploitation, child sexual abuse material, non-consensual intimate imagery, impersonation, scams, spam, malware, violence or content that infringes another person’s rights. Do not stalk, dox, manipulate, exploit or deceive other users. Do not use MEEi to arrange unlawful activity or evade safety controls.</Text>
+            </View>
+            <View style={s.card}>
+              <Text style={s.sectionTitle}>3. Live streaming, chat and moderation</Text>
+              <Text style={s.infoText}>Creators are responsible for their streams and must have the rights and permissions needed for people and material shown. MEEi may review reports, remove content, restrict features, mute, suspend or terminate accounts where reasonably necessary for safety, legal compliance or these rules. Creators and moderators must use moderation tools responsibly. Blocking, muting or kicking a viewer does not replace reporting urgent threats to the relevant authorities.</Text>
+            </View>
+            <View style={s.card}>
+              <Text style={s.sectionTitle}>4. User content and permissions</Text>
+              <Text style={s.infoText}>You retain ownership of content you create. You grant MEEi a non-exclusive, worldwide, royalty-free licence to host, store, reproduce, process, display and distribute that content only as needed to operate, secure, improve and promote the service, subject to your settings and applicable law. You confirm you have the necessary rights and consent. You can delete content, but copies may remain temporarily in backups, recipients’ devices or where retention is legally required.</Text>
+            </View>
+            <View style={s.card}>
+              <Text style={s.sectionTitle}>5. Privacy and personal information</Text>
+              <Text style={s.infoText}>MEEi processes account details, profile content, messages, device and usage information, safety reports and transaction records to provide and protect the service. We do not display private contact details publicly by default. Payment card data should be handled by the payment provider and not stored by MEEi. We may share necessary information with service providers, payment partners, authorities or others where required by law or to protect users and the service. The final Privacy Policy must identify the actual data collected, purposes, retention periods, grievance contact and user rights.</Text>
+            </View>
+            <View style={s.card}>
+              <Text style={s.sectionTitle}>6. Diamonds, gifts and payments</Text>
+              <Text style={s.infoText}>Diamonds and virtual gifts are digital features, not cash, deposits, securities or property, and cannot be withdrawn, transferred or exchanged for money unless MEEi expressly enables this in writing and applicable law permits it. Prices, applicable taxes, pack contents and payment terms will be shown before purchase. Payments are processed by authorised payment partners using their supported card, UPI and authentication flows. Never share your card PIN, UPI PIN or bank OTP with another person or with MEEi support.</Text>
+              <Text style={[s.infoText, { marginTop: 8 }]}>After a successful payment, diamonds will be credited only after server-side confirmation from the payment provider. Failed, pending, duplicate or reversed payments will be handled according to the provider’s status and applicable law. Digital purchases are generally final once delivered, except where a refund, cancellation or remedy is required by applicable law, payment-network rules or a verified billing error. Nothing here removes your right to raise a genuine bank or payment-provider dispute. MEEi may submit transaction and delivery evidence to contest fraudulent or inaccurate claims.</Text>
+              <Text style={[s.infoText, { marginTop: 8 }]}>Free gifts may have daily limits and may change or reset. MEEi may change virtual-item prices, availability or features prospectively. Do not buy diamonds for another person unless you have verified the correct username. MEEi cannot guarantee recovery of gifts sent to the wrong account.</Text>
+            </View>
+            <View style={s.card}>
+              <Text style={s.sectionTitle}>7. Creator earnings and payouts</Text>
+              <Text style={s.infoText}>Any creator rewards, balances, eligibility criteria, fees, tax treatment, minimum payout and payout schedule will be governed by separate creator terms shown before participation. Earnings may be held for security checks, refunds, reversals, chargebacks, suspected fraud or legal compliance. No creator payout is guaranteed unless it has been approved under the applicable payout rules.</Text>
+            </View>
+            <View style={s.card}>
+              <Text style={s.sectionTitle}>8. Account security, suspension and closure</Text>
+              <Text style={s.infoText}>Keep your account secure and tell us promptly if you suspect unauthorised access. Do not sell, rent or share accounts. MEEi may apply warnings, feature limits, temporary suspension or account termination for serious or repeated violations, subject to applicable law and any required notice or appeal process. You may stop using MEEi and request account deletion through the available account controls or support channel.</Text>
+            </View>
+            <View style={s.card}>
+              <Text style={s.sectionTitle}>9. Third-party services and availability</Text>
+              <Text style={s.infoText}>MEEi may rely on third-party hosting, streaming, app stores, payment providers and networks. Their terms may also apply. We work to keep MEEi available and secure but do not promise uninterrupted or error-free service. Features may change, be paused or be discontinued for maintenance, safety, legal or business reasons.</Text>
+            </View>
+            <View style={s.card}>
+              <Text style={s.sectionTitle}>10. Disclaimers and liability</Text>
+              <Text style={s.infoText}>To the extent permitted by law, MEEi is provided on an as-available basis. We are not responsible for users’ statements, off-platform conduct, third-party services or content you choose to access. Nothing in these terms excludes liability that cannot legally be excluded, including rights and remedies available to consumers under applicable law.</Text>
+            </View>
+            <View style={s.card}>
+              <Text style={s.sectionTitle}>11. Changes and governing law</Text>
+              <Text style={s.infoText}>We may update these terms and will provide notice where required. Continued use after an effective update means you accept the revised terms to the extent permitted by law. The governing law, courts, registered business details and dispute-resolution process must be completed with MEEi’s actual legal entity and reviewed by counsel before launch; mandatory consumer protections remain unaffected.</Text>
+            </View>
+            <View style={s.card}>
+              <Text style={s.sectionTitle}>12. Contact and grievance support</Text>
+              <Text style={s.infoText}>For safety reports, privacy requests, account issues, payment disputes or complaints, use the in-app Help/Report option. Before launch, MEEi must publish its verified legal entity name, registered address, support email, grievance officer name and contact details, and response timelines required by applicable law. Do not rely on placeholder contact details.</Text>
+            </View>
+            <View style={s.card}>
+              <Text style={s.sectionTitle}>Community Guidelines — quick rules</Text>
+              <Text style={s.infoText}>Be respectful. Get consent before sharing someone’s image, voice or personal information. Keep children safe. No harassment, hate, threats, scams, impersonation or illegal content. Respect copyright. Do not manipulate gifts, diamonds, creator rewards or payment systems. Report harmful behaviour and cooperate with safety reviews.</Text>
+            </View>
+            <Text style={s.hint}>Important: This is an initial product-policy draft, not legal advice. Before release, have an India-qualified lawyer review it and complete MEEi’s real company, grievance, privacy, retention, refund and jurisdiction details. App behaviour must match the published policy.</Text>
+          </ScrollView>
+        </View>
+      </Modal>
       <Modal visible={createMenuVisible} transparent animationType="slide" onRequestClose={() => setCreateMenuVisible(false)}>
         <Pressable style={s.createMenuBackdrop} onPress={() => setCreateMenuVisible(false)}>
           <Pressable style={s.createMenuSheet} onPress={() => {}}>
