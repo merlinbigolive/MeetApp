@@ -1222,6 +1222,12 @@ export default function App() {
       Alert.alert('Check username', 'Username must be 3–25 characters and use only lowercase letters, numbers, or underscores.');
       return;
     }
+    const normalizedUsername = cleanUsername.replace(/[^a-z0-9]/g, '');
+    const reservedUsernames = new Set(['meei', 'meeiapp', 'meeiofficial', 'meeisvip', 'svipteam', 'meeimoderation', 'meeimoderationteam', 'moderation', 'moderationteam']);
+    if (/^meei[0-9]+$/.test(normalizedUsername) || reservedUsernames.has(normalizedUsername)) {
+      Alert.alert('Username reserved', 'This username is reserved for the official MEEi or Moderation Team account. Please choose another username.');
+      return;
+    }
     if (bio.trim().length > 300) {
       Alert.alert('Bio too long', 'Your bio can contain up to 300 characters.');
       return;
@@ -1268,6 +1274,7 @@ export default function App() {
       Alert.alert('Profile not saved', error.message);
       return;
     }
+    setUsername(cleanUsername);
     setEditing(false);
     Alert.alert('Profile saved', 'Your profile details have been saved.');
   };
@@ -1456,7 +1463,7 @@ export default function App() {
         </Pressable>
         </Animated.View>
         <View style={s.nameLine}><Text style={s.name}>{name}</Text></View>
-        <Text style={s.username}>{username.replace(/^[@#]+/, '')}</Text>
+        <Text style={s.username}>{username.replace(/[@#]/g, '')}</Text>
         {accountType === 'business' && <View style={s.businessTag}><Ionicons name="briefcase-outline" size={13} color={C.cyan}/><Text style={s.businessTagText}>Professional Business Account</Text></View>}
         <Text style={s.bio}>{bio}</Text>
         {accountType === 'business' && !!businessName && <View style={s.businessInfo}><Text style={s.businessName}>{businessName}</Text>{!!businessCategory && <Text style={s.personBio}>{businessCategory}</Text>}{!!businessDescription && <Text style={s.infoText}>{businessDescription}</Text>}</View>}
@@ -1467,7 +1474,7 @@ export default function App() {
         {!!followRequests.length && <View style={s.section}>
           <View style={s.sectionHeading}><Text style={s.sectionTitle}>Follow Requests</Text><Text style={s.coverCount}>{followRequests.length}</Text></View>
           {followRequests.map(request => <View key={request.follower_id} style={s.personRow}>
-            <View style={s.personDetails}><Text style={s.personName}>{request.display_name}</Text><Text style={s.personUsername}>{request.username.replace(/^[@#]+/, '')}</Text></View>
+            <View style={s.personDetails}><Text style={s.personName}>{request.display_name}</Text><Text style={s.personUsername}>{request.username.replace(/[@#]/g, '')}</Text></View>
             <Pressable disabled={followRequestBusyIds.includes(request.follower_id)} onPress={() => void respondToFollowRequest(request.follower_id, false)} style={[s.followButton, s.followingButton]}><Text style={s.followingButtonText}>Decline</Text></Pressable>
             <Pressable disabled={followRequestBusyIds.includes(request.follower_id)} onPress={() => void respondToFollowRequest(request.follower_id, true)} style={s.followButton}><Text style={s.followButtonText}>Accept</Text></Pressable>
           </View>)}
@@ -1546,7 +1553,7 @@ export default function App() {
         </Pressable>
         </Animated.View>
         <View style={s.nameLine}><Text style={s.name}>{selectedProfile.display_name}</Text></View>
-        <Text style={s.username}>{selectedProfile.username.replace(/^[@#]+/, '')}</Text>
+        <Text style={s.username}>{selectedProfile.username.replace(/[@#]/g, '')}</Text>
         {selectedProfile.is_private && <View style={s.businessTag}><Ionicons name="lock-closed-outline" size={13} color={C.cyan}/><Text style={s.businessTagText}>Private Account</Text></View>}
         {selectedProfile.account_type === 'business' && <View style={s.businessTag}><Ionicons name="briefcase-outline" size={13} color={C.cyan}/><Text style={s.businessTagText}>Professional Business Account</Text></View>}
         {!!selectedProfile.bio && <Text style={s.bio}>{selectedProfile.bio}</Text>}
@@ -1589,10 +1596,10 @@ export default function App() {
   };
 
   const DiscoverScreen = () => {
-    const query = profileSearch.trim().toLowerCase();
+    const query = profileSearch.trim().replace(/^[@#]+/, '').toLowerCase();
     const filteredProfiles = publicProfiles.filter(profile =>
       (!query ||
-        profile.username.toLowerCase().includes(query) ||
+        profile.username.replace(/[@#]/g, '').toLowerCase().includes(query) ||
         profile.display_name.toLowerCase().includes(query) ||
         (profile.profession_category || '').toLowerCase().includes(query)) &&
       (searchCategory !== 'Creators' || /(creator|influencer|youtub|content)/i.test(profile.profession_category || ''))
@@ -1632,7 +1639,7 @@ export default function App() {
           return <View key={profile.id} style={s.personRow}>
             <Pressable onPress={() => setSelectedProfile(profile)} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 }}>
               <View style={s.personAvatar}>{discoverAvatars[profile.id]?.type === 'image' ? <Image source={{ uri: discoverAvatars[profile.id].uri }} style={{ width: '100%', height: '100%', borderRadius: 24 }} /> : <Ionicons name="person" size={22} color={C.cyan}/>}</View>
-              <View style={s.personDetails}><Text style={s.personName}>{profile.display_name}</Text><Text style={s.personUsername}>{profile.username.replace(/^[@#]+/, '')}</Text>{!!profile.profession_category && <Text style={s.personBio}>{profile.profession_category}</Text>}</View>
+              <View style={s.personDetails}><Text style={s.personName}>{profile.display_name}</Text><Text style={s.personUsername}>{profile.username.replace(/[@#]/g, '')}</Text>{!!profile.profession_category && <Text style={s.personBio}>{profile.profession_category}</Text>}</View>
             </Pressable>
             <Pressable disabled={busy} onPress={() => toggleFollow(profile)} style={[s.followButton, (following || pendingFollowIds.includes(profile.id)) && s.followingButton]}><Text style={[s.followButtonText, (following || pendingFollowIds.includes(profile.id)) && s.followingButtonText]}>{busy ? '...' : following ? 'Following' : pendingFollowIds.includes(profile.id) ? 'Requested' : 'Follow'}</Text></Pressable>
           </View>;
@@ -1672,7 +1679,7 @@ export default function App() {
             {uri ? <Image source={{ uri }} style={s.liveCardImage} resizeMode="cover"/> : <View style={s.liveCardFallback}><Ionicons name="person" size={34} color="#FFFFFF"/></View>}
             <View style={s.liveCardShade}/>
             <View style={s.liveBadge}><View style={s.liveBadgeDot}/><Text style={s.liveBadgeText}>LIVE</Text></View>
-            <View style={s.liveCardInfo}><Text style={s.liveCardName} numberOfLines={1}>{creator.display_name}</Text><Text style={s.liveCardMeta} numberOfLines={1}>{creator.username.replace(/^[@#]+/, '')} · {creator.country_name}</Text>{!!creator.title && <Text style={s.liveCardTitle} numberOfLines={1}>{creator.title}</Text>}</View>
+            <View style={s.liveCardInfo}><Text style={s.liveCardName} numberOfLines={1}>{creator.display_name}</Text><Text style={s.liveCardMeta} numberOfLines={1}>{creator.username.replace(/[@#]/g, '')} · {creator.country_name}</Text>{!!creator.title && <Text style={s.liveCardTitle} numberOfLines={1}>{creator.title}</Text>}</View>
           </Pressable>;
         })}</View>}
     </ScrollView>;
@@ -1727,7 +1734,7 @@ export default function App() {
           </Pressable>
           <View style={{ flex: 1 }}>
             <Text style={s.sectionTitle}>{activeChat.otherUser.display_name}</Text>
-            <Text style={s.personUsername}>{activeChat.otherUser.username.replace(/^[@#]+/, '')}</Text>
+            <Text style={s.personUsername}>{activeChat.otherUser.username.replace(/[@#]/g, '')}</Text>
           </View>
           <Pressable onPress={() => Alert.alert('Translate messages to', 'Choose your reading language.', [{ text: 'Hindi', onPress: () => { setTranslationLanguage('hi'); setTranslatedMessages({}); setVisibleTranslations([]); } }, { text: 'English', onPress: () => { setTranslationLanguage('en'); setTranslatedMessages({}); setVisibleTranslations([]); } }, { text: 'Cancel', style: 'cancel' }])}><Ionicons name="language-outline" size={21} color={C.cyan}/></Pressable>
           <Pressable onPress={() => setActiveChat(null)}><Ionicons name="close" size={21} color={C.muted}/></Pressable>
@@ -1768,7 +1775,7 @@ export default function App() {
               <View style={s.personAvatar}><Ionicons name="person" size={22} color={C.cyan}/></View>
               <View style={s.personDetails}>
                 <Text style={s.personName}>{thread.otherUser.display_name}</Text>
-                <Text style={s.personUsername}>{thread.otherUser.username.replace(/^[@#]+/, '')}</Text>
+                <Text style={s.personUsername}>{thread.otherUser.username.replace(/[@#]/g, '')}</Text>
               </View>
               {!!thread.unread_count && <View style={{ minWidth: 22, height: 22, borderRadius: 11, backgroundColor: C.cyan, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6 }}><Text style={{ color: '#fff', fontSize: 11, fontWeight: '700' }}>{thread.unread_count > 99 ? '99+' : thread.unread_count}</Text></View>}
               <Ionicons name="chevron-forward" size={18} color={C.muted}/>
@@ -1863,7 +1870,7 @@ export default function App() {
                 <View key={comment.id} style={s.commentRow}>
                   <View style={s.commentAvatar}><Text style={s.commentAvatarText}>{(comment.display_name || 'U').slice(0,1).toUpperCase()}</Text></View>
                   <View style={{ flex: 1, gap: 3 }}>
-                    <Text style={s.commentAuthor}>{comment.display_name} <Text style={s.commentUsername}>{comment.username.replace(/^[@#]+/, '')}</Text></Text>
+                    <Text style={s.commentAuthor}>{comment.display_name} <Text style={s.commentUsername}>{comment.username.replace(/[@#]/g, '')}</Text></Text>
                     <Text style={s.commentBody}>{comment.body}</Text>
                   </View>
                 </View>
