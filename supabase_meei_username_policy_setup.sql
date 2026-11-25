@@ -21,6 +21,8 @@ on conflict (normalized_name) do update
 set reservation_group = excluded.reservation_group,
     note = excluded.note;
 
+alter table public.reserved_usernames enable row level security;
+
 revoke all on public.reserved_usernames from anon, authenticated;
 grant all on public.reserved_usernames to service_role;
 
