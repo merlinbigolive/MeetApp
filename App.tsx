@@ -15,9 +15,10 @@ import { supabase } from './supabase';
 
 type Media = { uri: string; type: 'image' | 'video'; name?: string; size?: number; mimeType?: string; storagePath?: string };
 type CloudMediaRow = { id: string; kind: 'avatar' | 'cover' | 'post'; position: number; storage_path: string; media_type: 'image' | 'video'; original_name: string | null; };
-type Tab = 'Home' | 'Public' | 'Create' | 'Inbox' | 'Profile';
+type Tab = 'Home' | 'Public' | 'Live' | 'Create' | 'Inbox' | 'Profile';
 type SearchCategory = 'People' | 'Videos' | 'Reels' | 'Trending' | 'Funny' | 'Vlogs' | 'Cinema' | 'Creators';
 type SearchVideo = { id: string; caption: string | null; media_path: string; created_at: string; user_id: string; content_category: string; like_count: number; view_count: number };
+type LiveCreator = { session_id: string; user_id: string; username: string; display_name: string; profession_category: string | null; country_code: string; country_name: string; title: string; thumbnail_path: string | null; avatar_path: string | null; playback_url: string | null; started_at: string };
 type PublishedPost = { id: string; post_type: 'photo' | 'video' | 'text'; caption: string | null; media_path: string | null; created_at: string; visibility: string; content_category: string | null; like_count: number; viewer_liked: boolean; comment_count: number; media: Media };
 type PostComment = { id: string; post_id: string; user_id: string; body: string; created_at: string; username: string; display_name: string };
 type PublicProfile = { id: string; username: string; display_name: string; bio: string | null; profession_category: string | null; website_url?: string | null; activity_status?: string | null; is_private?: boolean; account_type?: 'personal' | 'business'; business_name?: string | null; business_category?: string | null; business_description?: string | null };
@@ -38,6 +39,23 @@ const C = {
   bg: '#FFFFFF', panel: '#FFFFFF', panel2: '#FFFFFF', text: '#172B3A',
   muted: '#777777', pink: '#258FEA', cyan: '#43B8E8', border: '#EEEEEE'
 };
+
+function SearchReelTile({ uri, caption, views, onPress }: { uri?: string; caption: string; views: number; onPress: () => void }) {
+  const player = useVideoPlayer(uri || null, p => {
+    p.loop = true;
+    p.muted = true;
+  });
+  useEffect(() => {
+    if (uri) player.play();
+    return () => player.pause();
+  }, [player, uri]);
+  return <Pressable onPress={onPress} style={s.reelTile}>
+    {uri ? <VideoView player={player} style={s.reelTileVideo} contentFit="cover" nativeControls={false}/> : <View style={s.reelTileFallback}><Ionicons name="play-circle" size={34} color="#FFFFFF"/></View>}
+    <View style={s.reelTileShade}/>
+    <View style={s.reelTilePlay}><Ionicons name="play" size={13} color="#FFFFFF"/></View>
+    <View style={s.reelTileInfo}><Text style={s.reelTileCaption} numberOfLines={2}>{caption}</Text><View style={s.reelTileViews}><Ionicons name="eye-outline" size={12} color="#FFFFFF"/><Text style={s.reelTileViewsText}>{views.toLocaleString()}</Text></View></View>
+  </Pressable>;
+}
 
 function ProfileCoverVideo({ uri }: { uri: string }) {
   const player = useVideoPlayer(uri, p => {
@@ -215,7 +233,7 @@ export default function App() {
   const [isPrivateAccount, setIsPrivateAccount] = useState(false);
   const [followRequestBusyIds, setFollowRequestBusyIds] = useState<string[]>([]);
   const [profileSearch, setProfileSearch] = useState('');
-  const [searchCategory, setSearchCategory] = useState<SearchCategory>('People');
+  const [searchCategory, setSearchCategory] = useState<SearchCategory>('Reels');
   const [publicVideos, setPublicVideos] = useState<SearchVideo[]>([]);
   const [ownPublishedPosts, setOwnPublishedPosts] = useState<PublishedPost[]>([]);
   const [otherPublishedPosts, setOtherPublishedPosts] = useState<PublishedPost[]>([]);
@@ -230,6 +248,10 @@ export default function App() {
   const [videoUrls, setVideoUrls] = useState<Record<string, string>>({});
   const [loadingVideos, setLoadingVideos] = useState(false);
   const [loadingProfiles, setLoadingProfiles] = useState(false);
+  const [liveCreators, setLiveCreators] = useState<LiveCreator[]>([]);
+  const [liveMediaUrls, setLiveMediaUrls] = useState<Record<string, string>>({});
+  const [liveCountry, setLiveCountry] = useState('ALL');
+  const [loadingLiveCreators, setLoadingLiveCreators] = useState(false);
   const [followBusyIds, setFollowBusyIds] = useState<string[]>([]);
   const [selectedProfile, setSelectedProfile] = useState<PublicProfile | null>(null);
   const [chatThreads, setChatThreads] = useState<ChatThread[]>([]);
@@ -606,6 +628,42 @@ export default function App() {
     loadSearchVideos();
     return () => { active = false; };
   }, [tab, searchCategory]);
+
+  useEffect(() => {
+    if (tab !== 'Live' || !supabase) return;
+    let active = true;
+    const loadLiveCreators = async () => {
+      setLoadingLiveCreators(true);
+      const { data, error } = await supabase!.rpc('get_live_creators', { country_filter: null });
+      if (!active) return;
+      if (error) {
+        setLiveCreators([]);
+        setLiveMediaUrls({});
+        setLoadingLiveCreators(false);
+        Alert.alert('Live discovery is not ready yet', 'Run supabase_live_discovery_setup.sql in Supabase SQL Editor. Live broadcasts will appear after the streaming service starts sending verified live sessions.');
+        return;
+      }
+      const rows = (data || []) as LiveCreator[];
+      setLiveCreators(rows);
+      const mediaEntries = await Promise.all(rows.map(async row => {
+        const path = row.thumbnail_path || row.avatar_path;
+        if (!path) return null;
+        const { data: signed, error: signedError } = await supabase!.storage.from('usay-media').createSignedUrl(path, 60 * 60);
+        return signedError || !signed?.signedUrl ? null : [row.session_id, signed.signedUrl] as const;
+      }));
+      if (!active) return;
+      setLiveMediaUrls(Object.fromEntries(mediaEntries.filter((entry): entry is NonNullable<typeof entry> => entry !== null)));
+      setLoadingLiveCreators(false);
+    };
+    void loadLiveCreators();
+    const channel = supabase.channel('meei-live-discovery')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'live_sessions' }, () => { void loadLiveCreators(); })
+      .subscribe();
+    return () => {
+      active = false;
+      void supabase?.removeChannel(channel);
+    };
+  }, [tab]);
 
   useEffect(() => {
     if (!selectedProfile || !supabase) return;
@@ -1539,7 +1597,7 @@ export default function App() {
       (searchCategory !== 'Creators' || /(creator|influencer|youtub|content)/i.test(profile.profession_category || ''))
     );
     const filteredVideos = publicVideos.filter(video => (video.caption || '').toLowerCase().includes(query));
-    const categories: SearchCategory[] = ['People', 'Videos', 'Reels', 'Trending', 'Funny', 'Vlogs', 'Cinema', 'Creators'];
+    const categories: SearchCategory[] = ['Reels', 'People', 'Videos', 'Trending', 'Funny', 'Vlogs', 'Cinema', 'Creators'];
     const openSearchVideo = (video: SearchVideo) => {
       const uri = videoUrls[video.id];
       if (!uri) {
@@ -1551,10 +1609,13 @@ export default function App() {
     };
     const peopleMode = searchCategory === 'People' || searchCategory === 'Creators';
     return <ScrollView contentContainerStyle={s.discoverScroll} keyboardShouldPersistTaps="handled">
-      <Text style={s.pageTitle}>Search</Text>
+      <View style={s.searchHeader}>
+        <View><Text style={s.pageTitle}>MEEi</Text><Text style={s.searchSubtitle}>Discover something new</Text></View>
+        <View style={s.searchHeaderIcon}><Ionicons name="sparkles" size={20} color={C.cyan}/></View>
+      </View>
       <View style={s.searchBox}>
         <Ionicons name="search" size={19} color={C.muted}/>
-        <TextInput value={profileSearch} onChangeText={setProfileSearch} placeholder={peopleMode ? (searchCategory === 'Creators' ? 'Search creators by name or profession' : 'Search username, nickname or profession') : 'Search ' + searchCategory.toLowerCase()} placeholderTextColor={C.muted} style={s.searchInput} returnKeyType="search"/>
+        <TextInput value={profileSearch} onChangeText={setProfileSearch} placeholder={peopleMode ? (searchCategory === 'Creators' ? 'Search creators by name or profession' : 'Search username, nickname or profession') : 'Search Reels, people and videos'} placeholderTextColor={C.muted} style={s.searchInput} returnKeyType="search"/>
         {!!profileSearch && <Pressable onPress={() => setProfileSearch('')}><Ionicons name="close-circle" size={19} color={C.muted}/></Pressable>}
       </View>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.searchCategories}>
@@ -1576,27 +1637,47 @@ export default function App() {
           </View>;
         })}
       </> : <>
-        <Text style={s.hint}>{searchCategory === 'Trending' ? 'Popular public videos, ranked by likes and views.' : 'Public ' + searchCategory.toLowerCase() + ' from USay.'}</Text>
-        {loadingVideos ? <Text style={s.hint}>Loading {searchCategory.toLowerCase()}…</Text> : filteredVideos.length === 0 ? <Text style={s.hint}>No {searchCategory.toLowerCase()} found yet.</Text> : filteredVideos.map(video => {
-          const liked = likedVideoIds.includes(video.id);
-          const busy = likeBusyIds.includes(video.id);
-          return <View key={video.id} style={s.videoSearchRow}>
-            <Pressable onPress={() => openSearchVideo(video)} style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-              <View style={s.videoSearchThumb}><Ionicons name="play-circle" size={36} color="#FFFFFF"/></View>
-              <View style={s.personDetails}><Text style={s.personName} numberOfLines={2}>{video.caption || 'Public video'}</Text><Text style={s.personUsername}>{video.view_count || 0} views · {new Date(video.created_at).toLocaleDateString()}</Text></View>
-              <Ionicons name="chevron-forward" size={18} color={C.muted}/>
-            </Pressable>
-            <Pressable disabled={busy} onPress={() => void toggleVideoLike(video)} style={{ alignItems: 'center', justifyContent: 'center', minWidth: 42, padding: 6, opacity: busy ? 0.5 : 1 }}>
-              <Ionicons name={liked ? 'heart' : 'heart-outline'} size={21} color={liked ? '#E54872' : C.muted}/>
-              <Text style={s.personUsername}>{video.like_count || 0}</Text>
-            </Pressable>
-          </View>;
-        })}
+        <View style={s.reelsSectionHeading}>
+          <Text style={s.sectionTitle}>{searchCategory === 'Reels' ? 'Explore Reels' : searchCategory === 'Trending' ? 'Trending now' : 'Explore ' + searchCategory}</Text>
+          <Text style={s.reelsCount}>{filteredVideos.length} videos</Text>
+        </View>
+        {loadingVideos ? <View style={s.searchEmpty}><Text style={s.hint}>Finding videos for you…</Text></View> :
+          filteredVideos.length === 0 ? <View style={s.searchEmpty}><Ionicons name="videocam-outline" size={34} color={C.cyan}/><Text style={s.sectionTitle}>Nothing here yet</Text><Text style={s.hint}>Public {searchCategory.toLowerCase()} will appear here as creators share them.</Text></View> :
+          <View style={s.reelsGrid}>{filteredVideos.slice(0, 12).map(video => <SearchReelTile key={video.id} uri={videoUrls[video.id]} caption={video.caption || 'MEEi video'} views={video.view_count || 0} onPress={() => openSearchVideo(video)}/>)}</View>}
       </>}
     </ScrollView>;
   };
 
-  const CreateScreen = () => (
+  const LiveScreen = () => {
+    const countries = Array.from(new Map(liveCreators.map(creator => [creator.country_code, { code: creator.country_code, name: creator.country_name }])).values()).sort((a,b) => a.name.localeCompare(b.name));
+    const visibleCreators = liveCountry === 'ALL' ? liveCreators : liveCreators.filter(creator => creator.country_code === liveCountry);
+    return <ScrollView contentContainerStyle={s.liveScroll}>
+      <View style={s.liveHeader}>
+        <View><Text style={s.pageTitle}>Live</Text><Text style={s.searchSubtitle}>Creators broadcasting now</Text></View>
+        <View style={s.livePulse}><View style={s.livePulseDot}/><Text style={s.livePulseText}>LIVE NOW</Text></View>
+      </View>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.liveCountries}>
+        <Pressable onPress={() => setLiveCountry('ALL')} style={[s.liveCountryChip, liveCountry === 'ALL' && s.liveCountryChipActive]}><Text style={[s.liveCountryText, liveCountry === 'ALL' && s.liveCountryTextActive]}>All Countries</Text></Pressable>
+        {countries.map(country => <Pressable key={country.code} onPress={() => setLiveCountry(country.code)} style={[s.liveCountryChip, liveCountry === country.code && s.liveCountryChipActive]}><Text style={[s.liveCountryText, liveCountry === country.code && s.liveCountryTextActive]}>{country.name}</Text></Pressable>)}
+      </ScrollView>
+      {loadingLiveCreators ? <View style={s.searchEmpty}><Text style={s.hint}>Finding creators who are live…</Text></View> :
+        visibleCreators.length === 0 ? <View style={s.liveEmpty}><View style={s.liveEmptyIcon}><Ionicons name="radio-outline" size={38} color={C.cyan}/></View><Text style={s.sectionTitle}>No creators live right now</Text><Text style={s.hint}>{liveCountry === 'ALL' ? 'When a creator starts a real broadcast, they will appear here.' : 'No one is live from this country at the moment.'}</Text></View> :
+        <View style={s.liveGrid}>{visibleCreators.map(creator => {
+          const uri = liveMediaUrls[creator.session_id];
+          return <Pressable key={creator.session_id} onPress={() => {
+            if (creator.playback_url) setViewer({ uri: creator.playback_url, type: 'video' });
+            else setSelectedProfile({ id: creator.user_id, username: creator.username, display_name: creator.display_name, bio: null, profession_category: creator.profession_category });
+          }} style={s.liveCard}>
+            {uri ? <Image source={{ uri }} style={s.liveCardImage} resizeMode="cover"/> : <View style={s.liveCardFallback}><Ionicons name="person" size={34} color="#FFFFFF"/></View>}
+            <View style={s.liveCardShade}/>
+            <View style={s.liveBadge}><View style={s.liveBadgeDot}/><Text style={s.liveBadgeText}>LIVE</Text></View>
+            <View style={s.liveCardInfo}><Text style={s.liveCardName} numberOfLines={1}>{creator.display_name}</Text><Text style={s.liveCardMeta} numberOfLines={1}>@{creator.username} · {creator.country_name}</Text>{!!creator.title && <Text style={s.liveCardTitle} numberOfLines={1}>{creator.title}</Text>}</View>
+          </Pressable>;
+        })}</View>}
+    </ScrollView>;
+  };
+
+    const CreateScreen = () => (
     <ScrollView contentContainerStyle={s.discoverScroll} keyboardShouldPersistTaps="handled">
       <Text style={s.pageTitle}>Create</Text>
       <Text style={s.hint}>Share a photo or video with your USay community.</Text>
@@ -1708,12 +1789,13 @@ export default function App() {
         {selectedProfile ? <OtherProfileScreen/> : tab === 'Profile' ? <Profile/> :
           tab === 'Home' ? <SimpleScreen title="USay" subtitle="Your people, one place."/> :
           tab === 'Public' ? <DiscoverScreen/> :
+          tab === 'Live' ? <LiveScreen/> :
           tab === 'Create' ? <CreateScreen/> :
           <InboxScreen/>}
       </View>
       <View style={s.nav}>
-        {(['Home','Public','Create','Inbox','Profile'] as Tab[]).map((item, i) => {
-          const icons = ['home-outline','search-outline','add-circle-outline','mail-outline','person-outline'] as const;
+        {(['Home','Public','Live','Create','Inbox','Profile'] as Tab[]).map((item, i) => {
+          const icons = ['home-outline','search-outline','radio-outline','add-circle-outline','mail-outline','person-outline'] as const;
           return <Pressable key={item} style={s.navItem} onPress={() => { setSelectedProfile(null); setTab(item); }}>
             <Ionicons name={icons[i]} size={21} color={tab === item ? C.pink : C.muted}/>
             <Text style={[s.navLabel, tab === item && {color:C.pink}]}>{item === 'Public' ? 'Search' : item}</Text>
@@ -1808,6 +1890,46 @@ export default function App() {
 const s = StyleSheet.create({
   root:{flex:1,backgroundColor:C.bg}, scroll:{padding:16,paddingBottom:22,gap:14},
   discoverScroll:{padding:20,paddingTop:54,paddingBottom:30,gap:14},
+  searchHeader:{flexDirection:'row',alignItems:'center',justifyContent:'space-between'},
+  searchSubtitle:{color:C.muted,fontSize:12,marginTop:3},
+  searchHeaderIcon:{width:42,height:42,borderRadius:21,backgroundColor:'#EAF5FF',alignItems:'center',justifyContent:'center'},
+  reelsSectionHeading:{flexDirection:'row',alignItems:'center',justifyContent:'space-between',marginTop:2},
+  reelsCount:{color:C.muted,fontSize:11,fontWeight:'700'},
+  reelsGrid:{flexDirection:'row',flexWrap:'wrap',justifyContent:'space-between',rowGap:10},
+  reelTile:{width:'48.7%',aspectRatio:.72,borderRadius:14,overflow:'hidden',backgroundColor:'#79B9DD'},
+  reelTileVideo:{width:'100%',height:'100%'},
+  reelTileFallback:{flex:1,alignItems:'center',justifyContent:'center',backgroundColor:'#79B9DD'},
+  reelTileShade:{...StyleSheet.absoluteFillObject,backgroundColor:'transparent'},
+  reelTilePlay:{position:'absolute',top:9,right:9,width:25,height:25,borderRadius:13,backgroundColor:'#0006',alignItems:'center',justifyContent:'center'},
+  reelTileInfo:{position:'absolute',left:9,right:8,bottom:9,gap:4},
+  reelTileCaption:{color:'#FFFFFF',fontSize:11,fontWeight:'800',textShadowColor:'#0009',textShadowRadius:5},
+  reelTileViews:{flexDirection:'row',alignItems:'center',gap:4},
+  reelTileViewsText:{color:'#FFFFFF',fontSize:10,fontWeight:'700'},
+  searchEmpty:{minHeight:180,alignItems:'center',justifyContent:'center',gap:8},
+  liveScroll:{padding:18,paddingTop:54,paddingBottom:30,gap:16},
+  liveHeader:{flexDirection:'row',alignItems:'center',justifyContent:'space-between'},
+  livePulse:{flexDirection:'row',alignItems:'center',gap:6,paddingHorizontal:10,paddingVertical:7,borderRadius:16,backgroundColor:'#FFF0F1'},
+  livePulseDot:{width:7,height:7,borderRadius:4,backgroundColor:'#E54862'},
+  livePulseText:{color:'#D93650',fontSize:9,fontWeight:'900',letterSpacing:.7},
+  liveCountries:{gap:8,paddingVertical:2},
+  liveCountryChip:{paddingHorizontal:14,paddingVertical:9,borderRadius:18,borderWidth:1,borderColor:C.border,backgroundColor:'#FFFFFF'},
+  liveCountryChipActive:{backgroundColor:'#EAF5FF',borderColor:'#9DD6F4'},
+  liveCountryText:{color:C.muted,fontSize:11,fontWeight:'700'},
+  liveCountryTextActive:{color:C.cyan},
+  liveEmpty:{minHeight:300,alignItems:'center',justifyContent:'center',gap:10,paddingHorizontal:24},
+  liveEmptyIcon:{width:78,height:78,borderRadius:39,backgroundColor:'#EAF5FF',alignItems:'center',justifyContent:'center',marginBottom:4},
+  liveGrid:{flexDirection:'row',flexWrap:'wrap',justifyContent:'space-between',rowGap:12},
+  liveCard:{width:'48.5%',aspectRatio:.78,borderRadius:16,overflow:'hidden',backgroundColor:'#76B8DA'},
+  liveCardImage:{width:'100%',height:'100%'},
+  liveCardFallback:{flex:1,alignItems:'center',justifyContent:'center',backgroundColor:'#6FAFD0'},
+  liveCardShade:{...StyleSheet.absoluteFillObject,backgroundColor:'#061A2B30'},
+  liveBadge:{position:'absolute',top:9,left:9,flexDirection:'row',alignItems:'center',gap:5,paddingHorizontal:8,paddingVertical:5,borderRadius:7,backgroundColor:'#E33F56'},
+  liveBadgeDot:{width:5,height:5,borderRadius:3,backgroundColor:'#FFFFFF'},
+  liveBadgeText:{color:'#FFFFFF',fontSize:9,fontWeight:'900'},
+  liveCardInfo:{position:'absolute',left:10,right:8,bottom:10,gap:3},
+  liveCardName:{color:'#FFFFFF',fontSize:13,fontWeight:'900'},
+  liveCardMeta:{color:'#FFFFFF',fontSize:9,fontWeight:'700'},
+  liveCardTitle:{color:'#FFFFFF',fontSize:10,textShadowColor:'#000A',textShadowRadius:4},
   searchBox:{minHeight:48,borderWidth:1,borderColor:C.border,borderRadius:14,paddingHorizontal:13,flexDirection:'row',alignItems:'center',gap:9,backgroundColor:'#F8FCFF'},
   searchInput:{flex:1,color:C.text,fontSize:14,paddingVertical:10},searchCategories:{gap:8,paddingVertical:3},
   searchCategory:{paddingHorizontal:15,paddingVertical:9,borderRadius:20,borderWidth:1,borderColor:C.border,backgroundColor:'#FFFFFF'},
