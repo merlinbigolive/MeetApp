@@ -591,6 +591,7 @@ export default function App() {
     let active = true;
     const loadSearchVideos = async () => {
       setLoadingVideos(true);
+      setVideoUrls({});
       const categoryFilter = searchCategory.toLowerCase();
       const { data, error } = await supabase!
         .rpc('get_public_search_posts', { category_filter: categoryFilter, search_text: null });
@@ -1641,7 +1642,7 @@ export default function App() {
           <Text style={s.sectionTitle}>{searchCategory === 'Reels' ? 'Explore Reels' : searchCategory === 'Trending' ? 'Trending now' : 'Explore ' + searchCategory}</Text>
           <Text style={s.reelsCount}>{filteredVideos.length} videos</Text>
         </View>
-        {loadingVideos ? <View style={s.searchEmpty}><Text style={s.hint}>Finding videos for you…</Text></View> :
+        {loadingVideos || (filteredVideos.length > 0 && Object.keys(videoUrls).length === 0) ? <View style={s.searchEmpty}><Text style={s.hint}>Finding videos for you…</Text></View> :
           filteredVideos.length === 0 ? <View style={s.searchEmpty}><Ionicons name="videocam-outline" size={34} color={C.cyan}/><Text style={s.sectionTitle}>Nothing here yet</Text><Text style={s.hint}>Public {searchCategory.toLowerCase()} will appear here as creators share them.</Text></View> :
           <View style={s.reelsGrid}>{filteredVideos.slice(0, 12).map(video => <SearchReelTile key={video.id} uri={videoUrls[video.id]} caption={video.caption || 'MEEi video'} views={video.view_count || 0} onPress={() => openSearchVideo(video)}/>)}</View>}
       </>}
