@@ -33,6 +33,8 @@ export default function LiveBroadcastModal({ visible, sessionId, creatorName, on
   const [selectedViewer, setSelectedViewer] = useState<MiniProfile | null>(null);
   const [moderationBusy, setModerationBusy] = useState(false);
   const [showViewerMenu, setShowViewerMenu] = useState(false);
+  const [moderationRole, setModerationRole] = useState<"creator" | "moderator" | "viewer">("viewer");
+  const [selectedIsModerator, setSelectedIsModerator] = useState(false);
   const isCreator = !sessionId;
 
   useEffect(() => {
@@ -71,6 +73,16 @@ export default function LiveBroadcastModal({ visible, sessionId, creatorName, on
   }, [visible, activeSessionId, isCreator]);
 
   const chatSessionId = sessionId || activeSessionId;
+  const canModerate = isCreator || moderationRole === "moderator";
+
+  useEffect(() => {
+    if (!visible || !sessionId || !supabase) { setModerationRole(isCreator ? "creator" : "viewer"); return; }
+    let cancelled = false;
+    void supabase.rpc("get_live_moderation_role", { target_session_id: sessionId }).then(({ data, error }) => {
+      if (!cancelled && !error && (data === "creator" || data === "moderator" || data === "viewer")) setModerationRole(data);
+    });
+    return () => { cancelled = true; };
+  }, [visible, sessionId, isCreator]);
 
   useEffect(() => {
     if (!visible || !chatSessionId || !supabase) return;
@@ -113,7 +125,7 @@ export default function LiveBroadcastModal({ visible, sessionId, creatorName, on
     setShowViewerMenu(false);
     try {
       let profile: any = null;
-      if (isCreator) {
+      if (canModerate) {
         const { data, error } = await supabase.rpc("get_live_viewer_profile", {
           target_session_id: chatSessionId, target_viewer_id: viewerId,
         });
@@ -147,16 +159,20 @@ export default function LiveBroadcastModal({ visible, sessionId, creatorName, on
         bio: profile.bio || null,
         avatarUrl,
       });
+      if (isCreator) {
+        const { data: moderatorFlag } = await supabase.rpc("is_live_moderator", { target_session_id: chatSessionId, target_user_id: viewerId });
+        setSelectedIsModerator(moderatorFlag === true);
+      } else setSelectedIsModerator(false);
     } catch (error: any) {
       Alert.alert("Profile unavailable", error?.message || "Could not load this profile.");
     }
   };
 
   const moderateViewer = (action: "mute" | "kickout" | "block") => {
-    if (!selectedViewer || !chatSessionId || !supabase || !isCreator || moderationBusy) return;
+    if (!selectedViewer || !chatSessionId || !supabase || !canModerate || moderationBusy) return;
     const labels = {
-      mute: "Mute this viewer in Live chat for 15 minutes?",
-      kickout: "Remove this viewer from this Live? They cannot rejoin this session.",
+      mute: "Mute this viewer in Live chat for 12 hours?",
+      kickout: "Remove this viewer from this Live for 12 hours?",
       block: "Block this viewer from your future Lives and remove them from this Live?",
     };
     Alert.alert(action === "kickout" ? "Kick out viewer" : action === "block" ? "Block viewer" : "Mute viewer", labels[action], [
@@ -315,13 +331,13 @@ export default function LiveBroadcastModal({ visible, sessionId, creatorName, on
                       <Text style={styles.profileDisplayName}>{selectedViewer?.display_name}</Text>
                       <Text style={styles.profileUsername}>@{selectedViewer?.username}</Text>
                     </View>
-                    {isCreator && <Pressable onPress={() => setShowViewerMenu(v => !v)} style={styles.moreButton}><Text style={styles.moreButtonText}>⋮</Text></Pressable>}
+                    {canModerate && <Pressable onPress={() => setShowViewerMenu(v => !v)} style={styles.moreButton}><Text style={styles.moreButtonText}>⋮</Text></Pressable>}
                   </View>
                   {!!selectedViewer?.bio && <Text style={styles.profileBio}>{selectedViewer.bio}</Text>}
-                  {showViewerMenu && isCreator && <View style={styles.viewerMenu}>
-                    <Pressable disabled={moderationBusy} onPress={() => moderateViewer("mute")} style={styles.viewerMenuItem}><Text style={styles.viewerMenuText}>Mute in Live chat</Text></Pressable>
-                    <Pressable disabled={moderationBusy} onPress={() => moderateViewer("kickout")} style={styles.viewerMenuItem}><Text style={styles.viewerMenuText}>Kick out</Text></Pressable>
-                    <Pressable disabled={moderationBusy} onPress={() => moderateViewer("block")} style={styles.viewerMenuItem}><Text style={[styles.viewerMenuText,{color:"#D83B4B"}]}>Block</Text></Pressable>
+                  {showViewerMenu && canModerate && <View style={styles.viewerMenu}>
+                    <Pressable disabled={moderationBusy} onPress={() => moderateViewer("mute")} style={styles.viewerMenuItem}><Text style={styles.viewerMenuText}>Mute for 12 hours</Text></Pressable>
+                    <Pressable disabled={moderationBusy} onPress={() => moderateViewer("kickout")} style={styles.viewerMenuItem}><Text style={styles.viewerMenuText}>Kick out for 12 hours</Text></Pressable>
+                    <Pressable disabled={moderationBusy} onPress={() => moderateViewer("block")} style={styles.viewerMenuItem}><Text style={[styles.viewerMenuText,{color:"#D83B4B"}]}>Block permanently</Text></Pressable>
                   </View>}
                 </Pressable>
               </Pressable>
