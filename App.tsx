@@ -1461,8 +1461,8 @@ export default function App() {
       lastProfileScrollY.current = y;
     }}>
       <View style={s.top}><Text style={s.pageTitle}>MEEi</Text></View>
-      <Animated.View style={[s.identity, { paddingTop: coverRevealProgress.interpolate({ inputRange: [0, 1], outputRange: [76, 266] }) }]}>
-        <Animated.View style={[s.coverBackdrop, { height: coverRevealProgress.interpolate({ inputRange: [0, 1], outputRange: [190, 420] }) }]}>
+      <Animated.View style={[s.identity, { paddingTop: coverRevealProgress.interpolate({ inputRange: [0, 1], outputRange: [92, 282] }) }]}>
+        <Animated.View style={[s.coverBackdrop, { height: coverRevealProgress.interpolate({ inputRange: [0, 1], outputRange: [235, 450] }) }]}>
           {covers[0]?.type === 'image' ? <Image source={{uri:covers[0].uri}} style={s.coverBackdropImage}/> :
             covers[0]?.type === 'video' ? <ProfileCoverVideo uri={covers[0].uri} /> :
             <View style={s.coverBackdropEmpty}/>}
@@ -1740,7 +1740,7 @@ export default function App() {
   );
 
   const InboxScreen = () => (
-    <View style={s.simple}>
+    <View style={[s.simple, activeChat && { backgroundColor: '#F4F7FA', paddingHorizontal: 12, paddingTop: 8 }]}>
       {activeChat ? <>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
           <Pressable onPress={() => { setActiveChat(null); setChatMessages([]); void loadInbox(); }} style={{ padding: 6 }}>
@@ -1758,7 +1758,7 @@ export default function App() {
             chatMessages.length === 0 ? <Text style={[s.hint, { textAlign: 'center', marginTop: 30 }]}>Say hello and start the conversation.</Text> :
             chatMessages.map(message => {
               const mine = message.sender_id === currentUserId;
-              return <View key={message.id} style={{ alignSelf: mine ? 'flex-end' : 'flex-start', maxWidth: '84%', backgroundColor: mine ? '#E5F4FF' : '#F3F6F8', borderRadius: 16, paddingHorizontal: 13, paddingVertical: 9, gap: 5 }}>
+              return <View key={message.id} style={{ alignSelf: mine ? 'flex-end' : 'flex-start', maxWidth: '84%', backgroundColor: mine ? '#DDF1FF' : '#FFFFFF', borderTopLeftRadius: 17, borderTopRightRadius: 17, borderBottomLeftRadius: mine ? 17 : 5, borderBottomRightRadius: mine ? 5 : 17, paddingHorizontal: 13, paddingVertical: 9, gap: 5, borderWidth: 1, borderColor: mine ? '#C8E7FA' : '#E8EDF1' }}>
                 {message.message_type === 'voice' ? (message.audio_url ? <VoiceMessageBubble uri={message.audio_url} transcript={message.transcript || message.body} mine={mine}/> : <Text style={{ color: C.muted, fontSize: 12 }}>Voice message unavailable</Text>) : <Text style={{ color: C.text, fontSize: 14 }}>{message.body}</Text>}
                 <Pressable disabled={translatingMessageIds.includes(message.id)} onPress={() => void translateMessage({ ...message, body: message.message_type === 'voice' ? (message.transcript || message.body) : message.body })} style={{ alignSelf: 'flex-start', paddingVertical: 3 }}><Text style={{ color: C.cyan, fontSize: 11, fontWeight: '700' }}>{translatingMessageIds.includes(message.id) ? 'Translating…' : visibleTranslations.includes(message.id) ? 'Hide translation' : 'Translate to ' + (translationLanguage === 'hi' ? 'Hindi' : 'English')}</Text></Pressable>
                 {visibleTranslations.includes(message.id) && !!translatedMessages[message.id] && <Text style={{ color: C.text, fontSize: 14, borderTopWidth: 1, borderTopColor: C.border, paddingTop: 6 }}>{translatedMessages[message.id]}</Text>}
@@ -1766,8 +1766,8 @@ export default function App() {
               </View>;
             })}
         </ScrollView>
-        <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 8, paddingTop: 10, borderTopWidth: 1, borderColor: C.border }}>
-          <TextInput value={chatDraft} onChangeText={setChatDraft} placeholder="Write a message…" placeholderTextColor={C.muted} multiline style={[s.input, { flex: 1, maxHeight: 110, minHeight: 44, paddingVertical: 10 }]}/>
+        <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 8, paddingTop: 10, borderTopWidth: 1, borderColor: '#E5EBF0', backgroundColor: '#F4F7FA' }}>
+          <TextInput value={chatDraft} onChangeText={setChatDraft} placeholder="Message" placeholderTextColor={C.muted} multiline style={[s.input, { flex: 1, maxHeight: 110, minHeight: 44, paddingVertical: 10, borderRadius: 24, backgroundColor: '#FFFFFF', borderColor: '#E2E9EF', paddingHorizontal: 16 }]}/>
           <Pressable disabled={voiceSending} onLongPress={() => Alert.alert('Voice recognition language', 'Choose the language you will speak.', [{ text: 'Hindi', onPress: () => setVoiceLanguage('hi-IN') }, { text: 'English', onPress: () => setVoiceLanguage('en-IN') }, { text: 'Cancel', style: 'cancel' }])} onPress={() => voiceRecording ? stopVoiceRecording() : void startVoiceRecording()} style={[s.secondary, { width: 44, minHeight: 44, padding: 0, opacity: voiceSending ? 0.55 : 1 }]}><Ionicons name={voiceRecording ? 'stop-circle' : 'mic-outline'} size={19} color={voiceRecording ? '#D33' : C.cyan}/></Pressable>
           <Pressable disabled={!chatDraft.trim() || chatSending} onPress={() => void sendChatMessage()} style={[s.primary, { flex: 0, width: 48, minHeight: 44, opacity: !chatDraft.trim() || chatSending ? 0.55 : 1 }]}>
             <Ionicons name="send" size={18} color="#FFFFFF"/>
