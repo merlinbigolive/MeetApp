@@ -2,7 +2,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.0";
 
 const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
 const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const webhookSecret = Deno.env.get("CUCKOO_PUSH_WEBHOOK_SECRET")!;
+const webhookSecret = Deno.env.get("MEEI_PUSH_WEBHOOK_SECRET") || Deno.env.get("CUCKOO_PUSH_WEBHOOK_SECRET");
 const supabase = createClient(supabaseUrl, serviceRoleKey, {
   auth: { persistSession: false, autoRefreshToken: false },
 });
@@ -26,7 +26,8 @@ Deno.serve(async (request) => {
     return new Response("Method not allowed", { status: 405 });
   }
 
-  if (!webhookSecret || request.headers.get("x-cuckoo-webhook-secret") !== webhookSecret) {
+  const suppliedSecret = request.headers.get("x-meei-webhook-secret") || request.headers.get("x-cuckoo-webhook-secret");
+  if (!webhookSecret || suppliedSecret !== webhookSecret) {
     return new Response("Unauthorized", { status: 401 });
   }
 
