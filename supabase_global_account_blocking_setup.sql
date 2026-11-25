@@ -32,7 +32,7 @@ as $$
 $$;
 
 revoke all on function public.is_blocked_for_current_user(uuid) from public;
-grant execute on function public.is_blocked_between(uuid, uuid) to authenticated;
+grant execute on function public.is_blocked_for_current_user(uuid) to authenticated;
 
 drop policy if exists "user_blocks_read_own" on public.user_blocks;
 create policy "user_blocks_read_own" on public.user_blocks
