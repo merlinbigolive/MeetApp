@@ -195,7 +195,6 @@ Deno.serve(async (request) => {
       }
 
       if (action === "moderate") {
-        if (session.user_id !== user.id) return json({ error: "Only the Live creator can moderate viewers." }, 403);
         const targetViewerId = String(body.target_viewer_id || "");
         const moderationAction = String(body.moderation_action || "");
         if (!/^[0-9a-f-]{36}$/i.test(targetViewerId) ||
