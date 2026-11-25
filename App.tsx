@@ -3,7 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
 import * as Notifications from 'expo-notifications';
 import {
-  Alert, Image, Modal, Pressable, ScrollView, StatusBar, StyleSheet, Platform,
+  Alert, Image, Modal, Pressable, ScrollView, StatusBar, StyleSheet, Platform, Share,
   Text, TextInput, View, useWindowDimensions, Animated, PanResponder
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -16,11 +16,12 @@ import LiveBroadcastModal from './LiveBroadcastModal';
 
 type Media = { uri: string; type: 'image' | 'video'; name?: string; size?: number; mimeType?: string; storagePath?: string };
 type CloudMediaRow = { id: string; kind: 'avatar' | 'cover' | 'post'; position: number; storage_path: string; media_type: 'image' | 'video'; original_name: string | null; };
-type Tab = 'Home' | 'Public' | 'Live' | 'Create' | 'Inbox' | 'Profile';
+type Tab = 'Home' | 'Public' | 'Search' | 'Videos' | 'Live' | 'Create' | 'Inbox' | 'Profile';
 type SearchCategory = 'People' | 'Videos' | 'Reels' | 'Trending' | 'Funny' | 'Vlogs' | 'Cinema' | 'Creators';
 type SearchVideo = { id: string; caption: string | null; media_path: string; created_at: string; user_id: string; content_category: string; like_count: number; view_count: number };
 type LiveCreator = { session_id: string; user_id: string; username: string; display_name: string; profession_category: string | null; country_code: string; country_name: string; title: string; thumbnail_path: string | null; avatar_path: string | null; playback_url: string | null; started_at: string };
 type PublishedPost = { id: string; post_type: 'photo' | 'video' | 'text'; caption: string | null; media_path: string | null; created_at: string; visibility: string; content_category: string | null; like_count: number; viewer_liked: boolean; comment_count: number; media: Media };
+type FeedPost = PublishedPost & { author: PublicProfile; authorAvatar?: Media | null };
 type PostComment = { id: string; post_id: string; user_id: string; body: string; created_at: string; username: string; display_name: string };
 type PublicProfile = { id: string; username: string; display_name: string; bio: string | null; profession_category: string | null; website_url?: string | null; activity_status?: string | null; is_private?: boolean; account_type?: 'personal' | 'business'; business_name?: string | null; business_category?: string | null; business_description?: string | null };
 type FollowRequest = { follower_id: string; username: string; display_name: string; requested_at: string };
@@ -286,6 +287,8 @@ export default function App() {
   const [debouncedProfileSearch, setDebouncedProfileSearch] = useState('');
   const [searchCategory, setSearchCategory] = useState<SearchCategory>('Reels');
   const [publicVideos, setPublicVideos] = useState<SearchVideo[]>([]);
+  const [feedPosts, setFeedPosts] = useState<FeedPost[]>([]);
+  const [loadingFeed, setLoadingFeed] = useState(false);
   const [ownPublishedPosts, setOwnPublishedPosts] = useState<PublishedPost[]>([]);
   const [otherPublishedPosts, setOtherPublishedPosts] = useState<PublishedPost[]>([]);
   const [commentPost, setCommentPost] = useState<PublishedPost | null>(null);
@@ -589,7 +592,7 @@ export default function App() {
   }, [profileSearch]);
 
   useEffect(() => {
-    if (tab !== 'Public' || !supabase) return;
+    if (tab !== 'Search' || !supabase) return;
     let active = true;
     const loadDiscoverProfiles = async () => {
       setLoadingProfiles(true);
@@ -648,14 +651,14 @@ export default function App() {
 
   useEffect(() => {
     const videoCategories: SearchCategory[] = ['Videos', 'Reels', 'Trending', 'Funny', 'Vlogs', 'Cinema'];
-    if (tab !== 'Public' || !videoCategories.includes(searchCategory) || !supabase) return;
+    if ((tab !== 'Search' && tab !== 'Videos') || !videoCategories.includes(searchCategory) || !supabase) return;
     let active = true;
     const loadSearchVideos = async () => {
       setLoadingVideos(true);
       setVideoUrls({});
-      const categoryFilter = searchCategory.toLowerCase();
+      const categoryFilter = tab === 'Videos' ? 'videos' : (searchCategory === 'Reels' ? 'all' : searchCategory.toLowerCase());
       const { data, error } = await supabase!
-        .rpc('get_public_search_posts', { category_filter: categoryFilter, search_text: null });
+        .rpc('get_public_search_posts', { category_filter: categoryFilter, search_text: debouncedProfileSearch || null });
       if (!active) return;
       if (error) {
         Alert.alert('Search is not ready yet', 'Run supabase_search_discovery_setup.sql in Supabase SQL Editor, then try again.');
@@ -689,7 +692,71 @@ export default function App() {
     };
     loadSearchVideos();
     return () => { active = false; };
-  }, [tab, searchCategory]);
+  }, [tab, searchCategory, debouncedProfileSearch]);
+
+
+  useEffect(() => {
+    if (tab !== 'Home' || !supabase) return;
+    let active = true;
+    const loadPublicFeed = async () => {
+      setLoadingFeed(true);
+      const { data: authData, error: authError } = await supabase!.auth.getSession();
+      if (authError || !authData.session?.user.id) {
+        if (active) setLoadingFeed(false);
+        return;
+      }
+      const { data: postRows, error } = await supabase!.from('posts')
+        .select('id, post_type, caption, media_path, created_at, visibility, content_category, user_id')
+        .eq('visibility', 'public').not('media_path', 'is', null)
+        .order('created_at', { ascending: false }).limit(40);
+      if (!active) return;
+      if (error) {
+        setFeedPosts([]);
+        setLoadingFeed(false);
+        Alert.alert('Feed could not load', error.message);
+        return;
+      }
+      const rows = postRows || [];
+      const authorIds = [...new Set(rows.map((row: any) => row.user_id))];
+      const [profileResult, avatarResult] = await Promise.all([
+        authorIds.length ? supabase!.from('profiles').select('id, username, display_name, bio, profession_category, is_private, account_type, business_name, business_category').in('id', authorIds) : Promise.resolve({ data: [], error: null }),
+        authorIds.length ? supabase!.from('profile_media').select('user_id, storage_path, media_type, original_name').in('user_id', authorIds).eq('kind', 'avatar') : Promise.resolve({ data: [], error: null }),
+      ]);
+      if (!active) return;
+      const authors = new Map<string, PublicProfile>((profileResult.data || []).filter((p: any) => !p.is_private).map((p: any) => [p.id, p as PublicProfile]));
+      const visibleRows = rows.filter((row: any) => authors.has(row.user_id));
+      const avatarEntries = await Promise.all((avatarResult.data || []).map(async (row: any) => {
+        const { data } = await supabase!.storage.from('usay-media').createSignedUrl(row.storage_path, 3600);
+        return data?.signedUrl ? [row.user_id, { uri: data.signedUrl, type: row.media_type, name: row.original_name || undefined, storagePath: row.storage_path } as Media] as const : null;
+      }));
+      const avatarMap = new Map(avatarEntries.filter((entry): entry is NonNullable<typeof entry> => entry !== null));
+      const hydrated = await Promise.all(visibleRows.map(async (row: any) => {
+        const { data } = await supabase!.storage.from('usay-media').createSignedUrl(row.media_path, 3600);
+        const author = authors.get(row.user_id);
+        if (!data?.signedUrl || !author) return null;
+        return { ...row, author, authorAvatar: avatarMap.get(row.user_id) || null,
+          media: { uri: data.signedUrl, type: row.post_type === 'video' ? 'video' : 'image', storagePath: row.media_path } as Media,
+          like_count: 0, viewer_liked: false, comment_count: 0 } as FeedPost;
+      }));
+      if (!active) return;
+      const valid = hydrated.filter((post): post is FeedPost => post !== null);
+      if (valid.length) {
+        const [engagement, commentCounts] = await Promise.all([
+          supabase!.rpc('get_profile_post_engagement', { target_post_ids: valid.map(post => post.id) }),
+          fetchPostCommentCounts(valid.map(post => post.id)),
+        ]);
+        if (!active) return;
+        const byId = new Map<string, any>((engagement.data || []).map((item: any) => [item.post_id, item]));
+        setFeedPosts(valid.map(post => {
+          const item = byId.get(post.id);
+          return { ...post, like_count: Number(item?.like_count || 0), viewer_liked: !!item?.viewer_liked, comment_count: commentCounts[post.id] || 0 };
+        }));
+      } else setFeedPosts([]);
+      setLoadingFeed(false);
+    };
+    void loadPublicFeed();
+    return () => { active = false; };
+  }, [tab, postsRefreshKey]);
 
   useEffect(() => {
     if (tab !== 'Live' || !supabase) return;
@@ -1004,6 +1071,7 @@ export default function App() {
     setCommentSending(false);
     if (error) { Alert.alert('Could not add comment', error.message); return; }
     setCommentDraft('');
+    setFeedPosts(old => old.map(item => item.id === post.id ? { ...item, comment_count: item.comment_count + 1 } : item));
     setOwnPublishedPosts(old => old.map(item => item.id === post.id ? { ...item, comment_count: item.comment_count + 1 } : item));
     setOtherPublishedPosts(old => old.map(item => item.id === post.id ? { ...item, comment_count: item.comment_count + 1 } : item));
     void loadPostComments(post.id);
@@ -1032,6 +1100,7 @@ export default function App() {
     const updatePost = (item: PublishedPost) => item.id === post.id
       ? { ...item, viewer_liked: !isLiked, like_count: Math.max(0, item.like_count + delta) }
       : item;
+    setFeedPosts(old => old.map(item => item.id === post.id ? { ...item, viewer_liked: !isLiked, like_count: Math.max(0, item.like_count + delta) } : item));
     setOwnPublishedPosts(old => old.map(updatePost));
     setOtherPublishedPosts(old => old.map(updatePost));
     if (isOtherProfile) setOtherLikesCount(count => Math.max(0, count + delta));
@@ -1657,6 +1726,42 @@ export default function App() {
     </ScrollView>;
   };
 
+
+  const PublicFeedScreen = () => (
+    <ScrollView contentContainerStyle={s.feedScroll} showsVerticalScrollIndicator={false}>
+      <View style={s.feedHeader}>
+        <View><Text style={s.pageTitle}>MEEi</Text><Text style={s.searchSubtitle}>Your community, your feed</Text></View>
+        <Pressable style={s.searchHeaderIcon} onPress={() => setTab('Search')}><Ionicons name="search" size={20} color={C.cyan}/></Pressable>
+      </View>
+      <View style={s.feedComposer}>
+        <View style={s.personAvatar}><Ionicons name="person" size={21} color={C.cyan}/></View>
+        <Pressable style={{flex:1}} onPress={() => setCreateMenuVisible(true)}><Text style={s.personUsername}>Share something with your community…</Text></Pressable>
+        <Pressable onPress={() => setCreateMenuVisible(true)}><Ionicons name="images-outline" size={22} color={C.cyan}/></Pressable>
+      </View>
+      {loadingFeed ? <View style={s.searchEmpty}><Text style={s.hint}>Loading your feed…</Text></View> :
+        feedPosts.length === 0 ? <View style={s.searchEmpty}><Ionicons name="newspaper-outline" size={38} color={C.cyan}/><Text style={s.sectionTitle}>Your feed is ready</Text><Text style={s.hint}>Public posts from creators will appear here.</Text><Pressable onPress={() => setTab('Search')} style={[s.primary,{paddingHorizontal:22,flex:0}]}><Text style={s.primaryText}>Discover creators</Text></Pressable></View> :
+        feedPosts.map(post => <View key={post.id} style={s.feedPost}>
+          <View style={s.feedPostHeader}>
+            <Pressable style={{flexDirection:'row',alignItems:'center',gap:10,flex:1}} onPress={() => setSelectedProfile(post.author)}>
+              <View style={s.personAvatar}>{post.authorAvatar?.type === 'image' ? <Image source={{uri:post.authorAvatar.uri}} style={{width:'100%',height:'100%',borderRadius:24}}/> : <Ionicons name="person" size={21} color={C.cyan}/>}</View>
+              <View style={{flex:1,gap:2}}><Text style={s.personName}>{post.author.display_name}</Text><Text style={s.personUsername}>@{post.author.username.replace(/[@#]/g,'')} · {new Date(post.created_at).toLocaleDateString()}</Text>{post.author.account_type === 'business' && <Text style={s.personBio}>{post.author.business_name || post.author.business_category || 'Business account'}</Text>}</View>
+            </Pressable>
+            <Pressable onPress={() => Alert.alert('Post options', 'Choose an action for this post.', [{text:'Not interested',onPress:()=>setFeedPosts(old=>old.filter(item=>item.id!==post.id))},{text:'Report',onPress:()=>Alert.alert('Report received','This post has been flagged for review.')},{text:'Cancel',style:'cancel'}])} style={{padding:8}}><Ionicons name="ellipsis-horizontal" size={21} color={C.text}/></Pressable>
+          </View>
+          {!!post.caption && <Text style={s.feedCaption}>{post.caption}</Text>}
+          {post.post_type === 'video' ? <Pressable onPress={() => setViewer(post.media)}><View style={s.feedMedia}><VideoView player={useVideoPlayer(post.media.uri, p=>{p.loop=false;})} style={{width:'100%',height:'100%'}} contentFit="cover" nativeControls/></View></Pressable> :
+            <Pressable onPress={() => setViewer(post.media)}><Image source={{uri:post.media.uri}} style={s.feedMedia} resizeMode="cover"/></Pressable>}
+          <View style={s.feedActions}>
+            <Pressable onPress={() => void togglePublishedPostLike(post,false)} style={s.feedAction}><Ionicons name={post.viewer_liked?'heart':'heart-outline'} size={23} color={post.viewer_liked?'#E64D72':C.text}/><Text style={s.feedActionText}>{post.like_count}</Text></Pressable>
+            <Pressable onPress={() => openPostComments(post)} style={s.feedAction}><Ionicons name="chatbubble-outline" size={21} color={C.text}/><Text style={s.feedActionText}>{post.comment_count}</Text></Pressable>
+            <Pressable onPress={() => void Share.share({message: (post.caption || 'Check out this post on MEEi') + ' · MEEi'})} style={s.feedAction}><Ionicons name="paper-plane-outline" size={21} color={C.text}/><Text style={s.feedActionText}>Share</Text></Pressable>
+            <View style={{flex:1}}/>
+            <Pressable onPress={() => Alert.alert('Saved', 'Save-to-collection will be available with the saved posts feature.')} style={{padding:6}}><Ionicons name="bookmark-outline" size={21} color={C.text}/></Pressable>
+          </View>
+        </View>)}
+    </ScrollView>
+  );
+
   const DiscoverScreen = () => {
     const query = profileSearch.trim().replace(/^[@#]+/, '').toLowerCase();
     const filteredProfiles = publicProfiles.filter(profile =>
@@ -1715,6 +1820,20 @@ export default function App() {
           filteredVideos.length === 0 ? <View style={s.searchEmpty}><Ionicons name="videocam-outline" size={34} color={C.cyan}/><Text style={s.sectionTitle}>Nothing here yet</Text><Text style={s.hint}>Public {searchCategory.toLowerCase()} will appear here as creators share them.</Text></View> :
           <View style={s.reelsGrid}>{filteredVideos.slice(0, 12).map(video => <SearchReelTile key={video.id} uri={videoUrls[video.id]} caption={video.caption || 'MEEi video'} views={video.view_count || 0} onPress={() => openSearchVideo(video)}/>)}</View>}
       </>}
+    </ScrollView>;
+  };
+
+
+  const LongVideosScreen = () => {
+    const videos = publicVideos.filter(video => video.content_category === 'videos' || video.content_category === 'cinema');
+    return <ScrollView contentContainerStyle={s.longVideosScroll}>
+      <View style={s.feedHeader}><View><Text style={s.pageTitle}>Videos</Text><Text style={s.searchSubtitle}>Long-form videos from MEEi creators</Text></View><View style={s.searchHeaderIcon}><Ionicons name="play" size={20} color={C.cyan}/></View></View>
+      <View style={s.searchBox}><Ionicons name="search" size={19} color={C.muted}/><TextInput value={profileSearch} onChangeText={setProfileSearch} placeholder="Search long videos, topics or creators" placeholderTextColor={C.muted} style={s.searchInput}/>{!!profileSearch && <Pressable onPress={()=>setProfileSearch('')}><Ionicons name="close-circle" size={19} color={C.muted}/></Pressable>}</View>
+      {loadingVideos ? <View style={s.searchEmpty}><Text style={s.hint}>Finding videos…</Text></View> : videos.length === 0 ? <View style={s.searchEmpty}><Ionicons name="film-outline" size={38} color={C.cyan}/><Text style={s.sectionTitle}>No long videos yet</Text><Text style={s.hint}>Public long-form videos will appear here.</Text></View> :
+        videos.filter(video=>(video.caption||'').toLowerCase().includes(profileSearch.toLowerCase())).map(video=><Pressable key={video.id} onPress={()=>{const uri=videoUrls[video.id];if(uri){void supabase?.rpc('record_public_post_view',{target_post_id:video.id});setViewer({uri,type:'video',storagePath:video.media_path});}}} style={s.longVideoCard}>
+          {videoUrls[video.id] ? <Image source={{uri:videoUrls[video.id]}} style={s.longVideoThumb}/> : <View style={s.longVideoThumbFallback}><Ionicons name="play-circle" size={42} color="#FFFFFF"/></View>}
+          <View style={{flex:1,gap:5}}><Text style={s.personName} numberOfLines={2}>{video.caption || 'MEEi video'}</Text><Text style={s.personUsername}>{video.view_count.toLocaleString()} views · {new Date(video.created_at).toLocaleDateString()}</Text><Text style={s.personBio}>MEEi creator video</Text></View>
+        </Pressable>)}
     </ScrollView>;
   };
 
@@ -1861,18 +1980,19 @@ export default function App() {
       <LiveBroadcastModal visible={liveStudioVisible} sessionId={liveJoinSessionId} creatorName={name} onClose={() => { setLiveStudioVisible(false); setLiveJoinSessionId(null); }} />
       <View style={{flex:1}}>
         {selectedProfile ? <OtherProfileScreen/> : tab === 'Profile' ? <Profile/> :
-          tab === 'Home' ? <SimpleScreen title="MEEi" subtitle="Your people, one place."/> :
-          tab === 'Public' ? <DiscoverScreen/> :
+          tab === 'Home' || tab === 'Public' ? <PublicFeedScreen/> :
+          tab === 'Search' ? <DiscoverScreen/> :
+          tab === 'Videos' ? <LongVideosScreen/> :
           tab === 'Live' ? <LiveScreen/> :
           tab === 'Create' ? <CreateScreen/> :
           <InboxScreen/>}
       </View>
       <View style={s.nav}>
-        {(['Home','Public','Live'] as Tab[]).map((item) => {
-          const icons = { Home: 'home-outline', Public: 'search-outline', Live: 'radio-outline' } as const;
+        {(['Home','Search','Live','Videos'] as Tab[]).map((item) => {
+          const icons = { Home: 'home-outline', Search: 'search-outline', Live: 'radio-outline', Videos: 'play-circle-outline' } as const;
           return <Pressable key={item} style={s.navItem} onPress={() => { setSelectedProfile(null); setTab(item); }}>
             <Ionicons name={icons[item]} size={21} color={tab === item ? C.pink : C.muted}/>
-            <Text style={[s.navLabel, tab === item && {color:C.pink}]}>{item === 'Public' ? 'Search' : item}</Text>
+            <Text style={[s.navLabel, tab === item && {color:C.pink}]}>{item === 'Home' ? 'Feed' : item === 'Videos' ? 'Videos' : item}</Text>
           </Pressable>;
         })}
         <Pressable accessibilityRole="button" accessibilityLabel="Create" style={s.navCreateItem} onPress={() => setCreateMenuVisible(true)}>
@@ -2066,6 +2186,16 @@ export default function App() {
 const s = StyleSheet.create({
   root:{flex:1,backgroundColor:C.bg}, scroll:{padding:16,paddingBottom:22,gap:14},
   discoverScroll:{padding:20,paddingTop:54,paddingBottom:30,gap:14},
+  feedScroll:{paddingHorizontal:14,paddingTop:48,paddingBottom:28,gap:14},
+  feedHeader:{flexDirection:'row',alignItems:'center',justifyContent:'space-between'},
+  feedComposer:{flexDirection:'row',alignItems:'center',gap:10,padding:12,borderRadius:16,backgroundColor:'#FFFFFF',borderWidth:1,borderColor:C.border},
+  feedPost:{backgroundColor:'#FFFFFF',borderRadius:18,borderWidth:1,borderColor:C.border,padding:12,gap:10},
+  feedPostHeader:{flexDirection:'row',alignItems:'center',gap:8},feedCaption:{color:C.text,fontSize:13,lineHeight:19},
+  feedMedia:{width:'100%',height:340,borderRadius:13,backgroundColor:'#EAF5FF'},
+  feedActions:{flexDirection:'row',alignItems:'center',gap:17,paddingTop:2},feedAction:{flexDirection:'row',alignItems:'center',gap:5,paddingVertical:5},feedActionText:{color:C.text,fontSize:11,fontWeight:'700'},
+  longVideosScroll:{padding:18,paddingTop:50,paddingBottom:30,gap:14},
+  longVideoCard:{flexDirection:'row',alignItems:'center',gap:12,padding:10,borderRadius:16,borderWidth:1,borderColor:C.border,backgroundColor:'#FFFFFF'},
+  longVideoThumb:{width:132,height:90,borderRadius:11,backgroundColor:'#EAF5FF'},longVideoThumbFallback:{width:132,height:90,borderRadius:11,backgroundColor:'#78B9DD',alignItems:'center',justifyContent:'center'},
   searchHeader:{flexDirection:'row',alignItems:'center',justifyContent:'space-between'},
   searchSubtitle:{color:C.muted,fontSize:12,marginTop:3},
   searchHeaderIcon:{width:42,height:42,borderRadius:21,backgroundColor:'#EAF5FF',alignItems:'center',justifyContent:'center'},
