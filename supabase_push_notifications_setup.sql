@@ -1,4 +1,4 @@
--- CUCKOO background message push notifications.
+-- MEEi background message push notifications.
 -- Safe to re-run. Run this in Supabase SQL Editor after deploying
 -- the send-message-push Edge Function and creating its webhook secret.
 
@@ -41,17 +41,17 @@ grant all on public.user_push_tokens to service_role;
 
 -- Create one random webhook secret in Supabase Vault. Re-running this script
 -- keeps the existing secret. Copy the SELECT result into the Edge Function
--- secret named CUCKOO_PUSH_WEBHOOK_SECRET.
+-- secret named MEEI_PUSH_WEBHOOK_SECRET.
 do $$
 begin
   if not exists (
     select 1 from vault.decrypted_secrets
-    where name = 'cuckoo_push_webhook_secret'
+    where name = 'meei_push_webhook_secret'
   ) then
     perform vault.create_secret(
       encode(gen_random_bytes(32), 'hex'),
-      'cuckoo_push_webhook_secret',
-      'Authenticates the CUCKOO message-push database trigger'
+      'meei_push_webhook_secret',
+      'Authenticates the MEEi message-push database trigger'
     );
   end if;
 end;
@@ -68,11 +68,11 @@ declare
 begin
   select decrypted_secret into webhook_secret
   from vault.decrypted_secrets
-  where name = 'cuckoo_push_webhook_secret'
+  where name = 'meei_push_webhook_secret'
   limit 1;
 
   if webhook_secret is null then
-    raise warning 'CUCKOO push webhook secret is not configured; message push skipped.';
+    raise warning 'MEEi push webhook secret is not configured; message push skipped.';
     return new;
   end if;
 
@@ -80,6 +80,7 @@ begin
     url := 'https://sbzqxacibcfyyxoysseu.supabase.co/functions/v1/send-message-push',
     headers := jsonb_build_object(
       'Content-Type', 'application/json',
+      'x-meei-webhook-secret', webhook_secret,
       'x-cuckoo-webhook-secret', webhook_secret
     ),
     body := jsonb_build_object('record', to_jsonb(new))
@@ -94,8 +95,8 @@ create trigger send_cuckoo_push_after_message_insert
 after insert on public.messages
 for each row execute function public.notify_cuckoo_message_push();
 
--- Copy this value into the GitHub Actions secret CUCKOO_PUSH_WEBHOOK_SECRET.
-select decrypted_secret as cuckoo_push_webhook_secret
+-- Copy this value into the GitHub Actions secret MEEI_PUSH_WEBHOOK_SECRET.
+select decrypted_secret as meei_push_webhook_secret
 from vault.decrypted_secrets
-where name = 'cuckoo_push_webhook_secret'
+where name = 'meei_push_webhook_secret'
 limit 1;
