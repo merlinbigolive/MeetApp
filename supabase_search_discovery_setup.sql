@@ -93,6 +93,8 @@ as $$
       nullif(trim(search_text), '') is null
       or coalesce(p.caption, '') ilike '%' || trim(search_text) || '%'
       or coalesce(p.content_category, '') ilike '%' || trim(search_text) || '%'
+      or coalesce(pr.profession_category, '') ilike '%' || trim(search_text) || '%'
+      or coalesce(pr.business_category, '') ilike '%' || trim(search_text) || '%'
     )
   order by
     case when category_filter = 'trending' then
