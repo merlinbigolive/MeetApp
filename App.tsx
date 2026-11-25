@@ -434,13 +434,11 @@ export default function App() {
         }
         const tokenResult = await Notifications.getExpoPushTokenAsync({ projectId });
         if (!active) return;
-        const { error } = await supabaseClient.from('user_push_tokens').upsert({
-          user_id: currentUserId,
-          expo_push_token: tokenResult.data,
-          sound_enabled: messageSoundEnabled,
-          device_platform: Platform.OS,
-          updated_at: new Date().toISOString(),
-        }, { onConflict: 'expo_push_token' });
+        const { error } = await supabaseClient.rpc('register_my_push_token', {
+          p_expo_push_token: tokenResult.data,
+          p_device_platform: Platform.OS,
+          p_sound_enabled: messageSoundEnabled,
+        });
         if (error) console.warn('Push token could not be saved:', error.message);
       } catch (error) {
         console.warn('Push token registration failed:', error);
@@ -455,7 +453,7 @@ export default function App() {
     try {
       await AsyncStorage.setItem(NOTIFICATION_SOUND_KEY, String(enabled));
       if (supabase && currentUserId) {
-        const { error } = await supabase.from('user_push_tokens').update({ sound_enabled: enabled }).eq('user_id', currentUserId);
+        const { error } = await supabase.rpc('set_my_push_sound_preference', { p_sound_enabled: enabled });
         if (error) console.warn('Could not update push sound preference:', error.message);
       }
       if (enabled) {
