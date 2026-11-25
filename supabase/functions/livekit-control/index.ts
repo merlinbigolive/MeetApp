@@ -161,7 +161,7 @@ Deno.serve(async (request) => {
       return json({ ok: true, status: "cancelled" });
     }
 
-    if (action === "join" || action === "heartbeat" || action === "end") {
+    if (action === "join" || action === "heartbeat" || action === "end" || action === "moderate") {
       const sessionId = String(body.session_id || "");
       if (!/^[0-9a-f-]{36}$/i.test(sessionId)) return json({ error: "Invalid Live session." }, 400);
       const { data: session, error: sessionError } = await admin
@@ -192,6 +192,32 @@ Deno.serve(async (request) => {
         if (!allowed?.[0]?.allowed) return json({ error: "You are not allowed to join this Live." }, 403);
         const accessToken = await issueToken(session.provider_room_name, false);
         return json({ url: livekitUrl, room_name: session.provider_room_name, token: accessToken, role: "viewer" });
+      }
+
+      if (action === "moderate") {
+        if (session.user_id !== user.id) return json({ error: "Only the Live creator can moderate viewers." }, 403);
+        const targetViewerId = String(body.target_viewer_id || "");
+        const moderationAction = String(body.moderation_action || "");
+        if (!/^[0-9a-f-]{36}$/i.test(targetViewerId) ||
+            !["mute", "kickout", "block"].includes(moderationAction) ||
+            targetViewerId === user.id) {
+          return json({ error: "Invalid moderation request." }, 400);
+        }
+        const { data: moderated, error: moderationError } = await authClient.rpc("moderate_live_viewer", {
+          target_session_id: session.id,
+          target_viewer_id: targetViewerId,
+          moderation_action: moderationAction,
+        });
+        if (moderationError) throw moderationError;
+        if (moderated !== true) return json({ error: "Moderation action was not applied." }, 409);
+        if (moderationAction === "kickout" || moderationAction === "block") {
+          try {
+            await rooms.removeParticipant(session.provider_room_name, targetViewerId);
+          } catch (removeError) {
+            console.warn("Viewer was marked for removal but is no longer connected:", removeError);
+          }
+        }
+        return json({ ok: true, action: moderationAction });
       }
 
       if (session.user_id !== user.id) return json({ error: "Only the creator can manage this Live." }, 403);
