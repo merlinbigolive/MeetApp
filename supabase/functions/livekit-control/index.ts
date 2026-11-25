@@ -42,6 +42,7 @@ Deno.serve(async (request) => {
     if (!jwt) return json({ error: "Sign in required." }, 401);
 
     const authClient = createClient(supabaseUrl, anonKey, {
+      global: { headers: { Authorization: authorization } },
       auth: { persistSession: false, autoRefreshToken: false },
     });
     const { data: authData, error: authError } = await authClient.auth.getUser(jwt);
@@ -149,6 +150,15 @@ Deno.serve(async (request) => {
       return json({ session_id: session.id, status: "live" });
     }
 
+    if (action === "cancel") {
+      const roomName = String(body.room_name || "");
+      if (!roomName.startsWith(`meei-${user.id}-`)) return json({ error: "Invalid Live room." }, 403);
+      try { await rooms.deleteRoom(roomName); } catch (roomError) {
+        console.error("Unactivated Live room cleanup failed:", roomError);
+      }
+      return json({ ok: true, status: "cancelled" });
+    }
+
     if (action === "join" || action === "heartbeat" || action === "end") {
       const sessionId = String(body.session_id || "");
       if (!/^[0-9a-f-]{36}$/i.test(sessionId)) return json({ error: "Invalid Live session." }, 400);
@@ -162,7 +172,7 @@ Deno.serve(async (request) => {
       if (!session || !session.provider_room_name) return json({ error: "This Live has ended." }, 404);
 
       if (action === "join") {
-        const { data: allowed, error: entryError } = await admin.rpc("check_live_entry", {
+        const { data: allowed, error: entryError } = await authClient.rpc("check_live_entry", {
           target_session_id: session.id,
         });
         if (entryError) throw entryError;
