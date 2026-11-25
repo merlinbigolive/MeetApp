@@ -233,6 +233,7 @@ export default function App() {
   const [isPrivateAccount, setIsPrivateAccount] = useState(false);
   const [followRequestBusyIds, setFollowRequestBusyIds] = useState<string[]>([]);
   const [profileSearch, setProfileSearch] = useState('');
+  const [debouncedProfileSearch, setDebouncedProfileSearch] = useState('');
   const [searchCategory, setSearchCategory] = useState<SearchCategory>('Reels');
   const [publicVideos, setPublicVideos] = useState<SearchVideo[]>([]);
   const [ownPublishedPosts, setOwnPublishedPosts] = useState<PublishedPost[]>([]);
@@ -532,6 +533,11 @@ export default function App() {
   }, [postsRefreshKey]);
 
   useEffect(() => {
+    const timer = setTimeout(() => setDebouncedProfileSearch(profileSearch.trim().replace(/^[@#]+/, '').toLowerCase()), 300);
+    return () => clearTimeout(timer);
+  }, [profileSearch]);
+
+  useEffect(() => {
     if (tab !== 'Public' || !supabase) return;
     let active = true;
     const loadDiscoverProfiles = async () => {
@@ -542,8 +548,12 @@ export default function App() {
         if (active) setLoadingProfiles(false);
         return;
       }
+      const searchTerm = debouncedProfileSearch.trim().replace(/^[@#]+/, '').toLowerCase();
+      const profilesRequest = searchTerm
+        ? supabase!.rpc('search_discover_profiles', { search_text: searchTerm })
+        : supabase!.rpc('get_discover_profiles');
       const [profilesResult, followsResult] = await Promise.all([
-        supabase!.rpc('get_discover_profiles'),
+        profilesRequest,
         supabase!.from('follows').select('followed_id, status').eq('follower_id', userId),
       ]);
       if (!active) return;
@@ -583,7 +593,7 @@ export default function App() {
     };
     loadDiscoverProfiles();
     return () => { active = false; };
-  }, [tab]);
+  }, [tab, debouncedProfileSearch]);
 
   useEffect(() => {
     const videoCategories: SearchCategory[] = ['Videos', 'Reels', 'Trending', 'Funny', 'Vlogs', 'Cinema'];
