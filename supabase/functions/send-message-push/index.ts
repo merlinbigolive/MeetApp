@@ -53,6 +53,21 @@ Deno.serve(async (request) => {
       ? conversation.user_two_id
       : conversation.user_one_id;
 
+    // Global blocks must suppress push delivery too; otherwise a blocked sender
+    // could still reveal message activity through the recipient's notifications.
+    const { data: blockRows, error: blockError } = await supabase
+      .from("user_blocks")
+      .select("blocker_id")
+      .or(
+        `and(blocker_id.eq.${message.sender_id},blocked_id.eq.${recipientId}),and(blocker_id.eq.${recipientId},blocked_id.eq.${message.sender_id})`,
+      )
+      .limit(1);
+
+    if (blockError) throw blockError;
+    if (blockRows?.length) {
+      return Response.json({ sent: 0, reason: "Push suppressed by account block" });
+    }
+
     const { data: devices, error: tokenError } = await supabase
       .from("user_push_tokens")
       .select("expo_push_token, sound_enabled, device_platform")
