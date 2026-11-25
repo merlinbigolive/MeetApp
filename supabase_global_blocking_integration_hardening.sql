@@ -267,3 +267,75 @@ grant execute on function public.send_live_chat_message(uuid, text) to authentic
 grant execute on function public.get_live_chat_messages(uuid, integer) to authenticated;
 grant execute on function public.get_live_viewer_profile(uuid, uuid) to authenticated;
 
+
+
+-- Read receipts must not be updated through the SECURITY DEFINER RPC after a block.
+create or replace function public.mark_conversation_read(target_conversation_id uuid)
+returns integer
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  changed integer;
+begin
+  if auth.uid() is null then raise exception 'Authentication required'; end if;
+  if not exists (
+    select 1 from public.conversations c
+    where c.id = target_conversation_id
+      and (c.user_one_id = auth.uid() or c.user_two_id = auth.uid())
+      and not public.is_blocked_for_current_user(
+        case when c.user_one_id = auth.uid() then c.user_two_id else c.user_one_id end)
+  ) then
+    raise exception 'Conversation unavailable';
+  end if;
+
+  if not exists (
+    select 1 from public.conversations c
+    where c.id = target_conversation_id
+      and (c.user_one_id = auth.uid() or c.user_two_id = auth.uid())
+  ) then
+    raise exception 'Conversation not found';
+  end if;
+
+  update public.messages
+  set read_at = now()
+  where conversation_id = target_conversation_id
+    and sender_id <> auth.uid()
+    and read_at is null;
+
+  get diagnostics changed = row_count;
+  return changed;
+end;
+$$;
+revoke all on function public.mark_conversation_read(uuid) from public;
+grant execute on function public.mark_conversation_read(uuid) to authenticated;
+
+-- Keep private voice-note storage inaccessible across a global block, including old audio.
+drop policy if exists "global_block_chat_audio_select" on storage.objects;
+create policy "global_block_chat_audio_select" on storage.objects
+as restrictive for select to authenticated
+using (
+  bucket_id <> 'usay-chat-audio'
+  or exists (
+    select 1 from public.conversations c
+    where c.id::text = split_part(name, '/', 2)
+      and (c.user_one_id = auth.uid() or c.user_two_id = auth.uid())
+      and not public.is_blocked_for_current_user(
+        case when c.user_one_id = auth.uid() then c.user_two_id else c.user_one_id end)
+  )
+);
+
+drop policy if exists "global_block_chat_audio_insert" on storage.objects;
+create policy "global_block_chat_audio_insert" on storage.objects
+as restrictive for insert to authenticated
+with check (
+  bucket_id <> 'usay-chat-audio'
+  or exists (
+    select 1 from public.conversations c
+    where c.id::text = split_part(name, '/', 2)
+      and (c.user_one_id = auth.uid() or c.user_two_id = auth.uid())
+      and not public.is_blocked_for_current_user(
+        case when c.user_one_id = auth.uid() then c.user_two_id else c.user_one_id end)
+  )
+);
