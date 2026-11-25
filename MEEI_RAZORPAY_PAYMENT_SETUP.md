@@ -40,3 +40,15 @@ Hindi:
 - Configure the Razorpay webhook endpoint and subscribe to the relevant order/payment events after implementing the Edge Functions.
 - Test success, pending, delayed webhook, duplicate webhook, failed, cancelled, app-killed-during-checkout, and refund/reversal cases in test mode before enabling live payments.
 - Confirm Razorpay's current UPI payment method and merchant eligibility requirements before launch.
+
+## Payment-status language and translation
+- Render every payment status, explanatory sentence, button label and payment error in the user's selected MEEi app language. Use the app language preference; if none is set, use the device locale when supported, otherwise fall back to English.
+- Provide a **Translate to English** text button directly below the payment-status message whenever the displayed language is not English. Tapping it translates the complete visible status message into English without changing the underlying payment state or order.
+- After translation, change the button label to **Show in [user language]** so the user can switch back. Keep the original language preference unchanged.
+- Use reviewed localization strings for payment-critical wording (especially pending, successful, failed and “do not pay again”) rather than relying on an unreviewed live translation that could change the meaning. If a language is not yet supported, show the complete message in English.
+- Keep dynamic values such as payment reference, amount and timestamp unchanged while translating surrounding text. Never translate provider status codes or alter the authoritative status returned by the backend.
+- Example Hindi pending message:
+  “आपका पेमेंट बैंक/UPI नेटवर्क से कन्फर्म होने का इंतज़ार कर रहा है। अभी MEEi को फाइनल कन्फर्मेशन नहीं मिला है। पेमेंट सफलतापूर्वक वेरिफ़ाई होते ही Diamonds अपने-आप जुड़ जाएंगे। कृपया इसी ऑर्डर के लिए दोबारा पेमेंट न करें।”
+  Directly below it show **Translate to English**.
+- Example English pending message:
+  “Your payment is awaiting confirmation from your bank/UPI network. MEEi has not received the final confirmation yet. Diamonds will be added automatically once the payment is verified. Please do not make another payment for this order.”
