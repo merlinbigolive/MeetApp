@@ -182,7 +182,7 @@ export default function LiveBroadcastModal({ visible, sessionId, creatorName, on
       return;
     }
     setSelectedIsModerator(!selectedIsModerator);
-    Alert.alert("Live moderator", selectedIsModerator ? "Moderator access removed." : "This viewer is now an authorized moderator.");
+    Alert.alert("Live Admin", selectedIsModerator ? "Admin access removed." : "This viewer is now a Live Admin.");
   };
 
   const moderateViewer = (action: "mute" | "kickout" | "block") => {
@@ -345,13 +345,13 @@ export default function LiveBroadcastModal({ visible, sessionId, creatorName, on
                   <View style={styles.profileCardTop}>
                     {selectedViewer?.avatarUrl ? <Image source={{ uri: selectedViewer.avatarUrl }} style={styles.profileAvatar}/> : <View style={styles.profileAvatarFallback}><Text style={styles.profileAvatarLetter}>{selectedViewer?.display_name?.slice(0,1).toUpperCase() || "M"}</Text></View>}
                     <View style={{ flex: 1, gap: 3 }}>
-                      <Text style={styles.profileDisplayName}>{selectedViewer?.display_name}</Text>
+                      <View style={{ flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 6 }}><Text style={styles.profileDisplayName}>{selectedViewer?.display_name}</Text>{selectedIsModerator && <View style={{ backgroundColor: "#E8F1FF", borderRadius: 6, paddingHorizontal: 7, paddingVertical: 2 }}><Text style={{ color: "#2457A6", fontSize: 10, fontWeight: "800" }}>ADMIN</Text></View>}</View>
                       <Text style={styles.profileUsername}>@{selectedViewer?.username}</Text>
                     </View>
                     {canModerate && <Pressable onPress={() => setShowViewerMenu(v => !v)} style={styles.moreButton}><Text style={styles.moreButtonText}>⋮</Text></Pressable>}
                   </View>
                   {!!selectedViewer?.bio && <Text style={styles.profileBio}>{selectedViewer.bio}</Text>}
-                  {showViewerMenu && canModerate && <View style={styles.viewerMenu}>\n                    {isCreator && <Pressable disabled={moderationBusy} onPress={toggleModerator} style={styles.viewerMenuItem}><Text style={styles.viewerMenuText}>{selectedIsModerator ? "Remove moderator access" : "Make Live moderator"}</Text></Pressable>}
+                  {showViewerMenu && canModerate && <View style={styles.viewerMenu}>\n                    {isCreator && <Pressable disabled={moderationBusy} onPress={toggleModerator} style={styles.viewerMenuItem}><Text style={styles.viewerMenuText}>{selectedIsModerator ? "Remove Admin access" : "Make Live Admin"}</Text></Pressable>}
                     <Pressable disabled={moderationBusy} onPress={() => moderateViewer("mute")} style={styles.viewerMenuItem}><Text style={styles.viewerMenuText}>Mute for 12 hours</Text></Pressable>
                     <Pressable disabled={moderationBusy} onPress={() => moderateViewer("kickout")} style={styles.viewerMenuItem}><Text style={styles.viewerMenuText}>Kick out for 12 hours</Text></Pressable>
                     <Pressable disabled={moderationBusy} onPress={() => moderateViewer("block")} style={styles.viewerMenuItem}><Text style={[styles.viewerMenuText,{color:"#D83B4B"}]}>Block permanently</Text></Pressable>
