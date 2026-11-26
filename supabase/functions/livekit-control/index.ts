@@ -59,7 +59,7 @@ Deno.serve(async (request) => {
 
   const livekitRateLimitActions = new Set([
     "start", "join", "activate", "moderate", "heartbeat", "end", "cancel",
-    "pk_invite", "pk_respond", "pk_join", "pk_moderate", "pk_end", "pk_inbox",
+    "pk_invite", "pk_respond", "pk_join", "pk_moderate", "pk_end", "pk_inbox", "chat_join",
   ]);
   if (livekitRateLimitActions.has(action)) {
     const { data: rateAllowed, error: rateLimitError } = await authClient.rpc(
@@ -223,21 +223,8 @@ Deno.serve(async (request) => {
         });
         if (entryError) throw entryError;
         if (!allowed?.[0]?.allowed) return json({ error: "You are not allowed to join this Live." }, 403);
-        const { data: membershipId, error: membershipError } = await authClient.rpc("start_live_chat_membership", {
-          target_session_id: session.id,
-        });
-        if (membershipError || !membershipId) {
-          console.error("Could not establish Live chat membership:", membershipError);
-          return json({ error: "Could not prepare your Live chat. Please try joining again." }, 500);
-        }
         const accessToken = await issueToken(session.provider_room_name, false);
-        return json({
-          url: livekitUrl,
-          room_name: session.provider_room_name,
-          token: accessToken,
-          role: "viewer",
-          membership_id: membershipId,
-        });
+        return json({ url: livekitUrl, room_name: session.provider_room_name, token: accessToken, role: "viewer" });
       }
 
       if (action === "moderate") {
@@ -295,6 +282,30 @@ Deno.serve(async (request) => {
       return json({ ok: true, status: "ended" });
     }
 
+
+    if (action === "chat_join") {
+      const sessionId = String(body.session_id || "");
+      if (!/^[0-9a-f-]{36}$/i.test(sessionId)) return json({ error: "Invalid Live session." }, 400);
+      const { data: session, error: sessionError } = await admin.from("live_sessions")
+        .select("id,status,provider_room_name,last_heartbeat_at")
+        .eq("id", sessionId).eq("status", "live").maybeSingle();
+      if (sessionError) throw sessionError;
+      if (!session?.provider_room_name || Date.now() - new Date(session.last_heartbeat_at).getTime() > 90_000) {
+        return json({ error: "This Live has ended." }, 404);
+      }
+      const participants = await rooms.listParticipants(session.provider_room_name);
+      if (!participants.some((participant: any) => participant.identity === user.id)) {
+        return json({ error: "Join the Live room before opening its chat." }, 409);
+      }
+      const { data: membershipId, error: membershipError } = await authClient.rpc("start_live_chat_membership", {
+        target_session_id: session.id,
+      });
+      if (membershipError || !membershipId) {
+        console.error("Could not establish Live chat membership:", membershipError);
+        return json({ error: "Could not prepare your Live chat. Please try again." }, 500);
+      }
+      return json({ ok: true, membership_id: membershipId });
+    }
 
     if (action === "pk_inbox") {
       const { data, error } = await authClient.rpc("list_my_live_pk_invites");
