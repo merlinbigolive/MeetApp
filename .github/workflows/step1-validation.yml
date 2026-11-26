@@ -39,7 +39,9 @@ jobs:
       - name: Audit dependencies
         run: |
           npm audit --json > npm-audit.json || true
-          node -e "const a=require('./npm-audit.json'); console.log(JSON.stringify({summary:a.metadata?.vulnerabilities, vulnerabilities:Object.entries(a.vulnerabilities||{}).map(([name,v])=>({name,severity:v.severity,isDirect:v.isDirect,range:v.range,fixAvailable:v.fixAvailable}))}, null, 2))"
+          node -e "const a=require('./npm-audit.json'); console.log(JSON.stringify({summary:a.metadata?.vulnerabilities, high:Object.entries(a.vulnerabilities||{}).filter(([,v])=>v.severity==='high'||v.severity==='critical').map(([name,v])=>({name,severity:v.severity,isDirect:v.isDirect,range:v.range,via:v.via,effects:v.effects,nodes:v.nodes,fixAvailable:v.fixAvailable}))}, null, 2))"
+          npm audit --omit=dev --json > npm-audit-production.json || true
+          node -e "const a=require('./npm-audit-production.json'); console.log(JSON.stringify({productionSummary:a.metadata?.vulnerabilities, productionVulnerabilities:Object.entries(a.vulnerabilities||{}).map(([name,v])=>({name,severity:v.severity,isDirect:v.isDirect,via:v.via,effects:v.effects,nodes:v.nodes,fixAvailable:v.fixAvailable}))}, null, 2))"
 
       - name: Expo Doctor
         run: npx expo-doctor
