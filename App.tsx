@@ -1319,6 +1319,8 @@ export default function App() {
   const runContactSync = async () => {
     if (!supabase || contactSyncing) return;
     setContactSyncing(true);
+    setContactSyncDone(false);
+    setContactMatches([]);
     try {
       const permission = await Contacts.requestPermissionsAsync();
       if (!permission.granted) {
@@ -1395,6 +1397,11 @@ export default function App() {
     if (authError || !userId) {
       Alert.alert('Sign in required', 'Please sign in again to view your messages.');
       return;
+    }
+    if (currentUserId !== userId) {
+      setContactMatches([]);
+      setContactSyncDone(false);
+      setContactDiscoverable(false);
     }
     setCurrentUserId(userId);
     void supabase.rpc('get_my_contact_discoverability').then(({ data, error }) => {
