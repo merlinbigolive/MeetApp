@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "USay",
+    "name": "MEEi",
     "slug": "meetapp",
     "scheme": "meetapp",
     "version": "1.0.0",
@@ -39,14 +39,14 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "Allow USay to access your photos.",
-          "cameraPermission": "Allow USay to use your camera."
+          "photosPermission": "Allow MEEi to access your photos.",
+          "cameraPermission": "Allow MEEi to use your camera."
         }
       ],
       [
         "expo-audio",
         {
-          "microphonePermission": "Allow CUCKOO to record voice messages.",
+          "microphonePermission": "Allow MEEi to record voice messages.",
           "recordAudioAndroid": true
         }
       ],
@@ -61,8 +61,8 @@
       [
         "expo-speech-recognition",
         {
-          "microphonePermission": "Allow CUCKOO to record voice messages.",
-          "speechRecognitionPermission": "Allow CUCKOO to transcribe voice messages.",
+          "microphonePermission": "Allow MEEi to record voice messages.",
+          "speechRecognitionPermission": "Allow MEEi to transcribe voice messages.",
           "androidSpeechServicePackages": [
             "com.google.android.googlequicksearchbox"
           ]
