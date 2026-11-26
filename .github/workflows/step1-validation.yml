@@ -42,7 +42,7 @@ jobs:
       - name: Diagnose Expo SDK dependency versions
         run: |
           npm ls expo expo-asset expo-modules-core expo-audio --all || true
-          npx expo install --check || true
+          npx expo install --check
 
       - name: Export Android bundle
         run: npx expo export --platform android --output-dir dist/android
