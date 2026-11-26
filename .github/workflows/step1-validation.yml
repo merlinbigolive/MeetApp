@@ -1,0 +1,47 @@
+name: Step 1 validation
+
+on:
+  push:
+    branches:
+      - fix/step1-meei-app-branding
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: step1-validation-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  typecheck-and-export:
+    name: TypeScript and Expo exports
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm install --no-package-lock
+
+      - name: TypeScript strict check
+        run: npm run typecheck
+
+      - name: Validate Expo configuration
+        run: npx expo config --type public
+
+      - name: Export Android bundle
+        run: npx expo export --platform android --output-dir dist/android
+
+      - name: Export iOS bundle
+        run: npx expo export --platform ios --output-dir dist/ios
