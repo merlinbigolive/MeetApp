@@ -2261,7 +2261,6 @@ export default function App() {
     return <ScrollView contentContainerStyle={s.liveScroll}>
       <View style={s.liveHeader}>
         <Text style={s.liveMainTitle}>MEEi LIVE HOSTS</Text>
-        <Pressable onPress={() => setLiveCountryPage('all')}><Text style={s.liveMoreText}>MORE  ›</Text></Pressable>
       </View>
       <View style={s.liveSectionHeader}><Text style={s.liveSectionTitle}>Countries & regions</Text><Pressable onPress={() => setLiveCountryPage('all')}><Text style={s.liveMoreText}>MORE  ›</Text></Pressable></View>
       <View style={s.liveFeaturedGrid}>{featuredCountries.map(country => <Pressable key={country.code} onPress={() => {setLiveCountry(country.code);setLiveCountryPage('country');}} style={s.liveFeaturedCountry}><Text style={s.liveFeaturedFlag}>{countryFlag(country.code)}</Text><Text style={s.liveFeaturedName}>{country.name}</Text></Pressable>)}</View>
