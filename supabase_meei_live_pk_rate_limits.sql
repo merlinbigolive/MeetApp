@@ -23,6 +23,7 @@ begin
     when 'livekit_pk_moderate' then v_limit := 20; v_window := 60;
     when 'livekit_pk_end' then v_limit := 5; v_window := 60;
     when 'livekit_pk_inbox' then v_limit := 30; v_window := 60;
+    when 'livekit_chat_join' then v_limit := 30; v_window := 60;
     when 'contact_sync' then v_limit := 6; v_window := 3600;
     else raise exception 'Unsupported rate-limit action' using errcode = '22023';
   end case;
