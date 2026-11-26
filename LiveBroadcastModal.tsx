@@ -28,6 +28,7 @@ export default function LiveBroadcastModal({ visible, sessionId, creatorName, on
   const [busy, setBusy] = useState(false);
   const [ending, setEnding] = useState(false);
   const [chatMessages, setChatMessages] = useState<LiveChatMessage[]>([]);
+  const [chatMembershipId, setChatMembershipId] = useState<string | null>(null);
   const [chatDraft, setChatDraft] = useState("");
   const [chatBusy, setChatBusy] = useState(false);
   const [selectedViewer, setSelectedViewer] = useState<MiniProfile | null>(null);
@@ -53,6 +54,8 @@ export default function LiveBroadcastModal({ visible, sessionId, creatorName, on
         onClose();
         return;
       }
+      setChatMessages([]);
+      setChatMembershipId(String(data.membership_id));
       setCredentials({ url: data.url, token: data.token, room_name: data.room_name, role: "viewer" });
       setRoomName(data.room_name);
       setBusy(false);
@@ -86,12 +89,13 @@ export default function LiveBroadcastModal({ visible, sessionId, creatorName, on
   }, [visible, sessionId, isCreator]);
 
   useEffect(() => {
-    if (!visible || !chatSessionId || !supabase) return;
+    if (!visible || !chatSessionId || !supabase || (!isCreator && !chatMembershipId)) return;
     let cancelled = false;
     const loadChat = async () => {
       const { data, error } = await supabase!.rpc("get_live_chat_messages", {
         target_session_id: chatSessionId,
         message_limit: 60,
+        target_membership_id: chatMembershipId,
       });
       if (!cancelled && !error && Array.isArray(data)) {
         setChatMessages([...data].reverse() as LiveChatMessage[]);
@@ -100,7 +104,7 @@ export default function LiveBroadcastModal({ visible, sessionId, creatorName, on
     void loadChat();
     const timer = setInterval(() => { void loadChat(); }, 4000);
     return () => { cancelled = true; clearInterval(timer); };
-  }, [visible, chatSessionId]);
+  }, [visible, chatSessionId, chatMembershipId, isCreator]);
 
   const sendLiveMessage = async () => {
     if (!supabase || !chatSessionId || !chatDraft.trim() || chatBusy) return;
@@ -116,7 +120,9 @@ export default function LiveBroadcastModal({ visible, sessionId, creatorName, on
     }
     setChatDraft("");
     const { data } = await supabase.rpc("get_live_chat_messages", {
-      target_session_id: chatSessionId, message_limit: 60,
+      target_session_id: chatSessionId,
+      message_limit: 60,
+      target_membership_id: chatMembershipId,
     });
     if (Array.isArray(data)) setChatMessages([...data].reverse() as LiveChatMessage[]);
   };
@@ -206,7 +212,11 @@ export default function LiveBroadcastModal({ visible, sessionId, creatorName, on
           return;
         }
         setSelectedViewer(null);
-        const { data: refreshed } = await supabase!.rpc("get_live_chat_messages", { target_session_id: chatSessionId, message_limit: 60 });
+        const { data: refreshed } = await supabase!.rpc("get_live_chat_messages", {
+          target_session_id: chatSessionId,
+          message_limit: 60,
+          target_membership_id: chatMembershipId,
+        });
         if (Array.isArray(refreshed)) setChatMessages([...refreshed].reverse() as LiveChatMessage[]);
         if (action === "kickout" || action === "block") Alert.alert("Viewer removed", "The viewer has been removed from this Live.");
       } },
@@ -267,6 +277,8 @@ export default function LiveBroadcastModal({ visible, sessionId, creatorName, on
     setCredentials(null);
     setRoomName("");
     setActiveSessionId(null);
+    setChatMembershipId(null);
+    setChatMessages([]);
     setEnding(false);
     onClose();
   };
