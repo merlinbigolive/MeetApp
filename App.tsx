@@ -22,7 +22,7 @@ type Tab = 'Home' | 'Public' | 'Search' | 'Videos' | 'Live' | 'Create' | 'Inbox'
 type SearchCategory = 'People' | 'Videos' | 'Reels' | 'Trending' | 'Funny' | 'Vlogs' | 'Cinema' | 'Creators';
 type SearchVideo = { id: string; caption: string | null; media_path: string; created_at: string; user_id: string; content_category: string; like_count: number; view_count: number };
 type LiveCreator = { session_id: string; user_id: string; username: string; display_name: string; profession_category: string | null; country_code: string; country_name: string; title: string; thumbnail_path: string | null; avatar_path: string | null; playback_url: string | null; started_at: string };
-type PublishedPost = { id: string; post_type: 'photo' | 'video' | 'text'; caption: string | null; media_path: string | null; created_at: string; visibility: string; content_category: string | null; like_count: number; viewer_liked: boolean; comment_count: number; media: Media };
+type PublishedPost = { id: string; post_type: 'photo' | 'video' | 'text'; caption: string | null; media_path: string | null; created_at: string; visibility: string; content_category: string | null; like_count: number; viewer_liked: boolean; comment_count: number; media: Media | null };
 type FeedPost = Omit<PublishedPost, 'media'> & { media: Media | null; author: PublicProfile; authorAvatar?: Media | null };
 type PostComment = { id: string; post_id: string; user_id: string; body: string; created_at: string; username: string; display_name: string };
 type PostReactionSummary = { counts: Record<string, number>; mine: string | null };
@@ -665,8 +665,9 @@ export default function App() {
         Alert.alert('Could not load your posts', error.message);
         return;
       }
-      const rows = (data || []).filter((row: any) => !!row.media_path);
+      const rows = (data || []).filter((row: any) => row.post_type === 'text' || !!row.media_path);
       const hydrated = await Promise.all(rows.map(async (row: any) => {
+        if (!row.media_path) return { ...row, media: null } as PublishedPost;
         const { data: signed, error: signedError } = await supabase!.storage.from('usay-media').createSignedUrl(row.media_path, 60 * 60);
         if (signedError || !signed?.signedUrl) return null;
         return { ...row, media: { uri: signed.signedUrl, type: row.post_type === 'video' ? 'video' : 'image', storagePath: row.media_path } as Media } as PublishedPost;
@@ -965,8 +966,9 @@ export default function App() {
         posts: valid.filter(item => item.kind === 'post').sort((a,b) => a.position-b.position).map(item => item.media).slice(0,3),
       });
       if (postsResult.error) Alert.alert('Could not load published posts', postsResult.error.message);
-      const publishedRows = (postsResult.data || []).filter((row: any) => !!row.media_path);
+      const publishedRows = (postsResult.data || []).filter((row: any) => row.post_type === 'text' || !!row.media_path);
       const publishedHydrated = await Promise.all(publishedRows.map(async (row: any) => {
+        if (!row.media_path) return { ...row, media: null } as PublishedPost;
         const { data: signed, error: signedError } = await supabase!.storage.from('usay-media').createSignedUrl(row.media_path, 60 * 60);
         if (signedError || !signed?.signedUrl) return null;
         return { ...row, media: { uri: signed.signedUrl, type: row.post_type === 'video' ? 'video' : 'image', storagePath: row.media_path } as Media } as PublishedPost;
@@ -1889,9 +1891,10 @@ export default function App() {
   const PublishedPostTile = ({ post, onPress, onLike, onComments }: { post: PublishedPost; onPress: () => void; onLike: () => void; onComments: () => void }) => (
     <View style={s.publishedTile}>
       <Pressable onPress={onPress}>
-        {post.media.type === 'image'
+        {post.media?.type === 'image'
           ? <Image source={{ uri: post.media.uri }} style={s.publishedImage} />
-          : <View style={s.publishedVideo}><Ionicons name="play-circle" size={34} color="#FFFFFF"/><Text style={s.videoText}>VIDEO</Text></View>}
+          : post.media?.type === 'video' ? <View style={s.publishedVideo}><Ionicons name="play-circle" size={34} color="#FFFFFF"/><Text style={s.videoText}>VIDEO</Text></View>
+          : <View style={[s.publishedImage, { alignItems: 'center', justifyContent: 'center', padding: 10 }]}><Ionicons name="text" size={25} color={C.cyan}/><Text style={s.publishedCaption} numberOfLines={3}>{post.caption || 'Text post'}</Text></View>}
       </Pressable>
       {!!post.caption && <Text style={s.publishedCaption} numberOfLines={2}>{post.caption}</Text>}
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
@@ -1977,7 +1980,7 @@ export default function App() {
         <View style={s.section}>
           <View style={s.sectionHeading}><Text style={s.sectionTitle}>Posts</Text><Text style={s.coverCount}>{ownPublishedPosts.length}</Text></View>
           {ownPublishedPosts.length ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 9 }}>
-            {ownPublishedPosts.map(post => <PublishedPostTile key={post.id} post={post} onPress={() => setViewer(post.media)} onLike={() => void togglePublishedPostLike(post, false)} onComments={() => openPostComments(post)}/>)}
+            {ownPublishedPosts.map(post => <PublishedPostTile key={post.id} post={post} onPress={() => { if (post.media) setViewer(post.media); }} onLike={() => void togglePublishedPostLike(post, false)} onComments={() => openPostComments(post)}/>)}
           </ScrollView> : <Text style={s.hint}>Your published photos and videos will appear here.</Text>}
         </View>
         {!!posts.length && <View style={s.section}>
@@ -2053,7 +2056,7 @@ export default function App() {
           <View style={s.section}>
             <View style={s.sectionHeading}><Text style={s.sectionTitle}>Posts</Text><Text style={s.coverCount}>{otherPublishedPosts.length}</Text></View>
             {loadingOtherProfile ? <Text style={s.hint}>Loading posts…</Text> : otherPublishedPosts.length ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 9 }}>
-              {otherPublishedPosts.map(post => <PublishedPostTile key={post.id} post={post} onPress={() => setViewer(post.media)} onLike={() => void togglePublishedPostLike(post, true)} onComments={() => openPostComments(post)}/>)}
+              {otherPublishedPosts.map(post => <PublishedPostTile key={post.id} post={post} onPress={() => { if (post.media) setViewer(post.media); }} onLike={() => void togglePublishedPostLike(post, true)} onComments={() => openPostComments(post)}/>)}
             </ScrollView> : <Text style={s.hint}>No published posts yet.</Text>}
           </View>
           {!!otherProfileMedia.posts.length && <View style={s.section}>
