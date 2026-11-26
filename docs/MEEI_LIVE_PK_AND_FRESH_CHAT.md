@@ -77,7 +77,7 @@ Add a synchronized 1v1 Live PK experience to MEEi and make Live chat join behavi
 - Added per-entry `live_chat_memberships` with a server-generated UUID cursor and server timestamp.
 - Viewer chat reads require a membership belonging to the authenticated user and requested Live session; SQL filters messages to `created_at >= joined_at`.
 - Added membership leave invalidation. A viewer's old cursor is marked closed when they leave and cannot be reused to read chat.
-- Updated `livekit-control` join to establish the membership cursor before returning the viewer token.
+- Added a `chat_join` Edge action that verifies the authenticated viewer is actually present in the LiveKit room, then creates the chat membership cursor. The app calls it from LiveKit's `onConnected` event, so the cursor starts after the viewer has entered the room.
 - Added PK invitation and battle tables with 5/10/15-minute duration validation, 45-second invitation expiry, server start/end timestamps, and per-session lock rows to prevent a creator entering multiple simultaneous PKs.
 - Added authenticated RPCs for create/respond/list/state/end, shared PK comments, and cross-side moderation audit.
 - Added a Live-session end trigger that ends any pending/active PK involving that session.
