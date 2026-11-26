@@ -5,6 +5,7 @@ import {
 } from "react-native";
 import { AudioSession, LiveKitRoom, VideoTrack, useTracks, isTrackReference } from "@livekit/react-native";
 import { Track } from "livekit-client";
+import * as Localization from "expo-localization";
 import { supabase } from "./supabase";
 
 type RoomCredentials = { url: string; token: string; room_name: string; role: "creator" | "viewer" };
@@ -22,8 +23,15 @@ type Props = {
 
 export default function LiveBroadcastModal({ visible, sessionId, creatorName, onClose }: Props) {
   const [title, setTitle] = useState("Come say hello!");
-  const [countryCode, setCountryCode] = useState("IN");
-  const [countryName, setCountryName] = useState("India");
+  const [countryCode, setCountryCode] = useState(() => (Localization.getLocales()[0]?.regionCode || "IN").toUpperCase());
+  const [countryName, setCountryName] = useState(() => {
+    const locale = Localization.getLocales()[0];
+    const code = (locale?.regionCode || "IN").toUpperCase();
+    try {
+      const DisplayNames = (Intl as any).DisplayNames;
+      return DisplayNames ? (new DisplayNames([locale?.languageTag || "en"], { type: "region" }).of(code) || code) : (code === "IN" ? "India" : code);
+    } catch { return code === "IN" ? "India" : code; }
+  });
   const [credentials, setCredentials] = useState<RoomCredentials | null>(null);
   const [roomName, setRoomName] = useState("");
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
@@ -50,6 +58,26 @@ export default function LiveBroadcastModal({ visible, sessionId, creatorName, on
   const [moderationRole, setModerationRole] = useState<"creator" | "moderator" | "viewer">("viewer");
   const [selectedIsModerator, setSelectedIsModerator] = useState(false);
   const isCreator = !sessionId;
+
+  useEffect(() => {
+    if (!visible || !isCreator || !supabase) return;
+    let cancelled = false;
+    const loadCreatorHomeCountry = async () => {
+      const { data: authData } = await supabase!.auth.getSession();
+      const userId = authData.session?.user.id;
+      if (!userId) return;
+      const { data, error } = await supabase!.from("profiles")
+        .select("country_code,country_name")
+        .eq("id", userId).maybeSingle();
+      if (cancelled || error) return;
+      if (data?.country_code && data?.country_name) {
+        setCountryCode(String(data.country_code).toUpperCase());
+        setCountryName(String(data.country_name));
+      }
+    };
+    void loadCreatorHomeCountry();
+    return () => { cancelled = true; };
+  }, [visible, isCreator]);
 
   useEffect(() => {
     const client = supabase;
@@ -482,10 +510,8 @@ export default function LiveBroadcastModal({ visible, sessionId, creatorName, on
               {isCreator && <>
                 <Text style={styles.label}>Live title</Text>
                 <TextInput value={title} onChangeText={setTitle} maxLength={120} placeholder="What are you going live about?" style={styles.input} />
-                <Text style={styles.label}>Country name</Text>
-                <TextInput value={countryName} onChangeText={setCountryName} placeholder="Country" style={styles.input} />
-                <Text style={styles.label}>Country code (2–3 letters)</Text>
-                <TextInput value={countryCode} onChangeText={setCountryCode} autoCapitalize="characters" maxLength={3} placeholder="IN" style={styles.input} />
+                <Text style={styles.label}>Your home country</Text>
+                <Text style={styles.note}>{countryName} ({countryCode}) · Set in your MEEi profile and used for Live discovery.</Text>
                 <Pressable onPress={startLive} style={styles.primary}><Text style={styles.primaryText}>Start Live</Text></Pressable>
                 <Text style={styles.note}>Camera and microphone access will be requested by your device when the broadcast starts.</Text>
               </>}
