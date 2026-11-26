@@ -43,7 +43,7 @@ declare
   v_id uuid;
   v_role text;
 begin
-  v_role := coalesce(current_setting('request.jwt.claims', true)::jsonb ->> 'role', '');
+  v_role := coalesce(nullif(current_setting('request.jwt.claims', true), '')::jsonb ->> 'role', '');
   if v_role <> 'service_role' then
     raise exception 'Only trusted server workflows can create Live room popups' using errcode = '42501';
   end if;
