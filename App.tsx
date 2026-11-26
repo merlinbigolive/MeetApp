@@ -328,6 +328,7 @@ export default function App() {
   const [liveStudioVisible, setLiveStudioVisible] = useState(false);
   const [liveJoinSessionId, setLiveJoinSessionId] = useState<string | null>(null);
   const [savingProfile, setSavingProfile] = useState(false);
+  const mediaUploadLocks = useRef<Set<string>>(new Set());
   const [name, setName] = useState('MEEi User');
   const [username, setUsername] = useState('your_username');
   const [bio, setBio] = useState('Creating connections, sharing ideas and meeting amazing people.');
@@ -1839,6 +1840,13 @@ export default function App() {
       Alert.alert('Sign in required', 'Please sign in before uploading profile media.');
       return;
     }
+    const targetPosition = kind === 'avatar' ? 0 : (index ?? (kind === 'cover' ? covers.length : posts.length));
+    const uploadLockKey = `${kind}:${targetPosition}`;
+    if (mediaUploadLocks.current.has(uploadLockKey)) {
+      Alert.alert('Upload in progress', 'Please wait for the current media upload to finish.');
+      return;
+    }
+    mediaUploadLocks.current.add(uploadLockKey);
     try {
       const mimeType = a.mimeType || (type === 'video' ? 'video/mp4' : 'image/jpeg');
       const extension = mimeType.split('/')[1]?.replace('jpeg', 'jpg').split(';')[0] || (type === 'video' ? 'mp4' : 'jpg');
@@ -1858,7 +1866,7 @@ export default function App() {
         await client.storage.from('usay-media').remove([storagePath]);
         throw signedError || new Error('Could not create a media preview URL.');
       }
-      const position = kind === 'avatar' ? 0 : (index ?? (kind === 'cover' ? covers.length : posts.length));
+      const position = targetPosition;
       const { data: previous, error: previousError } = await client.from('profile_media')
         .select('storage_path').eq('user_id', userId).eq('kind', kind).eq('position', position).maybeSingle();
       if (previousError) {
@@ -1893,6 +1901,8 @@ export default function App() {
       Alert.alert('Uploaded', 'Your media is now saved to your MEEi account.');
     } catch (error: any) {
       Alert.alert('Upload failed', error?.message || 'Please try again.');
+    } finally {
+      mediaUploadLocks.current.delete(uploadLockKey);
     }
   };
 
