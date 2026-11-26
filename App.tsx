@@ -355,6 +355,7 @@ export default function App() {
   const [searchCategory, setSearchCategory] = useState<SearchCategory>('Reels');
   const [publicVideos, setPublicVideos] = useState<SearchVideo[]>([]);
   const [feedPosts, setFeedPosts] = useState<FeedPost[]>([]);
+  const [dismissedFeedPostIds, setDismissedFeedPostIds] = useState<string[]>([]);
   const [savedPostIds, setSavedPostIds] = useState<string[]>([]);
   const [postReactionSummaries, setPostReactionSummaries] = useState<Record<string, PostReactionSummary>>({});
   const [reactionPostId, setReactionPostId] = useState<string | null>(null);
@@ -815,6 +816,17 @@ export default function App() {
         if (active) setLoadingFeed(false);
         return;
       }
+      const dismissKey = `@meei/feed_dismissed/${authData.session.user.id}`;
+      let dismissedIds: string[] = [];
+      try {
+        const stored = await AsyncStorage.getItem(dismissKey);
+        const parsed = stored ? JSON.parse(stored) : [];
+        dismissedIds = Array.isArray(parsed) ? parsed.filter((id: unknown): id is string => typeof id === 'string') : [];
+      } catch (storageError) {
+        console.warn('Feed preferences could not be read:', storageError);
+      }
+      if (!active) return;
+      setDismissedFeedPostIds(dismissedIds);
       const { data: savedRows, error: savedError } = await supabase!.from('saved_posts').select('post_id').eq('user_id', authData.session.user.id);
       if (!active) return;
       if (savedError) {
@@ -834,7 +846,7 @@ export default function App() {
         Alert.alert('Feed could not load', error.message);
         return;
       }
-      const rows = postRows || [];
+      const rows = (postRows || []).filter((row: any) => !dismissedIds.includes(row.id));
       const authorIds = [...new Set(rows.map((row: any) => row.user_id))];
       const [profileResult, avatarResult] = await Promise.all([
         authorIds.length ? supabase!.from('profiles').select('id, username, display_name, bio, profession_category, is_private, account_type, business_name, business_category').in('id', authorIds) : Promise.resolve({ data: [], error: null }),
@@ -1300,7 +1312,7 @@ export default function App() {
     setSavedPostIds(old => isSaved ? old.filter(id => id !== postId) : [...old, postId]);
   };
 
-  const submitPostReport = async (post: FeedPost, reason: 'spam' | 'harassment' | 'hate' | 'violence' | 'nudity' | 'scam' | 'copyright' | 'other') => {
+  const submitPostReport = async (post: FeedPost, reason: 'spam' | 'harassment' | 'hate' | 'violence' | 'nudity' | 'scam' | 'fake_information' | 'copyright' | 'other') => {
     const client = supabase;
     if (!client || reportBusyIds.includes(post.id)) return;
     const { data: authData, error: authError } = await client.auth.getSession();
@@ -1329,6 +1341,20 @@ export default function App() {
       return;
     }
     Alert.alert('Report submitted', 'Thank you. Your report has been recorded for moderation review.');
+  };
+
+  const dismissFeedPost = async (postId: string) => {
+    const { data: authData, error: authError } = await supabase!.auth.getSession();
+    const userId = authData.session?.user.id;
+    if (authError || !userId) { Alert.alert('Sign in required', 'Please sign in again to update feed preferences.'); return; }
+    const next = Array.from(new Set([...dismissedFeedPostIds, postId]));
+    try {
+      await AsyncStorage.setItem(`@meei/feed_dismissed/${userId}`, JSON.stringify(next));
+      setDismissedFeedPostIds(next);
+      setFeedPosts(old => old.filter(item => item.id !== postId));
+    } catch (storageError: any) {
+      Alert.alert('Preference not saved', storageError?.message || 'Please try again.');
+    }
   };
 
   const togglePublishedPostLike = async (post: PublishedPost, isOtherProfile: boolean) => {
@@ -2095,8 +2121,8 @@ export default function App() {
             </Pressable>
             {!followedUserIds.includes(post.author.id) && <Pressable disabled={followBusyIds.includes(post.author.id)} onPress={() => void toggleFollow(post.author)} style={[s.feedFollowButton, pendingFollowIds.includes(post.author.id) && s.followingButton]}><Text style={[s.feedFollowText, pendingFollowIds.includes(post.author.id) && s.followingButtonText]}>{followBusyIds.includes(post.author.id) ? '…' : pendingFollowIds.includes(post.author.id) ? 'Requested' : 'Follow'}</Text></Pressable>}
             <Pressable onPress={() => Alert.alert('Post options', 'Choose an action for this post.', [
-              { text: 'Not interested', onPress: () => setFeedPosts(old => old.filter(item => item.id !== post.id)) },
-              { text: 'Hide this post', onPress: () => setFeedPosts(old => old.filter(item => item.id !== post.id)) },
+              { text: 'Not interested', onPress: () => void dismissFeedPost(post.id) },
+              { text: 'Hide this post', onPress: () => void dismissFeedPost(post.id) },
               { text: 'Report', onPress: () => setReportPost(post) },
               { text: 'Block Creator', style: 'destructive', onPress: () => blockProfile(post.author) },
               { text: 'Cancel', style: 'cancel' },
@@ -2475,7 +2501,8 @@ export default function App() {
                 ['hate', 'Hate or hateful conduct'],
                 ['violence', 'Violence or dangerous acts'],
                 ['nudity', 'Nudity or sexual content'],
-                ['scam', 'Scam or fraud'],
+                ['scam', 'Spam or scam'],
+                ['fake_information', 'Fake information'],
                 ['copyright', 'Copyright concern'],
                 ['other', 'Other'],
               ] as const).map(([reason, label]) => (
