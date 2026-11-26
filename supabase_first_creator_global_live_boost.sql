@@ -65,6 +65,14 @@ begin
     return jsonb_build_object('activated', false, 'reason', 'creator_in_pk');
   end if;
 
+  -- A creator only qualifies on their first ever verified Live session.
+  if exists (
+    select 1 from public.live_sessions prior
+    where prior.user_id = p_creator_id and prior.id <> p_session_id
+  ) then
+    return jsonb_build_object('activated', false, 'reason', 'not_first_live_session');
+  end if;
+
   select * into v_existing
   from private.creator_global_live_boosts
   where creator_id = p_creator_id;
