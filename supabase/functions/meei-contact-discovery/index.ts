@@ -89,7 +89,7 @@ Deno.serve(async (request: Request) => {
 
     const { data: profiles, error: profileError } = await admin
       .from("profiles")
-      .select("id, username, display_name, is_private, account_type")
+      .select("id, username, display_name, bio, profession_category, website_url, activity_status, is_private, account_type, business_name, business_category, business_description")
       .in("id", ids);
     if (profileError) throw profileError;
 
