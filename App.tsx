@@ -1842,8 +1842,8 @@ export default function App() {
     }
     const targetPosition = kind === 'avatar' ? 0 : (index ?? (kind === 'cover' ? covers.length : posts.length));
     const uploadLockKey = `${kind}:${targetPosition}`;
-    if (mediaUploadLocks.current.has(uploadLockKey)) {
-      Alert.alert('Upload in progress', 'Please wait for the current media upload to finish.');
+    if (mediaUploadLocks.current.has(`${kind}:gallery`) || mediaUploadLocks.current.has(uploadLockKey)) {
+      Alert.alert('Upload in progress', 'Please wait for the current gallery update to finish.');
       return;
     }
     mediaUploadLocks.current.add(uploadLockKey);
@@ -1911,6 +1911,13 @@ export default function App() {
     const media = kind === 'cover' ? covers[index] : posts[index];
     if (!client || !media) return;
 
+    const galleryLockKey = `${kind}:gallery`;
+    const hasGalleryMutation = Array.from(mediaUploadLocks.current).some(key => key.startsWith(`${kind}:`));
+    if (hasGalleryMutation) {
+      Alert.alert('Gallery update in progress', 'Please wait for the current media update to finish.');
+      return;
+    }
+    mediaUploadLocks.current.add(galleryLockKey);
     try {
       const { data: authData, error: sessionError } = await client.auth.getSession();
       if (sessionError) throw sessionError;
@@ -1958,6 +1965,8 @@ export default function App() {
       }
     } catch (error: any) {
       Alert.alert('Could not remove media', error?.message || 'Please try again.');
+    } finally {
+      mediaUploadLocks.current.delete(galleryLockKey);
     }
   };
 
