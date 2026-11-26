@@ -23,7 +23,7 @@ type SearchCategory = 'People' | 'Videos' | 'Reels' | 'Trending' | 'Funny' | 'Vl
 type SearchVideo = { id: string; caption: string | null; media_path: string; created_at: string; user_id: string; content_category: string; like_count: number; view_count: number };
 type LiveCreator = { session_id: string; user_id: string; username: string; display_name: string; profession_category: string | null; country_code: string; country_name: string; title: string; thumbnail_path: string | null; avatar_path: string | null; playback_url: string | null; started_at: string };
 type PublishedPost = { id: string; post_type: 'photo' | 'video' | 'text'; caption: string | null; media_path: string | null; created_at: string; visibility: string; content_category: string | null; like_count: number; viewer_liked: boolean; comment_count: number; media: Media };
-type FeedPost = PublishedPost & { author: PublicProfile; authorAvatar?: Media | null };
+type FeedPost = Omit<PublishedPost, 'media'> & { media: Media | null; author: PublicProfile; authorAvatar?: Media | null };
 type PostComment = { id: string; post_id: string; user_id: string; body: string; created_at: string; username: string; display_name: string };
 type PostReactionSummary = { counts: Record<string, number>; mine: string | null };
 type BlockedAccount = { user_id: string; username: string; display_name: string; blocked_at: string };
@@ -824,7 +824,7 @@ export default function App() {
       }
       const { data: postRows, error } = await supabase!.from('posts')
         .select('id, post_type, caption, media_path, created_at, visibility, content_category, user_id')
-        .eq('visibility', 'public').not('media_path', 'is', null)
+        .eq('visibility', 'public')
         .order('created_at', { ascending: false }).limit(40);
       if (!active) return;
       if (error) {
@@ -848,12 +848,18 @@ export default function App() {
       }));
       const avatarMap = new Map(avatarEntries.filter((entry): entry is NonNullable<typeof entry> => entry !== null));
       const hydrated = await Promise.all(visibleRows.map(async (row: any) => {
-        const { data } = await supabase!.storage.from('usay-media').createSignedUrl(row.media_path, 3600);
         const author = authors.get(row.user_id);
-        if (!data?.signedUrl || !author) return null;
+        if (!author) return null;
+        let media: Media | null = null;
+        if (row.media_path) {
+          const { data } = await supabase!.storage.from('usay-media').createSignedUrl(row.media_path, 3600);
+          if (!data?.signedUrl) return null;
+          media = { uri: data.signedUrl, type: row.post_type === 'video' ? 'video' : 'image', storagePath: row.media_path } as Media;
+        } else if (row.post_type !== 'text') {
+          return null;
+        }
         return { ...row, author, authorAvatar: avatarMap.get(row.user_id) || null,
-          media: { uri: data.signedUrl, type: row.post_type === 'video' ? 'video' : 'image', storagePath: row.media_path } as Media,
-          like_count: 0, viewer_liked: false, comment_count: 0 } as FeedPost;
+          media, like_count: 0, viewer_liked: false, comment_count: 0 } as FeedPost;
       }));
       if (!active) return;
       const valid = hydrated.filter((post): post is FeedPost => post !== null);
@@ -2092,8 +2098,8 @@ export default function App() {
             ])} style={{padding:8}}><Ionicons name="ellipsis-horizontal" size={21} color={C.text}/></Pressable>
           </View>
           {!!post.caption && <Text style={s.feedCaption}>{post.caption}</Text>}
-          {post.post_type === 'video' ? <FeedVideoMedia uri={post.media.uri} onPress={() => setViewer(post.media)}/> :
-            <Pressable onPress={() => setViewer(post.media)}><Image source={{uri:post.media.uri}} style={s.feedMedia} resizeMode="cover"/></Pressable>}
+          {post.media && (post.post_type === 'video' ? <FeedVideoMedia uri={post.media.uri} onPress={() => setViewer(post.media!)}/> :
+            <Pressable onPress={() => setViewer(post.media!)}><Image source={{uri:post.media.uri}} style={s.feedMedia} resizeMode="cover"/></Pressable>)}
           <View style={s.feedActions}>
             <Pressable onPress={() => void togglePublishedPostLike(post,false)} style={s.feedAction}><Ionicons name={post.viewer_liked?'heart':'heart-outline'} size={23} color={post.viewer_liked?'#E64D72':C.text}/><Text style={s.feedActionText}>{post.like_count}</Text></Pressable>
             <Pressable onPress={() => openPostComments(post)} style={s.feedAction}><Ionicons name="chatbubble-outline" size={21} color={C.text}/><Text style={s.feedActionText}>{post.comment_count}</Text></Pressable>
