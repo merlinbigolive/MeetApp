@@ -32,3 +32,36 @@ Give eligible new creators a fair first opportunity to be discovered internation
 - Safety, blocks, privacy and entitlement restrictions are respected.
 - Analytics distinguish promoted impressions from organic recommendations and real viewer counts.
 - This document is a specification only; it does not imply code implementation or deployment.
+
+## Separately purchasable Global Live Boost
+
+The product must also offer a paid, one-time Global Live Boost that any eligible creator can purchase separately from the one-time New Creator Global Live Boost.
+
+### Country selection and pricing
+- Before checkout, the creator selects the countries in which the Live should be promoted.
+- India is the base country and costs ₹1,000 per boost.
+- Each additional selected country adds ₹500 to the same boost purchase.
+- Pricing formula: ₹1,000 + ₹500 × (selected country count − 1), with India included as the base selection.
+- Examples: India only = ₹1,000; India + 1 additional country = ₹1,500; India + 2 additional countries = ₹2,000.
+- Show the selected country list, country count, full total, currency and boost duration before the user confirms purchase. No silent charges or automatic renewal.
+- This is a per-boost purchase, not a subscription. Payment activation remains subject to the project's deferred monetization/payment phase; this specification does not authorize enabling checkout now.
+- Country pricing must be validated server-side against the selected country set and the current published price configuration. Do not trust client-calculated totals.
+
+### Five-second invite popup
+- During the purchased boost, show an in-app Live invite popup to eligible users in every selected country.
+- The popup is visible for 5 seconds, identifies the creator and Live, and provides a clear action to open the Live. Dismissal/expiry must not force navigation.
+- Do not show the invite popup to a user who is currently hosting or participating in a Live at the time the invite is due.
+- Respect blocks, privacy, account restrictions, age/safety eligibility, country/legal restrictions, viewer preferences and notification controls.
+- Deduplicate delivery per user per boost; apply delivery throttles and fair fan-out so a boost cannot flood users with repeated popups. Do not claim guaranteed simultaneous delivery to every account if the user is offline or the app is not active.
+- Record selected countries, price configuration/version, purchase/boost ID, delivery attempts, exclusions and results for audit and analytics.
+- Paid boost impressions and invite opens must be measured separately from organic discovery, real viewer counts and engagement metrics. Never fabricate viewers, likes, gifts, follows or comments.
+- The paid boost's duration is the existing Global Live Boost duration of 5 minutes unless a later product decision explicitly changes it. The 5-second value is the popup display duration, not the boost duration.
+
+## Video-call restriction during Live PK
+- While a creator is an active participant in a Live PK battle, no Premium user may initiate a video call to that creator and the creator must not receive or be able to accept a video-call request.
+- Enforce this on the server/call-signalling path as well as in the client UI; hiding the call button alone is insufficient.
+- Reject attempts immediately and do not queue missed/ deferred video calls for delivery after PK ends.
+- Once the creator is no longer in an active PK, normal Premium video-call eligibility and allowance rules resume.
+- Apply the restriction to both creators in the PK, regardless of which room initiated the battle.
+- This rule does not alter unrelated voice-call policy unless separately specified.
+
