@@ -144,7 +144,7 @@ export default function LiveBroadcastModal({ visible, sessionId, creatorName, on
   useEffect(() => {
     const client = supabase;
     const eligibleClientView = visible && !isCreator && !!sessionId && !!chatMembershipId
-      && moderationRole === "viewer" && pkBattle?.status !== "active" && !pkOpponentCredentials && !!client;
+      && (moderationRole === "viewer" || moderationRole === "moderator") && pkBattle?.status !== "active" && !pkOpponentCredentials && !!client;
     if (!eligibleClientView || !client) {
       if (roomPopup) {
         dismissedRoomPopupIdsRef.current.add(roomPopup.event_id);
@@ -633,7 +633,7 @@ export default function LiveBroadcastModal({ visible, sessionId, creatorName, on
                 </Pressable>
               </View>
             </View>
-            {roomPopup && !isCreator && moderationRole === "viewer" && pkBattle?.status !== "active" && !pkOpponentCredentials && (
+            {roomPopup && !isCreator && (moderationRole === "viewer" || moderationRole === "moderator") && pkBattle?.status !== "active" && !pkOpponentCredentials && (
               <View pointerEvents="box-none" style={{ position: "absolute", top: 74, left: 18, right: 18, zIndex: 60, alignItems: "center" }}>
                 <View style={{ width: "100%", backgroundColor: "#101C2A", borderColor: "#2799D6", borderWidth: 1, borderRadius: 16, padding: 14, elevation: 12 }}>
                   <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
