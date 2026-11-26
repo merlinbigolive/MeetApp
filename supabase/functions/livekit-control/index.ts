@@ -57,6 +57,20 @@ Deno.serve(async (request) => {
     const body = await request.json();
     const action = String(body?.action || "");
 
+  const livekitRateLimitActions = new Set([
+    "start", "join", "activate", "moderate", "heartbeat", "end", "cancel",
+  ]);
+  if (livekitRateLimitActions.has(action)) {
+    const { data: rateAllowed, error: rateLimitError } = await authClient.rpc(
+      "consume_my_meei_rate_limit",
+      { p_action_key: `livekit_${action}` },
+    );
+    if (rateLimitError) throw rateLimitError;
+    if (rateAllowed !== true) {
+      return json({ error: "Too many Live actions. Please wait before trying again." }, 429);
+    }
+  }
+
     const issueToken = async (roomName: string, canPublish: boolean, displayName?: string) => {
       const token = new AccessToken(livekitApiKey, livekitApiSecret, {
         identity: user.id,
