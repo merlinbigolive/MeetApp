@@ -74,8 +74,19 @@ begin
     select 1 from public.live_pk_battles b
     where b.status = 'active'
       and (b.creator_a_id = p_recipient_user_id or b.creator_b_id = p_recipient_user_id)
+  ) or exists (
+    select 1 from public.live_sessions ls
+    join public.user_blocks ub on
+      (ub.blocker_id = ls.user_id and ub.blocked_id = p_recipient_user_id)
+      or (ub.blocker_id = p_recipient_user_id and ub.blocked_id = ls.user_id)
+    where ls.id = p_session_id
+  ) or exists (
+    select 1 from public.live_sessions ls
+    join public.live_moderation_actions ma on ma.creator_id = ls.user_id and ma.viewer_id = p_recipient_user_id
+    where ls.id = p_session_id and ma.action in ('mute','kickout','block')
+      and ma.revoked_at is null and (ma.expires_at is null or ma.expires_at > now())
   ) then
-    raise exception 'Creators, moderators, and PK participants are not eligible for Live room popups' using errcode = '42501';
+    raise exception 'Creators, moderators, blocked, muted, kicked, and PK participants are not eligible for Live room popups' using errcode = '42501';
   end if;
 
   insert into private.live_room_popup_events (
@@ -124,6 +135,17 @@ begin
     join public.live_sessions ls on ls.user_id = lm.creator_id
     where ls.id = target_session_id and lm.moderator_id = v_uid
       and lm.revoked_at is null
+  ) or exists (
+    select 1 from public.live_sessions ls
+    join public.user_blocks ub on
+      (ub.blocker_id = ls.user_id and ub.blocked_id = v_uid)
+      or (ub.blocker_id = v_uid and ub.blocked_id = ls.user_id)
+    where ls.id = target_session_id
+  ) or exists (
+    select 1 from public.live_sessions ls
+    join public.live_moderation_actions ma on ma.creator_id = ls.user_id and ma.viewer_id = v_uid
+    where ls.id = target_session_id and ma.action in ('mute','kickout','block')
+      and ma.revoked_at is null and (ma.expires_at is null or ma.expires_at > now())
   ) then
     update private.live_room_popup_events e
       set dismissed_at = coalesce(e.dismissed_at, now())
