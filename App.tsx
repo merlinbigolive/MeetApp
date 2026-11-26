@@ -366,7 +366,7 @@ export default function App() {
   const [loadingProfiles, setLoadingProfiles] = useState(false);
   const [liveCreators, setLiveCreators] = useState<LiveCreator[]>([]);
   const [liveMediaUrls, setLiveMediaUrls] = useState<Record<string, string>>({});
-  const [liveCountry, setLiveCountry] = useState('ALL');
+  const [liveCountry, setLiveCountry] = useState(() => (Localization.getLocales()[0]?.regionCode || 'IN').toUpperCase());
   const [loadingLiveCreators, setLoadingLiveCreators] = useState(false);
   const [followBusyIds, setFollowBusyIds] = useState<string[]>([]);
   const [selectedProfile, setSelectedProfile] = useState<PublicProfile | null>(null);
@@ -2148,19 +2148,24 @@ export default function App() {
   };
 
   const LiveScreen = () => {
-    const countries = Array.from(new Map(liveCreators.map(creator => [creator.country_code, { code: creator.country_code, name: creator.country_name }] as const)).values()).sort((a,b) => a.name.localeCompare(b.name));
-    const visibleCreators = liveCountry === 'ALL' ? liveCreators : liveCreators.filter(creator => creator.country_code === liveCountry);
+    const activeCountries = Array.from(new Map(liveCreators.map(creator => [creator.country_code, { code: creator.country_code, name: creator.country_name }] as const)).values());
+    const deviceCountryCode = (Localization.getLocales()[0]?.regionCode || 'IN').toUpperCase();
+    const ownCountry = activeCountries.find(country => country.code === deviceCountryCode) || { code: deviceCountryCode, name: deviceCountryCode };
+    const countries = [ownCountry, ...activeCountries.filter(country => country.code !== ownCountry.code).sort((a,b) => a.name.localeCompare(b.name))];
+    const visibleCreators = liveCreators.filter(creator => creator.country_code === liveCountry);
+    const countryFlag = (code: string) => /^[A-Z]{2}$/.test(code)
+      ? String.fromCodePoint(...code.split('').map(char => 127397 + char.charCodeAt(0)))
+      : '🌐';
     return <ScrollView contentContainerStyle={s.liveScroll}>
       <View style={s.liveHeader}>
         <View><Text style={s.pageTitle}>Live</Text><Text style={s.searchSubtitle}>Creators broadcasting now</Text></View>
-        <View style={s.livePulse}><View style={s.livePulseDot}/><Text style={s.livePulseText}>LIVE NOW</Text></View>
+        <View style={s.livePulse}><View style={s.livePulseDot}/><Text style={s.livePulseText}>MEEi LIVE HOSTS</Text></View>
       </View>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.liveCountries}>
-        <Pressable onPress={() => setLiveCountry('ALL')} style={[s.liveCountryChip, liveCountry === 'ALL' && s.liveCountryChipActive]}><Text style={[s.liveCountryText, liveCountry === 'ALL' && s.liveCountryTextActive]}>All Countries</Text></Pressable>
-        {countries.map(country => <Pressable key={country.code} onPress={() => setLiveCountry(country.code)} style={[s.liveCountryChip, liveCountry === country.code && s.liveCountryChipActive]}><Text style={[s.liveCountryText, liveCountry === country.code && s.liveCountryTextActive]}>{country.name}</Text></Pressable>)}
+        {countries.map(country => <Pressable key={country.code} onPress={() => setLiveCountry(country.code)} style={[s.liveCountryChip, liveCountry === country.code && s.liveCountryChipActive]}><Text style={[s.liveCountryText, liveCountry === country.code && s.liveCountryTextActive]}>{countryFlag(country.code)}  {country.name}</Text></Pressable>)}
       </ScrollView>
       {loadingLiveCreators ? <View style={s.searchEmpty}><Text style={s.hint}>Finding creators who are live…</Text></View> :
-        visibleCreators.length === 0 ? <View style={s.liveEmpty}><View style={s.liveEmptyIcon}><Ionicons name="radio-outline" size={38} color={C.cyan}/></View><Text style={s.sectionTitle}>No creators live right now</Text><Text style={s.hint}>{liveCountry === 'ALL' ? 'When a creator starts a real broadcast, they will appear here.' : 'No one is live from this country at the moment.'}</Text></View> :
+        visibleCreators.length === 0 ? <View style={s.liveEmpty}><View style={s.liveEmptyIcon}><Ionicons name="radio-outline" size={38} color={C.cyan}/></View><Text style={s.sectionTitle}>No creators live right now</Text><Text style={s.hint}>No one is live from {countries.find(country => country.code === liveCountry)?.name || liveCountry} at the moment.</Text></View> :
         <View style={s.liveGrid}>{visibleCreators.map(creator => {
           const uri = liveMediaUrls[creator.session_id];
           return <Pressable key={creator.session_id} onPress={() => {
