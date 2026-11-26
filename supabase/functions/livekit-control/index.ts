@@ -328,7 +328,8 @@ Deno.serve(async (request) => {
           return json({ error: "Both creators must have their cameras publishing before PK." }, 409);
         }
       }
-      const { data: battleId, error } = await authClient.rpc("create_live_pk_invite", {
+      const { data: battleId, error } = await admin.rpc("create_live_pk_invite_server", {
+        actor_id: user.id,
         target_opponent_session_id: opponentSessionId,
         selected_duration_minutes: durationMinutes,
       });
@@ -366,7 +367,8 @@ Deno.serve(async (request) => {
           }
         }
       }
-      const { data, error } = await authClient.rpc("respond_live_pk_invite", {
+      const { data, error } = await admin.rpc("respond_live_pk_invite_server", {
+        actor_id: user.id,
         target_battle_id: battleId,
         accept_invite: accept,
       });
@@ -442,7 +444,8 @@ Deno.serve(async (request) => {
         } catch (_) {}
       }
       if (!targetFound) return json({ error: "This viewer is not connected to either PK room." }, 404);
-      const { data: moderated, error } = await authClient.rpc("moderate_live_pk_viewer", {
+      const { data: moderated, error } = await admin.rpc("moderate_live_pk_viewer_server", {
+        actor_id: user.id,
         target_battle_id: battleId,
         target_viewer_id: targetViewerId,
         moderation_action: moderationAction,
