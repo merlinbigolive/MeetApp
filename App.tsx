@@ -379,6 +379,7 @@ export default function App() {
   const [liveMediaUrls, setLiveMediaUrls] = useState<Record<string, string>>({});
   const [homeCountryCode, setHomeCountryCode] = useState(() => (Localization.getLocales()[0]?.regionCode || 'IN').toUpperCase());
   const [homeCountryName, setHomeCountryName] = useState(() => getCountryDisplayName((Localization.getLocales()[0]?.regionCode || 'IN').toUpperCase(), Localization.getLocales()[0]?.languageTag));
+  const [homeCountrySearch, setHomeCountrySearch] = useState('');
   const [liveCountry, setLiveCountry] = useState(() => (Localization.getLocales()[0]?.regionCode || 'IN').toUpperCase());
   const [liveCountryPage, setLiveCountryPage] = useState<'explore' | 'all' | 'country'>('explore');
   const [liveCountrySearch, setLiveCountrySearch] = useState('');
@@ -1724,6 +1725,8 @@ export default function App() {
       business_category: accountType === 'business' ? cleanBusinessCategory : null,
       business_description: accountType === 'business' ? businessDescription.trim() || null : null,
       is_private: isPrivateAccount,
+      country_code: homeCountryCode,
+      country_name: homeCountryName,
       activity_status: activity.toLowerCase(),
       updated_at: new Date().toISOString(),
     }).eq('id', userId);
@@ -1732,6 +1735,7 @@ export default function App() {
       return;
     }
     setUsername(cleanUsername);
+    setHomeCountrySearch('');
     setEditing(false);
     Alert.alert('Profile saved', 'Your profile details have been saved.');
   };
@@ -2590,6 +2594,18 @@ export default function App() {
             <View key={label} style={s.field}><Text style={s.fieldLabel}>{label}</Text><TextInput value={value} onChangeText={setter} placeholder={label} placeholderTextColor={C.muted} style={s.input} multiline={label==='Bio'} /></View>
           )}
           <Text style={s.hint}>Username: 3–25 lowercase letters, numbers or underscores. Bio: up to 300 characters.</Text>
+          <View style={s.field}>
+            <Text style={s.fieldLabel}>Home country / registered country</Text>
+            <Text style={s.hint}>This is your profile country. Live discovery country filters do not change it.</Text>
+            <TextInput value={homeCountrySearch} onChangeText={setHomeCountrySearch} placeholder={homeCountryName || 'Search country'} placeholderTextColor={C.muted} style={s.input}/>
+            <View style={s.activityGrid}>
+              {MEEI_COUNTRY_CODES.map(code => ({code,name:getCountryDisplayName(code,'en')}))
+                .filter(country => !homeCountrySearch.trim() || country.name.toLowerCase().includes(homeCountrySearch.trim().toLowerCase()) || country.code.toLowerCase() === homeCountrySearch.trim().toLowerCase())
+                .slice(0,8)
+                .map(country => <Pressable key={country.code} onPress={() => {setHomeCountryCode(country.code);setHomeCountryName(country.name);setHomeCountrySearch('');}} style={[s.activityChip,homeCountryCode===country.code&&s.activityActive]}><Text style={[s.activityText,homeCountryCode===country.code&&{color:C.cyan}]}>{country.name}</Text></Pressable>)}
+            </View>
+            <Text style={s.hint}>Selected: {homeCountryName}</Text>
+          </View>
           <Text style={s.fieldLabel}>Account privacy</Text>
           <View style={s.activityGrid}>
             <Pressable onPress={() => setIsPrivateAccount(false)} style={[s.activityChip,!isPrivateAccount&&s.activityActive]}><Text style={[s.activityText,!isPrivateAccount&&{color:C.cyan}]}>Public account</Text></Pressable>
