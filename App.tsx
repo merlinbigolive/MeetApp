@@ -328,6 +328,7 @@ export default function App() {
   const [liveStudioVisible, setLiveStudioVisible] = useState(false);
   const [liveJoinSessionId, setLiveJoinSessionId] = useState<string | null>(null);
   const [savingProfile, setSavingProfile] = useState(false);
+  const savingProfileLock = useRef(false);
   const mediaUploadLocks = useRef<Set<string>>(new Set());
   const [name, setName] = useState('MEEi User');
   const [username, setUsername] = useState('your_username');
@@ -1714,7 +1715,7 @@ export default function App() {
 
   const saveProfile = async () => {
     const client = supabase;
-    if (!client || savingProfile) {
+    if (!client || savingProfileLock.current) {
       if (!client) Alert.alert('Cloud not configured', 'Connect Supabase before saving profile changes.');
       return;
     }
@@ -1753,6 +1754,7 @@ export default function App() {
       Alert.alert('Check website', 'Enter a valid website address.');
       return;
     }
+    savingProfileLock.current = true;
     setSavingProfile(true);
     try {
       const { data: authData, error: sessionError } = await client.auth.getSession();
@@ -1784,6 +1786,7 @@ export default function App() {
     } catch (error: any) {
       Alert.alert('Profile not saved', error?.message || 'Please check your connection and try again.');
     } finally {
+      savingProfileLock.current = false;
       setSavingProfile(false);
     }
   };
