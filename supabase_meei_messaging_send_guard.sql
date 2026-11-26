@@ -12,6 +12,37 @@ alter table private.meei_user_rate_limits
     'livekit_heartbeat','livekit_end','livekit_cancel','message_send'
   ]::text[]));
 
+create or replace function private.consume_user_rate_limit(p_action_key text, p_limit integer, p_window_seconds integer)
+returns boolean
+language plpgsql
+security definer
+set search_path = pg_catalog, private, pg_temp
+as $function$
+declare
+  v_user_id uuid := auth.uid();
+  v_count integer;
+  v_now timestamptz := clock_timestamp();
+begin
+  if v_user_id is null then raise exception 'Authentication required' using errcode = '28000'; end if;
+  if p_action_key not in (
+    'live_chat_send','profile_search','video_search',
+    'livekit_start','livekit_join','livekit_activate','livekit_moderate',
+    'livekit_heartbeat','livekit_end','livekit_cancel','message_send'
+  ) or p_limit is null or p_limit < 1 or p_limit > 120
+    or p_window_seconds is null or p_window_seconds < 1 or p_window_seconds > 3600 then
+    raise exception 'Invalid rate-limit configuration' using errcode = '22023';
+  end if;
+  insert into private.meei_user_rate_limits as limits
+    (user_id, action_key, window_started_at, request_count)
+  values (v_user_id, p_action_key, v_now, 1)
+  on conflict (user_id, action_key) do update
+    set window_started_at = case when limits.window_started_at <= v_now - make_interval(secs => p_window_seconds) then v_now else limits.window_started_at end,
+        request_count = case when limits.window_started_at <= v_now - make_interval(secs => p_window_seconds) then 1 else limits.request_count + 1 end
+  returning request_count into v_count;
+  return v_count <= p_limit;
+end;
+$function$;
+
 create or replace function private.enforce_meei_message_send_guard()
 returns trigger
 language plpgsql
@@ -26,7 +57,6 @@ begin
   if v_user_id is null then
     raise exception 'Authentication required' using errcode = '28000';
   end if;
-
   if new.sender_id is distinct from v_user_id then
     raise exception 'Message sender does not match the signed-in account' using errcode = '42501';
   end if;
@@ -35,23 +65,18 @@ begin
     when c.user_one_id = v_user_id then c.user_two_id
     when c.user_two_id = v_user_id then c.user_one_id
     else null
-  end
-  into v_other_user_id
-  from public.conversations c
-  where c.id = new.conversation_id;
+  end into v_other_user_id
+  from public.conversations c where c.id = new.conversation_id;
 
   if v_other_user_id is null then
     raise exception 'Conversation unavailable' using errcode = '42501';
   end if;
-
   if public.is_blocked_for_current_user(v_other_user_id) then
     raise exception 'Messaging is unavailable because one account has blocked the other' using errcode = '42501';
   end if;
-
   if new.body is null or char_length(btrim(new.body)) not between 1 and 4000 then
     raise exception 'Message must contain 1 to 4,000 characters' using errcode = '22023';
   end if;
-
   if new.message_type not in ('text', 'voice') then
     raise exception 'Unsupported message type' using errcode = '22023';
   end if;
@@ -62,10 +87,9 @@ begin
     end if;
   else
     if new.audio_path is null
-       or new.transcript is not null and char_length(new.transcript) > 4000 then
+       or (new.transcript is not null and char_length(new.transcript) > 4000) then
       raise exception 'Invalid voice message metadata' using errcode = '22023';
     end if;
-
     v_audio_prefix := v_user_id::text || '/' || new.conversation_id::text || '/';
     if left(new.audio_path, length(v_audio_prefix)) <> v_audio_prefix
        or new.audio_path !~ ('^' || v_user_id::text || '/' || new.conversation_id::text || '/[0-9]+[.]wav$')
@@ -82,8 +106,6 @@ begin
   if not private.consume_user_rate_limit('message_send', 30, 60) then
     raise exception 'Message limit reached. Please wait a moment before sending again.' using errcode = 'P0001';
   end if;
-
-  -- Server owns message timestamps and initial read state.
   new.created_at := clock_timestamp();
   new.read_at := null;
   return new;
@@ -91,7 +113,6 @@ end;
 $$;
 
 revoke all on function private.enforce_meei_message_send_guard() from public, anon, authenticated;
-
 drop trigger if exists messages_00_validate_and_limit on public.messages;
 create trigger messages_00_validate_and_limit
 before insert on public.messages
