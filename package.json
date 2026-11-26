@@ -49,6 +49,6 @@
   "overrides": {
     "decode-uri-component": "0.5.1",
     "postcss": "8.5.23",
-    "image-size": "npm:image-size-next@1.2.2"
+    "image-size": "2.1.0"
   }
 }
