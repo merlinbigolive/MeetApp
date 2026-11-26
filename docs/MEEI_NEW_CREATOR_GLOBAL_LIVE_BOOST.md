@@ -114,7 +114,7 @@ The application now has a secure Live-room popup delivery path:
 - The event table is private, has RLS enabled, and is not readable or writable directly by client roles. Only the trusted service role can enqueue events.
 - No push, inbox, system, or background notifications are generated.
 
-**Integration still pending:** The secure event delivery path is in place, but the Global Live Boost / promotion backend that decides when to create a boost event is not yet present in the repository. A trusted server-side Boost workflow must call `private.enqueue_live_room_popup_event` for eligible room viewers. Do not expose this enqueue operation to the mobile client. Payment checkout remains deferred and must not be activated as part of this work.
+**Popup producer implemented:** database triggers now create a short-lived Global Live Boost popup when an eligible viewer joins an already-boosted room, or when a boost activates while eligible viewers are already present. Events are tied to the exact room membership, shown only by the existing in-room viewer UI, and never sent as push, inbox, system, or background notifications. The enqueue path remains unavailable to mobile clients. Payment checkout remains deferred and must not be activated as part of this work.
 
 
 ## Implementation update — first creator free discovery boost
@@ -125,7 +125,19 @@ The application now has a secure Live-room popup delivery path:
 - The database records a server timestamp and a fixed five-minute expiry. A unique creator key and idempotent retry handling prevent reconnects or repeated activation requests from restarting the free boost.
 - Live discovery now sorts currently active free-boost sessions ahead of organic sessions, while preserving the existing country filter, privacy, block and moderation checks. This gives an eligible boost priority in worldwide and country-specific Live discovery results.
 - Paid country-targeted boost and all payment/checkout functionality remain unimplemented and disabled.
-- The separate viewer-only in-room popup producer remains pending; this implementation does not send push, inbox, system or background notifications.
+- The viewer-only in-room popup producer is now implemented through private database triggers, with one popup maximum per viewer per boosted session and no push, inbox, system or background notifications.
 - End-to-end multi-account/device testing remains pending.
 
 - Final eligibility refinement: the creator must have no earlier Live session record; the free grant is reserved for the account's first ever verified Live session, not merely the first session after this rollout.
+
+
+## Implementation update — viewer-only room popup producer
+
+- Added `supabase_global_live_boost_room_popup_producer.sql`.
+- An AFTER INSERT trigger on Live room memberships checks for an active Global Boost and queues a popup for that viewer only.
+- An AFTER INSERT trigger on the private boost ledger also covers eligible viewers who were already in the room when the boost activated.
+- A unique partial index and transaction advisory lock prevent repeat popups for the same viewer and boosted session, including leave/rejoin attempts.
+- Existing server-side enqueue checks continue to exclude the creator, moderators, PK creators/participants, blocked users, and viewers with active mute/kick/block moderation actions.
+- Popups expire after five seconds and remain bound to the exact active room membership.
+- Verified: both producer triggers exist; popup table RLS is enabled; anon/authenticated cannot enqueue or call the trigger helper; service_role retains enqueue permission.
+- End-to-end device testing with separate creator/viewer accounts remains pending.
