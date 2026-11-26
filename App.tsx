@@ -1726,8 +1726,9 @@ export default function App() {
         country_name: homeCountryName,
         activity_status: activity.toLowerCase(),
         updated_at: new Date().toISOString(),
-      }).eq('id', userId);
+      }).eq('id', userId).select('id').maybeSingle();
       if (error) throw error;
+      if (!data) throw new Error('Your profile could not be found or updated. Please sign in again and retry.');
       setUsername(cleanUsername);
       setHomeCountrySearch('');
       setEditing(false);
@@ -1772,8 +1773,15 @@ export default function App() {
       Alert.alert('Cloud not configured', 'Connect Supabase before uploading profile media.');
       return;
     }
-    const { data: authData } = await client.auth.getSession();
-    const userId = authData.session?.user.id;
+    let userId: string | undefined;
+    try {
+      const { data: authData, error: sessionError } = await client.auth.getSession();
+      if (sessionError) throw sessionError;
+      userId = authData.session?.user.id;
+    } catch (error: any) {
+      Alert.alert('Could not verify your session', error?.message || 'Please try again.');
+      return;
+    }
     if (!userId) {
       Alert.alert('Sign in required', 'Please sign in before uploading profile media.');
       return;
