@@ -65,3 +65,12 @@ The product must also offer a paid, one-time Global Live Boost that any eligible
 - Apply the restriction to both creators in the PK, regardless of which room initiated the battle.
 - This rule does not alter unrelated voice-call policy unless separately specified.
 
+### Invite popup visual and UX requirements
+- Position the invite popup at the upper-center of the screen, respecting the device safe area and status bar.
+- Use a compact, premium-looking floating card/banner with clear visual hierarchy: creator identity, a short Live invitation message, and an obvious but unobtrusive action to view the Live.
+- It must never become a full-screen overlay, full-screen takeover, or blocking modal. Keep the rest of the app visible and usable.
+- Use readable text, strong accessible contrast, restrained premium styling and sufficient spacing; the invitation must be understandable at a glance.
+- Keep the popup on screen for no more than the specified 5 seconds. Provide a clear dismiss/close action; tapping outside should not accidentally open the Live.
+- Use a subtle, brief entrance/exit transition; respect reduced-motion settings and avoid flashing, loud, or aggressive animation.
+- Do not cover essential navigation, system status indicators, Live controls, or important content. Adapt placement/size for small screens, notches and accessibility text scaling.
+- Do not repeatedly reopen a popup the user dismissed for the same boost. Respect notification preferences and delivery throttles so the experience feels informative rather than irritating.
