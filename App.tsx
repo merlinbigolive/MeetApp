@@ -1312,7 +1312,7 @@ export default function App() {
     setSavedPostIds(old => isSaved ? old.filter(id => id !== postId) : [...old, postId]);
   };
 
-  const submitPostReport = async (post: FeedPost, reason: 'spam' | 'harassment' | 'hate' | 'violence' | 'nudity' | 'scam' | 'fake_information' | 'copyright' | 'other') => {
+  const submitPostReport = async (post: FeedPost, reason: 'nudity' | 'animal_abuse' | 'child_abuse' | 'violence' | 'hate' | 'harm_threatening' | 'self_harm' | 'religion' | 'harassment' | 'spam' | 'fake_information' | 'body_shaming' | 'other' | 'scam' | 'copyright') => {
     const client = supabase;
     if (!client || reportBusyIds.includes(post.id)) return;
     const { data: authData, error: authError } = await client.auth.getSession();
@@ -2497,11 +2497,17 @@ export default function App() {
             <ScrollView style={{ marginTop: 10 }} keyboardShouldPersistTaps="handled">
               {([
                 ['nudity', 'Nudity / Sexual Content'],
+                ['animal_abuse', 'Animal Abuse'],
+                ['child_abuse', 'Child Abuse'],
                 ['violence', 'Violence'],
                 ['hate', 'Hate Speech'],
+                ['harm_threatening', 'Harm Threatening'],
+                ['self_harm', 'Self harm'],
+                ['religion', 'Religion'],
                 ['harassment', 'Harassment / Bullying'],
                 ['spam', 'Spam / Scam'],
                 ['fake_information', 'Fake Information'],
+                ['body_shaming', 'Body Shaming'],
                 ['other', 'Other'],
               ] as const).map(([reason, label]) => (
                 <Pressable key={reason} disabled={!reportPost || reportBusyIds.includes(reportPost.id)} onPress={() => {
