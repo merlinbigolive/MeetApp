@@ -1847,36 +1847,54 @@ export default function App() {
     const client = supabase;
     const media = kind === 'cover' ? covers[index] : posts[index];
     if (!client || !media) return;
-    const { data: authData } = await client.auth.getSession();
-    const userId = authData.session?.user.id;
-    if (!userId) return;
-    const { error } = await client.from('profile_media').delete()
-      .eq('user_id', userId).eq('kind', kind).eq('position', index);
-    if (error) {
-      Alert.alert('Could not remove media', error.message);
-      return;
-    }
-    if (media.storagePath) await client.storage.from('usay-media').remove([media.storagePath]);
-    if (kind === 'cover') {
-      const next = covers.filter((_, i) => i !== index);
-      setCovers(next);
+
+    try {
+      const { data: authData, error: sessionError } = await client.auth.getSession();
+      if (sessionError) throw sessionError;
+      const userId = authData.session?.user.id;
+      if (!userId) {
+        Alert.alert('Session expired', 'Please sign in again before removing media.');
+        return;
+      }
+
+      // Remove the owned metadata row first; storage cleanup must never run before this succeeds.
+      const { error: deleteError } = await client.from('profile_media').delete()
+        .eq('user_id', userId).eq('kind', kind).eq('position', index);
+      if (deleteError) throw deleteError;
+
+      let storageCleanupFailed = false;
+      if (media.storagePath) {
+        const { error: storageError } = await client.storage.from('usay-media').remove([media.storagePath]);
+        if (storageError) {
+          storageCleanupFailed = true;
+          console.warn('Removed profile media metadata but storage cleanup failed:', storageError.message);
+        }
+      }
+
+      const currentItems = kind === 'cover' ? covers : posts;
+      const next = currentItems.filter((_, i) => i !== index);
+      if (kind === 'cover') setCovers(next);
+      else setPosts(next);
+
+      // Compact positions from left to right so each destination slot is already free.
       for (let position = 0; position < next.length; position++) {
         const item = next[position];
+        if (!item.storagePath) continue;
         const { error: reorderError } = await client.from('profile_media')
           .update({ position, updated_at: new Date().toISOString() })
-          .eq('user_id', userId).eq('kind', 'cover').eq('storage_path', item.storagePath || '');
-        if (reorderError) Alert.alert('Gallery update warning', reorderError.message);
+          .eq('user_id', userId).eq('kind', kind).eq('storage_path', item.storagePath);
+        if (reorderError) {
+          console.warn('Profile media position update failed:', reorderError.message);
+          Alert.alert('Gallery update warning', 'The media was removed, but the gallery order may need a refresh.');
+          break;
+        }
       }
-    } else {
-      const next = posts.filter((_, i) => i !== index);
-      setPosts(next);
-      for (let position = 0; position < next.length; position++) {
-        const item = next[position];
-        const { error: reorderError } = await client.from('profile_media')
-          .update({ position, updated_at: new Date().toISOString() })
-          .eq('user_id', userId).eq('kind', 'post').eq('storage_path', item.storagePath || '');
-        if (reorderError) Alert.alert('Gallery update warning', reorderError.message);
+
+      if (storageCleanupFailed) {
+        Alert.alert('Media removed', 'The media was removed from your profile, but its old storage file could not be cleaned up.');
       }
+    } catch (error: any) {
+      Alert.alert('Could not remove media', error?.message || 'Please try again.');
     }
   };
 
