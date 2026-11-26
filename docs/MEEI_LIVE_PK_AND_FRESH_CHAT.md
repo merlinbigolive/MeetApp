@@ -81,11 +81,11 @@ Add a synchronized 1v1 Live PK experience to MEEi and make Live chat join behavi
 - Added PK invitation and battle tables with 5/10/15-minute duration validation, 45-second invitation expiry, server start/end timestamps, and per-session lock rows to prevent a creator entering multiple simultaneous PKs.
 - Added authenticated RPCs for create/respond/list/state/end, shared PK comments, and cross-side moderation audit.
 - Added a Live-session end trigger that ends any pending/active PK involving that session.
-- Added Edge Function actions: `pk_invite`, `pk_inbox`, `pk_respond`, `pk_join`, `pk_moderate`, and `pk_end`. Creator room publishing is checked before an invite is sent or accepted. Opponent room tokens are read-only and server-issued.
+- Added Edge Function actions: `chat_join`, `pk_invite`, `pk_inbox`, `pk_respond`, `pk_join`, `pk_moderate`, and `pk_end`. `chat_join` verifies LiveKit room membership before creating the cursor. Creator room publishing is checked before an invite is sent or accepted. Opponent room tokens are read-only and server-issued. Privileged invite/respond/moderation transition RPCs are service-role-only and called from the authenticated Edge Function.
 - Added server-time offset for the shared countdown and client expiry handling.
 - Updated `LiveBroadcastModal.tsx` with PK creator selection, duration choices, invite accept/decline, dual LiveKit room video panes, shared two-side comments with side labels, and PK-scoped username-tap mute/kick actions.
 
 ### Verification still required
-- Supabase migrations applied successfully and Edge Function `livekit-control` is ACTIVE at version 9.
+- Supabase migrations applied successfully and Edge Function `livekit-control` is ACTIVE at version 12.
 - Database function definitions, SECURITY DEFINER flags, search paths, RLS and grants were inspected.
 - No two-account end-to-end PK test or physical Android/iOS device test has been performed yet. In particular, the two simultaneous React Native LiveKit room connections, media/audio behavior, network recovery, and moderation removal must be verified in development builds before treating PK as production-ready.
