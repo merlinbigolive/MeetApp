@@ -686,41 +686,57 @@ export default function App() {
     if (!supabase) return;
     let active = true;
     const loadOwnPublishedPosts = async () => {
-      const { data: authData, error: authError } = await supabase!.auth.getSession();
-      const userId = authData.session?.user.id;
-      if (authError || !userId) return;
-      const { data, error } = await supabase!.from('posts')
-        .select('id, post_type, caption, media_path, created_at, visibility, content_category')
-        .eq('user_id', userId).order('created_at', { ascending: false }).limit(50);
-      if (!active) return;
-      if (error) {
-        Alert.alert('Could not load your posts', error.message);
-        return;
-      }
-      const rows = (data || []).filter((row: any) => !!row.media_path);
-      const hydrated = await Promise.all(rows.map(async (row: any) => {
-        const { data: signed, error: signedError } = await supabase!.storage.from('usay-media').createSignedUrl(row.media_path, 60 * 60);
-        if (signedError || !signed?.signedUrl) return null;
-        return { ...row, media: { uri: signed.signedUrl, type: row.post_type === 'video' ? 'video' : 'image', storagePath: row.media_path } as Media } as PublishedPost;
-      }));
-      const validPosts = hydrated.filter((post): post is PublishedPost => post !== null);
-      if (!validPosts.length) {
-        if (active) setOwnPublishedPosts([]);
-        return;
-      }
-      const engagementResult = await supabase!.rpc('get_profile_post_engagement', { target_post_ids: validPosts.map(post => post.id) });
-      if (!active) return;
-      const commentCounts = await fetchPostCommentCounts(validPosts.map(post => post.id));
-      if (!active) return;
-      if (engagementResult.error) {
-        Alert.alert('Could not load post likes', engagementResult.error.message);
-        setOwnPublishedPosts(validPosts.map(post => ({ ...post, like_count: 0, viewer_liked: false, comment_count: commentCounts[post.id] || 0 })));
-      } else {
-        const engagementById = new Map<string, any>((engagementResult.data || []).map((item: any) => [item.post_id, item] as [string, any]));
-        setOwnPublishedPosts(validPosts.map(post => {
-          const engagement = engagementById.get(post.id) as any;
-          return { ...post, like_count: Number(engagement?.like_count || 0), viewer_liked: !!engagement?.viewer_liked, comment_count: commentCounts[post.id] || 0 };
+      try {
+        const client = supabase;
+        if (!client) return;
+        const { data: authData, error: authError } = await client.auth.getSession();
+        if (!active) return;
+        if (authError) throw authError;
+        const userId = authData.session?.user.id;
+        if (!userId) {
+          setOwnPublishedPosts([]);
+          return;
+        }
+        const { data, error } = await client.from('posts')
+          .select('id, post_type, caption, media_path, created_at, visibility, content_category')
+          .eq('user_id', userId).order('created_at', { ascending: false }).limit(50);
+        if (!active) return;
+        if (error) throw error;
+        const rows = (data || []).filter((row: any) => !!row.media_path);
+        const hydrated = await Promise.all(rows.map(async (row: any) => {
+          const { data: signed, error: signedError } = await client.storage.from('usay-media').createSignedUrl(row.media_path, 60 * 60);
+          if (signedError || !signed?.signedUrl) {
+            console.warn('Published profile post media URL could not be created:', row.media_path, signedError?.message || 'Missing signed URL');
+            return null;
+          }
+          return { ...row, media: { uri: signed.signedUrl, type: row.post_type === 'video' ? 'video' : 'image', storagePath: row.media_path } as Media } as PublishedPost;
         }));
+        if (!active) return;
+        const validPosts = hydrated.filter((post): post is PublishedPost => post !== null);
+        if (hydrated.some(post => post === null)) {
+          Alert.alert('Some posts unavailable', 'One or more of your post photos or videos could not be opened. Please try again later.');
+        }
+        if (!validPosts.length) {
+          setOwnPublishedPosts([]);
+          return;
+        }
+        const engagementResult = await client.rpc('get_profile_post_engagement', { target_post_ids: validPosts.map(post => post.id) });
+        if (!active) return;
+        const commentCounts = await fetchPostCommentCounts(validPosts.map(post => post.id));
+        if (!active) return;
+        if (engagementResult.error) {
+          Alert.alert('Could not load post likes', 'Your posts loaded, but likes could not be refreshed. Please try again later.');
+          setOwnPublishedPosts(validPosts.map(post => ({ ...post, like_count: 0, viewer_liked: false, comment_count: commentCounts[post.id] || 0 })));
+        } else {
+          const engagementById = new Map<string, any>((engagementResult.data || []).map((item: any) => [item.post_id, item] as [string, any]));
+          setOwnPublishedPosts(validPosts.map(post => {
+            const engagement = engagementById.get(post.id) as any;
+            return { ...post, like_count: Number(engagement?.like_count || 0), viewer_liked: !!engagement?.viewer_liked, comment_count: commentCounts[post.id] || 0 };
+          }));
+        }
+      } catch (error: any) {
+        console.warn('Own published profile posts could not be loaded:', error?.message || error);
+        if (active) Alert.alert('Could not load your posts', 'Your profile is available, but your published posts could not be loaded. Please check your connection and try again.');
       }
     };
     void loadOwnPublishedPosts();
