@@ -42,6 +42,7 @@ export default function LiveBroadcastModal({ visible, sessionId, creatorName, on
   const [chatMembershipId, setChatMembershipId] = useState<string | null>(null);
   const [chatMembershipBusy, setChatMembershipBusy] = useState(false);
   const [roomPopup, setRoomPopup] = useState<LiveRoomPopupEvent | null>(null);
+  const dismissedRoomPopupIdsRef = useRef<Set<string>>(new Set());
   const [pkBattle, setPkBattle] = useState<any | null>(null);
   const [pkOpponentCredentials, setPkOpponentCredentials] = useState<RoomCredentials | null>(null);
   const [pkInvites, setPkInvites] = useState<PKInvite[]>([]);
@@ -146,6 +147,7 @@ export default function LiveBroadcastModal({ visible, sessionId, creatorName, on
       && moderationRole === "viewer" && pkBattle?.status !== "active" && !pkOpponentCredentials && !!client;
     if (!eligibleClientView || !client) {
       if (roomPopup) {
+        dismissedRoomPopupIdsRef.current.add(roomPopup.event_id);
         if (client) void client.rpc("dismiss_my_live_room_popup_event", { p_event_id: roomPopup.event_id });
         setRoomPopup(null);
       }
@@ -163,7 +165,7 @@ export default function LiveBroadcastModal({ visible, sessionId, creatorName, on
         return;
       }
       const row = Array.isArray(data) ? data[0] : null;
-      if (!row?.event_id || !row?.expires_at) {
+      if (!row?.event_id || !row?.expires_at || dismissedRoomPopupIdsRef.current.has(String(row.event_id))) {
         setRoomPopup(null);
         return;
       }
@@ -184,6 +186,7 @@ export default function LiveBroadcastModal({ visible, sessionId, creatorName, on
     if (!roomPopup) return;
     const remaining = Math.max(0, Math.min(5000, new Date(roomPopup.expires_at).getTime() - Date.now()));
     const timer = setTimeout(() => {
+      dismissedRoomPopupIdsRef.current.add(roomPopup.event_id);
       setRoomPopup(null);
       if (supabase) void supabase.rpc("dismiss_my_live_room_popup_event", { p_event_id: roomPopup.event_id });
     }, remaining);
@@ -513,6 +516,7 @@ export default function LiveBroadcastModal({ visible, sessionId, creatorName, on
     if (ending) return;
     setEnding(true);
     if (roomPopup && supabase) {
+      dismissedRoomPopupIdsRef.current.add(roomPopup.event_id);
       await supabase.rpc("dismiss_my_live_room_popup_event", { p_event_id: roomPopup.event_id });
       setRoomPopup(null);
     }
@@ -635,6 +639,7 @@ export default function LiveBroadcastModal({ visible, sessionId, creatorName, on
                   <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
                     <Text style={{ color: "#FFFFFF", fontSize: 15, fontWeight: "800", flex: 1 }}>{roomPopup.title}</Text>
                     <Pressable onPress={() => {
+                      dismissedRoomPopupIdsRef.current.add(roomPopup.event_id);
                       setRoomPopup(null);
                       if (supabase) void supabase.rpc("dismiss_my_live_room_popup_event", { p_event_id: roomPopup.event_id });
                     }}><Text style={{ color: "#B9C9D8", fontSize: 20, fontWeight: "700" }}>×</Text></Pressable>
