@@ -1711,7 +1711,7 @@ export default function App() {
       if (sessionError) throw sessionError;
       const userId = authData.session?.user.id;
       if (!userId) throw new Error('Please sign in again before saving your profile.');
-      const { error } = await client.from('profiles').update({
+      const { data: updatedProfile, error } = await client.from('profiles').update({
         display_name: cleanName,
         username: cleanUsername,
         bio: bio.trim(),
@@ -1728,7 +1728,7 @@ export default function App() {
         updated_at: new Date().toISOString(),
       }).eq('id', userId).select('id').maybeSingle();
       if (error) throw error;
-      if (!data) throw new Error('Your profile could not be found or updated. Please sign in again and retry.');
+      if (!updatedProfile) throw new Error('Your profile could not be found or updated. Please sign in again and retry.');
       setUsername(cleanUsername);
       setHomeCountrySearch('');
       setEditing(false);
