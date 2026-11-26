@@ -8,6 +8,8 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
+import * as Contacts from 'expo-contacts/legacy';
+import * as Localization from 'expo-localization';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { useAudioPlayer, useAudioPlayerStatus } from 'expo-audio';
 import { ExpoSpeechRecognitionModule, useSpeechRecognitionEvent } from 'expo-speech-recognition';
@@ -374,6 +376,10 @@ export default function App() {
   const [chatDraft, setChatDraft] = useState('');
   const [emojiPickerVisible, setEmojiPickerVisible] = useState(false);
   const [chatLoading, setChatLoading] = useState(false);
+  const [contactMatches, setContactMatches] = useState<PublicProfile[]>([]);
+  const [contactSyncing, setContactSyncing] = useState(false);
+  const [contactSyncDone, setContactSyncDone] = useState(false);
+  const [contactDiscoverable, setContactDiscoverable] = useState(false);
   const [chatSending, setChatSending] = useState(false);
   const [voiceRecording, setVoiceRecording] = useState(false);
   const [voiceStopPending, setVoiceStopPending] = useState(false);
@@ -1310,6 +1316,78 @@ export default function App() {
     else setLikesCount(count => Math.max(0, count + delta));
   };
 
+  const runContactSync = async () => {
+    if (!supabase || contactSyncing) return;
+    setContactSyncing(true);
+    try {
+      const permission = await Contacts.requestPermissionsAsync();
+      if (!permission.granted) {
+        Alert.alert('Contacts permission needed', 'Allow MEEi to read contact phone numbers only when you choose to find people you know.');
+        return;
+      }
+      const response = await Contacts.getContactsAsync({
+        fields: [Contacts.Fields.PhoneNumbers],
+        pageSize: 2000,
+      });
+      const numbers = Array.from(new Set((response.data || [])
+        .flatMap((contact: any) => (contact.phoneNumbers || []).map((phone: any) => phone.number))
+        .filter((number: unknown): number is string => typeof number === 'string' && number.trim().length > 0)))
+        .slice(0, 500);
+      if (!numbers.length) {
+        setContactMatches([]);
+        setContactSyncDone(true);
+        Alert.alert('No phone numbers found', 'Your address book does not contain any phone numbers to match.');
+        return;
+      }
+      const defaultCountry = Localization.getLocales()[0]?.regionCode || undefined;
+      const { data, error } = await supabase.functions.invoke('meei-contact-discovery', {
+        body: { numbers, defaultCountry },
+      });
+      if (error) throw error;
+      setContactMatches((data?.matches || []) as PublicProfile[]);
+      setContactSyncDone(true);
+      Alert.alert('Contact sync complete', (data?.matches?.length || 0) + ' MEEi account(s) found among your contacts.');
+    } catch (error: any) {
+      Alert.alert('Contact sync unavailable', error?.message || 'Please try again later.');
+    } finally {
+      setContactSyncing(false);
+    }
+  };
+
+  const confirmContactSync = () => {
+    Alert.alert(
+      'Find people you know',
+      'MEEi will read phone numbers from your contacts only after your permission. Numbers are securely matched against accounts that chose to be discoverable; raw contact numbers are not saved in MEEi.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Continue', onPress: () => void runContactSync() },
+      ],
+    );
+  };
+
+  const toggleContactDiscoverability = () => {
+    if (!supabase) return;
+    const nextValue = !contactDiscoverable;
+    Alert.alert(
+      nextValue ? 'Let contacts find you?' : 'Turn off phone discovery?',
+      nextValue
+        ? 'People who have your verified phone number saved may find your MEEi profile. Your phone number will never be shown. You can turn this off anytime.'
+        : 'Your account will no longer appear in phone-contact matching.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: nextValue ? 'Enable' : 'Turn off', onPress: async () => {
+          const { data, error } = await supabase!.rpc('set_my_contact_discoverability', { p_enabled: nextValue });
+          if (error) {
+            Alert.alert('Could not update setting', error.message);
+            return;
+          }
+          setContactDiscoverable(Boolean(data));
+          if (!nextValue) Alert.alert('Phone discovery off', 'Your phone lookup entry has been deleted.');
+        } },
+      ],
+    );
+  };
+
   const loadInbox = async () => {
     if (!supabase) return;
     const { data: authData, error: authError } = await supabase.auth.getSession();
@@ -1319,6 +1397,9 @@ export default function App() {
       return;
     }
     setCurrentUserId(userId);
+    void supabase.rpc('get_my_contact_discoverability').then(({ data, error }) => {
+      if (!error) setContactDiscoverable(Boolean(data));
+    });
     setChatLoading(true);
     const { data: rows, error } = await supabase.from('conversations')
       .select('id, user_one_id, user_two_id, updated_at')
@@ -2170,8 +2251,30 @@ export default function App() {
       </> : <>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
           <Text style={s.pageTitle}>Inbox</Text>
-          <Pressable onPress={() => void loadInbox()}><Ionicons name="refresh" size={21} color={C.cyan}/></Pressable>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
+            <Pressable onPress={toggleContactDiscoverability} accessibilityRole="button" accessibilityLabel={contactDiscoverable ? 'Turn off phone discoverability' : 'Let contacts find me'}>
+              <Ionicons name={contactDiscoverable ? 'eye' : 'eye-off-outline'} size={21} color={contactDiscoverable ? C.success : C.muted}/>
+            </Pressable>
+            <Pressable disabled={contactSyncing} onPress={confirmContactSync} accessibilityRole="button" accessibilityLabel="Find people from contacts">
+              <Ionicons name={contactSyncing ? 'hourglass-outline' : 'people-outline'} size={22} color={C.cyan}/>
+            </Pressable>
+            <Pressable onPress={() => void loadInbox()}><Ionicons name="refresh" size={21} color={C.cyan}/></Pressable>
+          </View>
         </View>
+        {contactSyncing && <Text style={s.hint}>Securely matching your contacts…</Text>}
+        {contactSyncDone && <View style={{ paddingVertical: 10, gap: 7 }}>
+          <Text style={s.sectionTitle}>People from your contacts</Text>
+          {contactMatches.length ? contactMatches.map(profile => (
+            <Pressable key={profile.id} onPress={() => void openChat(profile)} style={s.personRow}>
+              <View style={s.personAvatar}><Ionicons name="person" size={22} color={C.cyan}/></View>
+              <View style={s.personDetails}>
+                <Text style={s.personName}>{profile.display_name}</Text>
+                <Text style={s.personUsername}>{profile.username.replace(/[@#]/g, '')}</Text>
+              </View>
+              <Ionicons name="chatbubble-ellipses-outline" size={18} color={C.cyan}/>
+            </Pressable>
+          )) : <Text style={s.hint}>No discoverable MEEi contacts found yet.</Text>}
+        </View>}
         {chatLoading ? <Text style={s.hint}>Loading conversations…</Text> :
           chatThreads.length === 0 ? <View style={{ paddingTop: 25, gap: 8 }}>
             <Text style={s.sectionTitle}>No messages yet</Text>
