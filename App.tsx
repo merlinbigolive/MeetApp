@@ -1732,7 +1732,7 @@ export default function App() {
       Alert.alert('Business details too long', 'Business name: 80 characters, category: 60, description: 500.');
       return;
     }
-    if (cleanWebsite && !/^(https?:\\/\\/)?([\\w-]+\\.)+[a-z]{2,}(\\/[^\\s]*)?$/i.test(cleanWebsite)) {
+    if (cleanWebsite && !/^(https?:\/\/)?([\w-]+\.)+[a-z]{2,}(\/[^\s]*)?$/i.test(cleanWebsite)) {
       Alert.alert('Check website', 'Enter a valid website address.');
       return;
     }
