@@ -108,7 +108,7 @@ The product must also offer a paid, one-time Global Live Boost that any eligible
 
 The application now has a secure Live-room popup delivery path:
 - Popup UI is mounted only inside an active Live room and only for an ordinary viewer with an active room membership.
-- Popup events are recipient- and room-specific, bound to the exact active membership, short-lived (5 seconds by default; server limit 15 seconds), and dismissed on leave/expiry.
+- Popup events are recipient- and room-specific, bound to the exact active membership, short-lived (5 seconds by default; server limit 15 seconds), replace older pending events instead of queueing them, and are dismissed on leave/expiry.
 - Server-side eligibility rejects the room creator, moderators, anyone participating in an active PK battle, and users blocked, muted, or kicked in that room.
 - PK participation is checked across active battles, not just the room currently open. A PK participant's outstanding popup events are permanently dismissed.
 - The event table is private, has RLS enabled, and is not readable or writable directly by client roles. Only the trusted service role can enqueue events.
