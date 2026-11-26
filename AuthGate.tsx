@@ -78,8 +78,26 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
             // A parallel session/bootstrap may have created this profile after the initial lookup.
             const { data: existingProfile, error: retryError } = await client
               .from('profiles').select('id').eq('id', session.user.id).maybeSingle();
-            if (retryError || !existingProfile) {
-              throw new Error('Could not create your profile: ' + insertError.message);
+            if (existingProfile) {
+              // Another request successfully created this user's profile.
+            } else if (retryError) {
+              throw new Error('Could not verify profile creation: ' + retryError.message);
+            } else {
+              // The email-based username may already be taken. Retry once with a
+              // deterministic UUID-derived name that satisfies MEEi's 25-char limit.
+              const fallbackUsername = 'user_' + session.user.id.replace(/-/g, '').slice(0, 16);
+              const { error: fallbackError } = await client.from('profiles').insert({
+                id: session.user.id,
+                username: fallbackUsername,
+                display_name: displayName,
+              });
+              if (fallbackError) {
+                const { data: createdProfile, error: finalCheckError } = await client
+                  .from('profiles').select('id').eq('id', session.user.id).maybeSingle();
+                if (finalCheckError || !createdProfile) {
+                  throw new Error('Could not create your profile: ' + fallbackError.message);
+                }
+              }
             }
           }
         }
