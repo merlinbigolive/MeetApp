@@ -153,9 +153,24 @@ export default function LiveBroadcastModal({ visible, sessionId, creatorName, on
       });
     };
     void loadPkState();
-    const timer = setInterval(() => { void loadPkState(); }, 2500);
+    const timer = setInterval(() => { void loadPkState(); }, 5000);
     return () => { cancelled = true; clearInterval(timer); };
   }, [visible, chatSessionId]);
+
+  useEffect(() => {
+    if (!visible || !chatSessionId || pkBattle?.status !== "active" || pkSecondsRemaining > 0 || !supabase) return;
+    let cancelled = false;
+    void supabase.rpc("get_live_pk_state", { target_session_id: chatSessionId }).then(({ data, error }) => {
+      if (cancelled || error) return;
+      const battle = Array.isArray(data) ? data[0] : null;
+      if (!battle || battle.status !== "active") {
+        setPkBattle(null);
+        setPkOpponentCredentials(null);
+        pkConnectRef.current = null;
+      }
+    });
+    return () => { cancelled = true; };
+  }, [visible, chatSessionId, pkBattle?.status, pkSecondsRemaining]);
 
   useEffect(() => {
     if (!visible || !isCreator || !activeSessionId || !supabase) { setPkInvites([]); return; }
