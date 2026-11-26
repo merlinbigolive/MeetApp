@@ -296,7 +296,7 @@ as restrictive for insert to authenticated
 with check (
   follower_id = auth.uid()
   and followed_id <> auth.uid()
-  and status = 'accepted'
+  and coalesce(to_jsonb(follows)->>'status', 'accepted') = 'accepted'
   and exists (
     select 1 from public.profiles p
     where p.id = follows.followed_id and p.is_private = false
