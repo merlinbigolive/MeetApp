@@ -297,6 +297,15 @@ function ChatEmojiPicker({ onSelect }: { onSelect: (emoji: string) => void }) {
   );
 }
 
+const getCountryDisplayName = (countryCode: string, localeTag?: string) => {
+  try {
+    const DisplayNames = (Intl as any).DisplayNames;
+    return DisplayNames ? (new DisplayNames([localeTag || 'en'], { type: 'region' }).of(countryCode) || countryCode) : countryCode;
+  } catch {
+    return countryCode;
+  }
+};
+
 export default function App() {
   const systemColorScheme = useColorScheme();
   const [themeMode, setThemeMode] = useState<'system' | 'light' | 'dark'>('system');
@@ -366,6 +375,8 @@ export default function App() {
   const [loadingProfiles, setLoadingProfiles] = useState(false);
   const [liveCreators, setLiveCreators] = useState<LiveCreator[]>([]);
   const [liveMediaUrls, setLiveMediaUrls] = useState<Record<string, string>>({});
+  const [homeCountryCode, setHomeCountryCode] = useState(() => (Localization.getLocales()[0]?.regionCode || 'IN').toUpperCase());
+  const [homeCountryName, setHomeCountryName] = useState(() => getCountryDisplayName((Localization.getLocales()[0]?.regionCode || 'IN').toUpperCase(), Localization.getLocales()[0]?.languageTag));
   const [liveCountry, setLiveCountry] = useState(() => (Localization.getLocales()[0]?.regionCode || 'IN').toUpperCase());
   const [loadingLiveCreators, setLoadingLiveCreators] = useState(false);
   const [followBusyIds, setFollowBusyIds] = useState<string[]>([]);
@@ -553,7 +564,7 @@ export default function App() {
       setCurrentUserId(userId);
       const { data, error } = await supabase
         .from('profiles')
-        .select('username, display_name, bio, website_url, profession_category, activity_status, is_private, account_type, business_name, business_category, business_description')
+        .select('username, display_name, bio, website_url, profession_category, activity_status, is_private, account_type, business_name, business_category, business_description, country_code, country_name')
         .eq('id', userId)
         .maybeSingle();
       if (!active || error || !data) return;
@@ -567,6 +578,27 @@ export default function App() {
       setBusinessCategory(data.business_category || '');
       setBusinessDescription(data.business_description || '');
       setIsPrivateAccount(!!data.is_private);
+
+      const deviceLocale = Localization.getLocales()[0];
+      const deviceCountryCode = (deviceLocale?.regionCode || 'IN').toUpperCase();
+      const deviceCountryName = getCountryDisplayName(deviceCountryCode, deviceLocale?.languageTag);
+      const savedCountryCode = String(data.country_code || '').toUpperCase();
+      const savedCountryName = String(data.country_name || '');
+      if (savedCountryCode && savedCountryName) {
+        setHomeCountryCode(savedCountryCode);
+        setHomeCountryName(savedCountryName);
+        setLiveCountry(savedCountryCode);
+      } else {
+        setHomeCountryCode(deviceCountryCode);
+        setHomeCountryName(deviceCountryName);
+        setLiveCountry(deviceCountryCode);
+        const { error: countrySaveError } = await supabase.from('profiles').update({
+          country_code: deviceCountryCode,
+          country_name: deviceCountryName,
+          updated_at: new Date().toISOString(),
+        }).eq('id', userId);
+        if (countrySaveError) console.warn('Home country could not be saved:', countrySaveError.message);
+      }
 
       const [followingResult, followerResult, likesResult] = await Promise.all([
         supabase.from('follows').select('*', { count: 'exact', head: true }).eq('follower_id', userId).eq('status', 'accepted'),
@@ -2149,8 +2181,7 @@ export default function App() {
 
   const LiveScreen = () => {
     const activeCountries = Array.from(new Map(liveCreators.map(creator => [creator.country_code, { code: creator.country_code, name: creator.country_name }] as const)).values());
-    const deviceCountryCode = (Localization.getLocales()[0]?.regionCode || 'IN').toUpperCase();
-    const ownCountry = activeCountries.find(country => country.code === deviceCountryCode) || { code: deviceCountryCode, name: deviceCountryCode };
+    const ownCountry = activeCountries.find(country => country.code === homeCountryCode) || { code: homeCountryCode, name: homeCountryName };
     const countries = [ownCountry, ...activeCountries.filter(country => country.code !== ownCountry.code).sort((a,b) => a.name.localeCompare(b.name))];
     const visibleCreators = liveCreators.filter(creator => creator.country_code === liveCountry);
     const countryFlag = (code: string) => /^[A-Z]{2}$/.test(code)
