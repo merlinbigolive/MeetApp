@@ -62,3 +62,42 @@ jobs:
 
       - name: Export iOS bundle
         run: npx expo export --platform ios --output-dir dist/ios
+
+  android-native-build:
+    name: Android native debug build
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install dependencies
+        run: npm install --no-package-lock
+
+      - name: Generate Android native project
+        run: npx expo prebuild --platform android --no-install --clean
+
+      - name: Compile Android debug APK
+        run: cd android && ./gradlew assembleDebug --no-daemon
+
+      - name: Upload Android debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: meei-android-debug
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 7
