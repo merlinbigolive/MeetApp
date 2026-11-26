@@ -36,7 +36,9 @@
     "@livekit/react-native-expo-plugin": "^1.2.0",
     "@livekit/react-native-webrtc": "^150.2.0",
     "@config-plugins/react-native-webrtc": "^13.0.0",
-    "livekit-client": "^2.25.0"
+    "livekit-client": "^2.25.0",
+    "expo-contacts": "~14.2.5",
+    "expo-localization": "~17.0.8"
   },
   "devDependencies": {
     "babel-preset-expo": "~54.0.12",
