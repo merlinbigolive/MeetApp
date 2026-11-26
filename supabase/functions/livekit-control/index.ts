@@ -98,21 +98,39 @@ Deno.serve(async (request) => {
 
       const { data: existing, error: existingError } = await admin
         .from("live_sessions")
-        .select("id,last_heartbeat_at")
+        .select("id,last_heartbeat_at,provider_room_name")
         .eq("user_id", user.id)
         .eq("status", "live")
         .maybeSingle();
       if (existingError) throw existingError;
       if (existing) {
         const fresh = Date.now() - new Date(existing.last_heartbeat_at).getTime() < 90_000;
-        if (fresh) return json({ error: "You already have an active Live session." }, 409);
+        let creatorStillPublishing = false;
+        if (existing.provider_room_name) {
+          try {
+            const participants = await rooms.listParticipants(existing.provider_room_name);
+            const creator = participants.find((p: any) => p.identity === user.id);
+            creatorStillPublishing = !!creator && hasVideoTrack(creator);
+          } catch (roomLookupError) {
+            console.warn("Could not inspect previous Live room before stale-session cleanup.");
+            if (fresh) return json({ error: "Your previous Live is still being checked. Please try again shortly." }, 503);
+          }
+        }
+        if (fresh || creatorStillPublishing) {
+          return json({ error: "You already have an active Live session." }, 409);
+        }
         const { error: staleUpdateError } = await admin.from("live_sessions")
           .update({ status: "ended", ended_at: new Date().toISOString() }).eq("id", existing.id);
         if (staleUpdateError) throw staleUpdateError;
+        if (existing.provider_room_name) {
+          try { await rooms.deleteRoom(existing.provider_room_name); } catch (roomError) {
+            console.warn("Stale Live room cleanup failed:", roomError);
+          }
+        }
       }
 
       const roomName = `meei-${user.id}-${crypto.randomUUID()}`;
-      await rooms.createRoom({ name: roomName, emptyTimeout: 15, maxParticipants: 500 });
+      await rooms.createRoom({ name: roomName, emptyTimeout: 120, maxParticipants: 500 });
       const participantName = String(body.display_name || "MEEi creator").slice(0, 64);
       const accessToken = await issueToken(roomName, true, participantName);
       return json({
