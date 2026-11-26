@@ -18,6 +18,17 @@ create table if not exists private.live_room_popup_events (
   constraint live_room_popup_expiry_check check (expires_at > created_at)
 );
 
+alter table private.live_room_popup_events
+  add column if not exists membership_id uuid references public.live_chat_memberships(id) on delete cascade;
+update private.live_room_popup_events e
+set membership_id = (
+  select m.id from public.live_chat_memberships m
+  where m.session_id = e.session_id and m.viewer_id = e.recipient_user_id
+  order by m.joined_at desc limit 1
+)
+where e.membership_id is null;
+alter table private.live_room_popup_events alter column membership_id set not null;
+
 create index if not exists live_room_popup_recipient_session_idx
   on private.live_room_popup_events (recipient_user_id, session_id, expires_at desc)
   where dismissed_at is null;
