@@ -1749,18 +1749,24 @@ export default function App() {
       Alert.alert('Posts gallery full', 'You can add up to 3 post media files.');
       return;
     }
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) {
-      Alert.alert('Permission needed', 'Allow MEEi to access your phone gallery.');
+    let result: Awaited<ReturnType<typeof ImagePicker.launchImageLibraryAsync>>;
+    try {
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) {
+        Alert.alert('Permission needed', 'Allow MEEi to access your phone gallery.');
+        return;
+      }
+      result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: kind === 'avatar' ? ['images'] : ['images', 'videos'],
+        allowsEditing: kind === 'avatar',
+        aspect: kind === 'avatar' ? [1, 1] : undefined,
+        quality: 0.85,
+        videoMaxDuration: 60,
+      });
+    } catch (error: any) {
+      Alert.alert('Could not open gallery', error?.message || 'Please check your gallery permission and try again.');
       return;
     }
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: kind === 'avatar' ? ['images'] : ['images', 'videos'],
-      allowsEditing: kind === 'avatar',
-      aspect: kind === 'avatar' ? [1, 1] : undefined,
-      quality: 0.85,
-      videoMaxDuration: 60,
-    });
     if (result.canceled || !result.assets?.[0]) return;
     const a = result.assets[0];
     const type = a.type === 'video' ? 'video' : 'image';
