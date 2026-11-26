@@ -104,6 +104,14 @@ begin
     raise exception 'Creators, moderators, blocked, muted, kicked, and PK participants are not eligible for Live room popups' using errcode = '42501';
   end if;
 
+  -- Replace any prior event for this exact room membership; never queue or replay old popups.
+  update private.live_room_popup_events
+    set dismissed_at = coalesce(dismissed_at, now())
+    where recipient_user_id = p_recipient_user_id
+      and session_id = p_session_id
+      and membership_id = v_membership_id
+      and dismissed_at is null;
+
   insert into private.live_room_popup_events (
     recipient_user_id, session_id, membership_id, event_type, title, message, expires_at
   ) values (
