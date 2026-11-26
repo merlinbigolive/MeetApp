@@ -127,3 +127,5 @@ The application now has a secure Live-room popup delivery path:
 - Paid country-targeted boost and all payment/checkout functionality remain unimplemented and disabled.
 - The separate viewer-only in-room popup producer remains pending; this implementation does not send push, inbox, system or background notifications.
 - End-to-end multi-account/device testing remains pending.
+
+- Final eligibility refinement: the creator must have no earlier Live session record; the free grant is reserved for the account's first ever verified Live session, not merely the first session after this rollout.
