@@ -213,6 +213,11 @@ export default function LiveBroadcastModal({ visible, sessionId, creatorName, on
       Alert.alert("PK response failed", data?.error || error?.message || "This invitation expired or the other creator left Live.");
       return;
     }
+    if (data?.ok !== true) {
+      Alert.alert("PK invitation unavailable", "The invitation expired or one creator left Live.");
+      setPkInvites(items => items.filter(item => item.battle_id !== invite.battle_id));
+      return;
+    }
     setPkInvites(items => items.filter(item => item.battle_id !== invite.battle_id));
   };
 
