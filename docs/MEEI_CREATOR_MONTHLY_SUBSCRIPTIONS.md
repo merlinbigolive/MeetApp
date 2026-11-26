@@ -16,19 +16,19 @@ Allow fans to subscribe monthly to their favourite eligible MEEi Live creators f
 - Active subscribers may also access eligible audio/video guest Live flows, subject to creator acceptance, room capacity, moderation and safety. Subscription never forces a creator to accept a guest.
 - A creator may designate clearly labelled subscriber-only Lives. Non-subscribers must see the subscriber-only label and offer before entering; do not imply that subscriber-only content is free.
 
-## Premium subscriber benefits
-The subscription offer must list the exact benefits enabled by MEEi before purchase. Initial approved benefits:
-1. **Audio and Video Guest Live access:** subscribers can request/join eligible creators' Live rooms as an audio or video guest, subject to creator acceptance, room capacity, moderation and safety controls.
-2. **Video-call allowance:** subscribers receive **10 free minutes of video calling per rolling 12-hour window**. The allowance automatically resets after 12 hours. Once the free minutes are used, additional minutes require a separately approved paid minute pack before continuing. Display remaining minutes and the next reset time clearly; never start a paid minute pack or charge without explicit confirmation. Paid minute-pack pricing, payment flow and refund rules require separate approval and must remain disabled until the final monetization phase.
-3. **Premium profile decoration:** subscribers receive a distinct premium profile treatment / decoration and Premium badge while the subscription entitlement is active. Decoration must not obscure profile content or impersonate verification.
+## Premium subscriber benefits (only these approved benefits)
+The subscription offer must list only these benefits, with exact terms before purchase:
+1. **Audio and Video Guest Live access:** active subscribers can request to join eligible creator Live rooms as an audio or video guest, subject to creator acceptance, room capacity, moderation and safety controls.
+2. **Video-call allowance:** subscribers receive **10 free minutes of video calling per rolling 12-hour window**, automatically reset. Show remaining minutes and next reset clearly. After the free allowance is consumed, the user may separately purchase additional call minutes (minute packs). Each pack must show its price and minutes and require explicit confirmation before purchase/use; never silently charge or start a paid pack. Minute-pack pricing, payment and refund rules remain subject to separate approval and the final monetization phase.
+3. **Premium profile cosmetics:** while the subscription entitlement is active, the subscriber receives profile decoration, a profile-photo frame, a profile skin/theme, a Live-room entry effect that displays the subscriber's name, and a visible **Premium (P)** tag on their profile. Cosmetics must preserve readability and must not imply verification or moderation status.
 
-Additional subscriber benefits may include clearly labelled subscriber-only Lives/posts/replays, a subscriber badge in the creator's Live chat, scheduled Q&A/events and creator-managed priority interactions where supported. Never promise guaranteed personal replies, gifts, wins, or moderation immunity. Only advertise benefits that are actually implemented and deliverable.
+These are the complete approved Premium subscription benefits. Do not add subscriber-only Lives/posts/replays, chat priority, scheduled Q&A, priority interactions, or other benefits unless the user explicitly approves them later.
 
 ## Profile and subscriber experience
 - Show a consistent Premium badge / subscription card on eligible creator profiles.
 - Display the monthly price, renewal terms, included subscriber benefits, and a clear Subscribe action before purchase.
 - Show subscriber status, next renewal / expiry date, and manage/cancel subscription controls.
-- Show profile decoration and subscriber-only feature entitlements only while the subscription is active, with clear expired/cancelled states.
+- Show the Premium (P) profile tag and subscription-included profile decoration, profile-photo frame, profile skin/theme and name-bearing Live-room entry effect only while the subscription is active, with clear expired/cancelled states. Independently purchased cosmetics remain valid until their own expiry.
 - Do not imply that a creator is Premium merely because they are currently Live; Premium is a subscription entitlement.
 
 
@@ -57,7 +57,7 @@ Additional subscriber benefits may include clearly labelled subscriber-only Live
 - Verify creator eligibility, account standing, and entitlement access on the server.
 - Do not implement free public-Live watch-time accounting, caps, or expiry paywalls; public Live viewing remains unrestricted for free accounts.
 - Enforce guest Live eligibility on the server for every audio/video guest token or join action; only active eligible subscribers may proceed, and creators retain acceptance/moderation control.
-- Video-call free-minute accounting must be server-authoritative, race-safe across devices/sessions, privacy-preserving, and resistant to client clock changes or forged call events. Use rolling 12-hour windows and authoritative call-session accounting.
+- Video-call free-minute accounting must be server-authoritative, race-safe across devices/sessions, privacy-preserving, and resistant to client clock changes or forged call events. Use rolling 12-hour windows and authoritative call-session accounting. Paid minute packs must have separately verified entitlements and explicit purchase confirmation.
 - Prevent duplicate entitlements, replayed webhooks, self-subscription abuse and unauthorized creator payout edits.
 - Apply dispute handling and attributable creator earnings holds consistently with the existing 30-day gift/Beans dispute policy, while preserving statutory payment and consumer rights.
 - Privacy: never expose subscriber lists or payment identifiers publicly.
@@ -74,13 +74,13 @@ Before implementation, verify current Google Play / Apple billing requirements f
 - No watch-limit pop-up or viewing paywall appears when a free user's watch time reaches one hour or any other threshold.
 - Free users cannot join audio/video guest Live without an active eligible subscription; active subscribers can request guest access subject to creator acceptance and safety controls.
 - Subscribers receive 10 free video-call minutes per rolling 12-hour window; additional minutes require a separately approved, explicitly confirmed paid minute pack. No minute-pack billing before final monetization approval.
-- Active subscribers receive the premium profile decoration, matching name-bearing Live-room entry effect and badge for the entitled period.
+- Active subscribers receive the profile decoration, profile-photo frame, profile skin/theme, name-bearing Live-room entry effect and Premium (P) profile tag for the entitled period.
 - Users can independently preview and purchase profile decorations, name-bearing Live-room entry effects and profile skins for clearly disclosed 7-day or 30-day validity; these purchases do not require Premium.
 - Standalone cosmetic ownership/expiry is independent of subscription status; subscription expiry does not revoke separately purchased unexpired cosmetics.
 - Cosmetic entitlements are server-verified, expire on server time, support inventory/equip/preview and do not auto-renew without explicit consent.
 - Entry effects are brief, accessible, rate-limited and user/host-hideable; profile skins preserve readability.
 - Subscriber-only Lives are clearly labelled before entry and never presented as unrestricted free content.
-- Subscriber benefits are explicit and verifiable; active subscribers receive their entitled benefits only for the paid period.
+- The only Premium benefits are guest Live audio/video access, 10 free video-call minutes per rolling 12 hours plus separately purchasable minute packs, profile decoration, profile-photo frame, profile skin/theme, name-bearing Live-room entry effect and Premium (P) profile tag.
 - Renewal, failed renewal, cancellation, expiry, refund and chargeback transitions are server-authoritative and idempotent.
 - The 30% / 70% revenue breakdown is transparent and reconcilable to actual collections and adjustments.
 - Gift / Beans earnings continue independently of subscription earnings.
