@@ -321,6 +321,18 @@ Deno.serve(async (request) => {
           Date.now() - new Date(opponentSession.last_heartbeat_at).getTime() > 90_000) {
         return json({ error: "Both creators must be actively Live before sending a PK invite." }, 409);
       }
+      const { data: opponentAccess, error: opponentAccessError } = await authClient.rpc("check_live_entry", {
+        target_session_id: opponentSession.id,
+      });
+      if (opponentAccessError) throw opponentAccessError;
+      if (!opponentAccess?.[0]?.allowed) {
+        return json({ error: "You are not allowed to invite this creator." }, 403);
+      }
+      const { data: globallyBlocked, error: globalBlockError } = await authClient.rpc("is_blocked_for_current_user", {
+        other_user_id: opponentSession.user_id,
+      });
+      if (globalBlockError) throw globalBlockError;
+      if (globallyBlocked === true) return json({ error: "You cannot PK with this creator." }, 403);
       for (const liveSession of [ownSession, opponentSession]) {
         const participants = await rooms.listParticipants(liveSession.provider_room_name);
         const creator = participants.find((p: any) => p.identity === liveSession.user_id);
