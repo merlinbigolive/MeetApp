@@ -72,6 +72,26 @@ Deno.serve(async (request) => {
     }
   }
 
+    const tryActivateFirstCreatorBoost = async (sessionId: string) => {
+      const { data: boost, error: boostError } = await admin.rpc(
+        "activate_first_creator_global_live_boost",
+        { p_creator_id: user.id, p_session_id: sessionId },
+      );
+      if (boostError) {
+        console.warn("First creator Global Live Boost was not activated:", boostError.message);
+        return null;
+      }
+      if (boost?.activated) {
+        console.info("First creator Global Live Boost confirmed:", {
+          creator_id: user.id,
+          session_id: sessionId,
+          starts_at: boost.starts_at,
+          ends_at: boost.ends_at,
+        });
+      }
+      return boost;
+    };
+
     const issueToken = async (roomName: string, canPublish: boolean, displayName?: string) => {
       const token = new AccessToken(livekitApiKey, livekitApiSecret, {
         identity: user.id,
@@ -166,7 +186,10 @@ Deno.serve(async (request) => {
         .from("live_sessions").select("id")
         .eq("user_id", user.id).eq("status", "live").maybeSingle();
       if (activeError) throw activeError;
-      if (active) return json({ session_id: active.id, status: "live" });
+      if (active) {
+        await tryActivateFirstCreatorBoost(active.id);
+        return json({ session_id: active.id, status: "live" });
+      }
 
       const { data: session, error: insertError } = await admin
         .from("live_sessions")
@@ -182,6 +205,7 @@ Deno.serve(async (request) => {
         .select("id")
         .single();
       if (insertError) throw insertError;
+      await tryActivateFirstCreatorBoost(session.id);
       return json({ session_id: session.id, status: "live" });
     }
 
