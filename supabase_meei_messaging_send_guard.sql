@@ -9,7 +9,7 @@ alter table private.meei_user_rate_limits
   check (action_key = any (array[
     'live_chat_send','profile_search','video_search',
     'livekit_start','livekit_join','livekit_activate','livekit_moderate',
-    'livekit_heartbeat','livekit_end','livekit_cancel','message_send','conversation_create'
+    'livekit_heartbeat','livekit_end','livekit_cancel','message_send','conversation_create','contact_sync'
   ]::text[]));
 
 create or replace function private.consume_user_rate_limit(p_action_key text, p_limit integer, p_window_seconds integer)
@@ -27,7 +27,7 @@ begin
   if p_action_key not in (
     'live_chat_send','profile_search','video_search',
     'livekit_start','livekit_join','livekit_activate','livekit_moderate',
-    'livekit_heartbeat','livekit_end','livekit_cancel','message_send','conversation_create'
+    'livekit_heartbeat','livekit_end','livekit_cancel','message_send','conversation_create','contact_sync'
   ) or p_limit is null or p_limit < 1 or p_limit > 120
     or p_window_seconds is null or p_window_seconds < 1 or p_window_seconds > 3600 then
     raise exception 'Invalid rate-limit configuration' using errcode = '22023';
