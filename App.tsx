@@ -626,8 +626,16 @@ export default function App() {
         .select('id, kind, position, storage_path, media_type, original_name')
         .eq('user_id', userId)
         .order('position', { ascending: true });
-      if (!active || mediaError || !mediaRows) return;
-      const hydrated = await Promise.all((mediaRows as CloudMediaRow[]).map(async row => {
+      if (!active) return;
+      if (mediaError) {
+        console.warn('Profile media could not be loaded:', mediaError.message);
+        setAvatar(null);
+        setCovers([]);
+        setPosts([]);
+        Alert.alert('Profile media unavailable', 'Your profile details loaded, but photos and videos could not be loaded. Please check your connection and try again.');
+        return;
+      }
+      const hydrated = await Promise.all(((mediaRows || []) as CloudMediaRow[]).map(async row => {
         const { data: signed, error: signedError } = await supabase!.storage
           .from('usay-media').createSignedUrl(row.storage_path, 60 * 60);
         if (signedError || !signed?.signedUrl) return null;
