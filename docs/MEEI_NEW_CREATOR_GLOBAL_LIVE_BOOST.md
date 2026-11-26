@@ -141,3 +141,12 @@ The application now has a secure Live-room popup delivery path:
 - Popups expire after five seconds and remain bound to the exact active room membership.
 - Verified: both producer triggers exist; popup table RLS is enabled; anon/authenticated cannot enqueue or call the trigger helper; service_role retains enqueue permission.
 - End-to-end device testing with separate creator/viewer accounts remains pending.
+
+
+## Admin and moderator popup eligibility refinement
+
+- Live room Admins are represented by active `live_moderators` records and have the `moderator` room role in the client.
+- Active room Admins/Moderators now receive the same five-second in-room Global Live Boost popup as eligible viewers.
+- The creator remains excluded. PK participants, blocked users, and users with active mute/kick/block moderation actions remain excluded.
+- Updated both the server-side enqueue validation and authenticated popup retrieval RPC, plus the room UI eligibility gate.
+- Database migration: `supabase_allow_live_room_admin_moderator_boost_popups.sql`.
