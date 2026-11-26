@@ -39,6 +39,11 @@ jobs:
       - name: Validate Expo configuration
         run: npx expo config --type public
 
+      - name: Diagnose Expo SDK dependency versions
+        run: |
+          npm ls expo expo-asset expo-modules-core expo-audio --all || true
+          npx expo install --check || true
+
       - name: Export Android bundle
         run: npx expo export --platform android --output-dir dist/android
 
