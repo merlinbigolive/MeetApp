@@ -1800,59 +1800,59 @@ export default function App() {
       Alert.alert('Posts gallery full', 'You can add up to 3 post media files.');
       return;
     }
-    let result: Awaited<ReturnType<typeof ImagePicker.launchImageLibraryAsync>>;
-    try {
-      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (!permission.granted) {
-        Alert.alert('Permission needed', 'Allow MEEi to access your phone gallery.');
-        return;
-      }
-      result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: kind === 'avatar' ? ['images'] : ['images', 'videos'],
-        allowsEditing: kind === 'avatar',
-        aspect: kind === 'avatar' ? [1, 1] : undefined,
-        quality: 0.85,
-        videoMaxDuration: 60,
-      });
-    } catch (error: any) {
-      Alert.alert('Could not open gallery', error?.message || 'Please check your gallery permission and try again.');
+
+    // Hold the gallery lock from before opening the picker until the upload is
+    // fully saved/cleaned up, so removal/reordering cannot stale the target slot.
+    const galleryLockKey = `${kind}:gallery`;
+    if (mediaUploadLocks.current.has(galleryLockKey) ||
+        Array.from(mediaUploadLocks.current).some(key => key.startsWith(`${kind}:`))) {
+      Alert.alert('Gallery update in progress', 'Please wait for the current gallery update to finish.');
       return;
     }
-    if (result.canceled || !result.assets?.[0]) return;
-    const a = result.assets[0];
-    const type = a.type === 'video' ? 'video' : 'image';
-    if (typeof a.fileSize === 'number' && a.fileSize > 50 * 1024 * 1024) {
-      Alert.alert('File size limit', 'Please choose a photo or video that is 50 MB or smaller.');
-      return;
-    }
-    const client = supabase;
-    if (!client) {
-      Alert.alert('Cloud not configured', 'Connect Supabase before uploading profile media.');
-      return;
-    }
-    let userId: string | undefined;
-    try {
-      const { data: authData, error: sessionError } = await client.auth.getSession();
-      if (sessionError) throw sessionError;
-      userId = authData.session?.user.id;
-    } catch (error: any) {
-      Alert.alert('Could not verify your session', error?.message || 'Please try again.');
-      return;
-    }
-    if (!userId) {
-      Alert.alert('Sign in required', 'Please sign in before uploading profile media.');
-      return;
-    }
-    const targetPosition = kind === 'avatar' ? 0 : (index ?? (kind === 'cover' ? covers.length : posts.length));
-    const uploadLockKey = `${kind}:${targetPosition}`;
-    if (mediaUploadLocks.current.has(`${kind}:gallery`) || mediaUploadLocks.current.has(uploadLockKey)) {
-      Alert.alert('Upload in progress', 'Please wait for the current gallery update to finish.');
-      return;
-    }
-    mediaUploadLocks.current.add(uploadLockKey);
+    mediaUploadLocks.current.add(galleryLockKey);
+
     let uploadedStoragePath: string | null = null;
     let mediaMetadataSaved = false;
     try {
+      const targetPosition = kind === 'avatar' ? 0 : (index ?? (kind === 'cover' ? covers.length : posts.length));
+      let result: Awaited<ReturnType<typeof ImagePicker.launchImageLibraryAsync>>;
+      try {
+        const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (!permission.granted) {
+          Alert.alert('Permission needed', 'Allow MEEi to access your phone gallery.');
+          return;
+        }
+        result = await ImagePicker.launchImageLibraryAsync({
+          mediaTypes: kind === 'avatar' ? ['images'] : ['images', 'videos'],
+          allowsEditing: kind === 'avatar',
+          aspect: kind === 'avatar' ? [1, 1] : undefined,
+          quality: 0.85,
+          videoMaxDuration: 60,
+        });
+      } catch (error: any) {
+        Alert.alert('Could not open gallery', error?.message || 'Please check your gallery permission and try again.');
+        return;
+      }
+      if (result.canceled || !result.assets?.[0]) return;
+      const a = result.assets[0];
+      const type = a.type === 'video' ? 'video' : 'image';
+      if (typeof a.fileSize === 'number' && a.fileSize > 50 * 1024 * 1024) {
+        Alert.alert('File size limit', 'Please choose a photo or video that is 50 MB or smaller.');
+        return;
+      }
+      const client = supabase;
+      if (!client) {
+        Alert.alert('Cloud not configured', 'Connect Supabase before uploading profile media.');
+        return;
+      }
+      const { data: authData, error: sessionError } = await client.auth.getSession();
+      if (sessionError) throw sessionError;
+      const userId = authData.session?.user.id;
+      if (!userId) {
+        Alert.alert('Sign in required', 'Please sign in before uploading profile media.');
+        return;
+      }
+
       const mimeType = a.mimeType || (type === 'video' ? 'video/mp4' : 'image/jpeg');
       const extension = mimeType.split('/')[1]?.replace('jpeg', 'jpg').split(';')[0] || (type === 'video' ? 'mp4' : 'jpg');
       const fileResponse = await fetch(a.uri);
@@ -1868,53 +1868,52 @@ export default function App() {
       uploadedStoragePath = storagePath;
 
       const { data: signed, error: signedError } = await client.storage.from('usay-media').createSignedUrl(storagePath, 60 * 60);
-      if (signedError || !signed?.signedUrl) {
-        throw signedError || new Error('Could not create a media preview URL.');
-      }
-      const position = targetPosition;
+      if (signedError || !signed?.signedUrl) throw signedError || new Error('Could not create a media preview URL.');
+
       const { data: previous, error: previousError } = await client.from('profile_media')
-        .select('storage_path').eq('user_id', userId).eq('kind', kind).eq('position', position).maybeSingle();
-      if (previousError) {
-        throw previousError;
-      }
+        .select('storage_path').eq('user_id', userId).eq('kind', kind).eq('position', targetPosition).maybeSingle();
+      if (previousError) throw previousError;
+
       const { error: saveError } = await client.from('profile_media').upsert({
         user_id: userId,
         kind,
-        position,
+        position: targetPosition,
         storage_path: storagePath,
         media_type: type,
         original_name: a.fileName ?? null,
         updated_at: new Date().toISOString(),
       }, { onConflict: 'user_id,kind,position' });
-      if (saveError) {
-        throw saveError;
-      }
+      if (saveError) throw saveError;
       mediaMetadataSaved = true;
+
       if (previous?.storage_path) {
         const { error: cleanupError } = await client.storage.from('usay-media').remove([previous.storage_path]);
         if (cleanupError) console.warn('Previous profile media cleanup failed:', cleanupError.message);
       }
       const media: Media = { uri: signed.signedUrl, type, name: a.fileName ?? undefined, size: a.fileSize ?? undefined, storagePath };
       if (kind === 'avatar') setAvatar(media);
-      if (kind === 'cover') setCovers(old => index === undefined
+      if (kind === 'cover') setCovers(old => targetPosition >= old.length
         ? [...old, media].slice(0, 3)
-        : old.map((m, i) => i === index ? media : m));
-      if (kind === 'post') setPosts(old => index === undefined
+        : old.map((m, i) => i === targetPosition ? media : m));
+      if (kind === 'post') setPosts(old => targetPosition >= old.length
         ? [...old, media].slice(0, 3)
-        : old.map((m, i) => i === index ? media : m));
+        : old.map((m, i) => i === targetPosition ? media : m));
       Alert.alert('Uploaded', 'Your media is now saved to your MEEi account.');
     } catch (error: any) {
       Alert.alert('Upload failed', error?.message || 'Please try again.');
     } finally {
       if (uploadedStoragePath && !mediaMetadataSaved) {
         try {
-          const { error: cleanupError } = await client.storage.from('usay-media').remove([uploadedStoragePath]);
-          if (cleanupError) console.warn('Failed profile upload left an orphaned storage file:', cleanupError.message);
+          const client = supabase;
+          if (client) {
+            const { error: cleanupError } = await client.storage.from('usay-media').remove([uploadedStoragePath]);
+            if (cleanupError) console.warn('Failed profile upload left an orphaned storage file:', cleanupError.message);
+          }
         } catch (cleanupError: any) {
           console.warn('Failed profile upload cleanup threw an error:', cleanupError?.message || cleanupError);
         }
       }
-      mediaUploadLocks.current.delete(uploadLockKey);
+      mediaUploadLocks.current.delete(galleryLockKey);
     }
   };
 
