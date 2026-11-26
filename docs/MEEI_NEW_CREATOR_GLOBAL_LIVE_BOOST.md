@@ -83,3 +83,12 @@ The product must also offer a paid, one-time Global Live Boost that any eligible
 - If the recipient is already in any Live session when the invite is due, suppress that delivery for that user and boost. Do not queue it for later.
 - This restriction is in addition to the existing requirement that the recipient must not be hosting or participating in a Live; it applies equally to being a viewer/guest inside someone else's Live room.
 - Only show the compact popup on eligible normal/social app screens, with the existing 5-second maximum, safe-area, dismissal, deduplication and notification-preference rules unchanged.
+
+
+## Final UI placement and notification policy (supersedes earlier popup placement wording)
+- Every Global Live Boost popup and every other standalone Live-streaming-related popup/banner/invite must appear only within the dedicated Live streaming page/Live discovery section.
+- Do not show any Live Boost popup or Live-streaming-related standalone popup on the public social feed, Search page, Reels page, main Profile page, or any other non-Live section.
+- Do not send Live Boost notifications at all: no push notification, system notification, inbox notification, or background notification. Boost discovery must not create a notification outside the dedicated Live page.
+- A boost may still promote an eligible creator's Live listing inside the dedicated Live discovery page/feed for the specified boost duration. This is Live-page discovery placement, not a popup/notification and not placement in the public social feed.
+- If the user is currently inside any Live room/stream/PK, do not show a separate boost popup over the room. The Live page may show its normal in-page Live discovery content only when the user is actually on that page; never overlay an active room.
+- Remove/ignore the earlier instruction to show boost popups on normal/social/home/feed pages. The final rule is Live-page-only popup placement and zero Live Boost notifications.
