@@ -327,6 +327,7 @@ export default function App() {
   const [unblockingUserId, setUnblockingUserId] = useState<string | null>(null);
   const [liveStudioVisible, setLiveStudioVisible] = useState(false);
   const [liveJoinSessionId, setLiveJoinSessionId] = useState<string | null>(null);
+  const [savingProfile, setSavingProfile] = useState(false);
   const [name, setName] = useState('MEEi User');
   const [username, setUsername] = useState('your_username');
   const [bio, setBio] = useState('Creating connections, sharing ideas and meeting amazing people.');
@@ -1665,8 +1666,8 @@ export default function App() {
 
   const saveProfile = async () => {
     const client = supabase;
-    if (!client) {
-      Alert.alert('Cloud not configured', 'Connect Supabase before saving profile changes.');
+    if (!client || savingProfile) {
+      if (!client) Alert.alert('Cloud not configured', 'Connect Supabase before saving profile changes.');
       return;
     }
     const cleanName = name.trim();
@@ -1700,44 +1701,42 @@ export default function App() {
       Alert.alert('Business details too long', 'Business name: 80 characters, category: 60, description: 500.');
       return;
     }
-    if (cleanWebsite && !/^(https?:\/\/)?([\w-]+\.)+[a-z]{2,}(\/[^\s]*)?$/i.test(cleanWebsite)) {
+    if (cleanWebsite && !/^(https?:\\/\\/)?([\\w-]+\\.)+[a-z]{2,}(\\/[^\\s]*)?$/i.test(cleanWebsite)) {
       Alert.alert('Check website', 'Enter a valid website address.');
       return;
     }
-    const { data: authData, error: sessionError } = await client.auth.getSession();
-    if (sessionError) {
-      Alert.alert('Profile not saved', sessionError.message);
-      return;
+    setSavingProfile(true);
+    try {
+      const { data: authData, error: sessionError } = await client.auth.getSession();
+      if (sessionError) throw sessionError;
+      const userId = authData.session?.user.id;
+      if (!userId) throw new Error('Please sign in again before saving your profile.');
+      const { error } = await client.from('profiles').update({
+        display_name: cleanName,
+        username: cleanUsername,
+        bio: bio.trim(),
+        website_url: cleanWebsite || null,
+        profession_category: occupation.trim() || null,
+        account_type: accountType,
+        business_name: accountType === 'business' ? cleanBusinessName : null,
+        business_category: accountType === 'business' ? cleanBusinessCategory : null,
+        business_description: accountType === 'business' ? businessDescription.trim() || null : null,
+        is_private: isPrivateAccount,
+        country_code: homeCountryCode,
+        country_name: homeCountryName,
+        activity_status: activity.toLowerCase(),
+        updated_at: new Date().toISOString(),
+      }).eq('id', userId);
+      if (error) throw error;
+      setUsername(cleanUsername);
+      setHomeCountrySearch('');
+      setEditing(false);
+      Alert.alert('Profile saved', 'Your profile details have been saved.');
+    } catch (error: any) {
+      Alert.alert('Profile not saved', error?.message || 'Please check your connection and try again.');
+    } finally {
+      setSavingProfile(false);
     }
-    const userId = authData.session?.user.id;
-    if (!userId) {
-      Alert.alert('Sign in required', 'Please sign in again before saving your profile.');
-      return;
-    }
-    const { error } = await client.from('profiles').update({
-      display_name: cleanName,
-      username: cleanUsername,
-      bio: bio.trim(),
-      website_url: cleanWebsite || null,
-      profession_category: occupation.trim() || null,
-      account_type: accountType,
-      business_name: accountType === 'business' ? cleanBusinessName : null,
-      business_category: accountType === 'business' ? cleanBusinessCategory : null,
-      business_description: accountType === 'business' ? businessDescription.trim() || null : null,
-      is_private: isPrivateAccount,
-      country_code: homeCountryCode,
-      country_name: homeCountryName,
-      activity_status: activity.toLowerCase(),
-      updated_at: new Date().toISOString(),
-    }).eq('id', userId);
-    if (error) {
-      Alert.alert('Profile not saved', error.message);
-      return;
-    }
-    setUsername(cleanUsername);
-    setHomeCountrySearch('');
-    setEditing(false);
-    Alert.alert('Profile saved', 'Your profile details have been saved.');
   };
 
   const chooseMedia = async (kind: 'avatar' | 'cover' | 'post', index?: number) => {
@@ -1764,8 +1763,8 @@ export default function App() {
     if (result.canceled || !result.assets?.[0]) return;
     const a = result.assets[0];
     const type = a.type === 'video' ? 'video' : 'image';
-    if (type === 'video' && typeof a.fileSize === 'number' && a.fileSize > 50 * 1024 * 1024) {
-      Alert.alert('Video size limit', 'Please choose a video that is 50 MB or smaller.');
+    if (typeof a.fileSize === 'number' && a.fileSize > 50 * 1024 * 1024) {
+      Alert.alert('File size limit', 'Please choose a photo or video that is 50 MB or smaller.');
       return;
     }
     const client = supabase;
@@ -1785,6 +1784,7 @@ export default function App() {
       const fileResponse = await fetch(a.uri);
       if (!fileResponse.ok) throw new Error('Could not read the selected media from this device.');
       const fileData = await fileResponse.arrayBuffer();
+      if (fileData.byteLength > 50 * 1024 * 1024) throw new Error('Photo or video must be 50 MB or smaller.');
       const storagePath = `${userId}/${kind}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${extension}`;
       const { error: uploadError } = await client.storage.from('usay-media').upload(storagePath, fileData, {
         contentType: mimeType,
@@ -1792,9 +1792,18 @@ export default function App() {
       });
       if (uploadError) throw uploadError;
 
+      const { data: signed, error: signedError } = await client.storage.from('usay-media').createSignedUrl(storagePath, 60 * 60);
+      if (signedError || !signed?.signedUrl) {
+        await client.storage.from('usay-media').remove([storagePath]);
+        throw signedError || new Error('Could not create a media preview URL.');
+      }
       const position = kind === 'avatar' ? 0 : (index ?? (kind === 'cover' ? covers.length : posts.length));
-      const { data: previous } = await client.from('profile_media')
+      const { data: previous, error: previousError } = await client.from('profile_media')
         .select('storage_path').eq('user_id', userId).eq('kind', kind).eq('position', position).maybeSingle();
+      if (previousError) {
+        await client.storage.from('usay-media').remove([storagePath]);
+        throw previousError;
+      }
       const { error: saveError } = await client.from('profile_media').upsert({
         user_id: userId,
         kind,
@@ -1808,9 +1817,10 @@ export default function App() {
         await client.storage.from('usay-media').remove([storagePath]);
         throw saveError;
       }
-      if (previous?.storage_path) await client.storage.from('usay-media').remove([previous.storage_path]);
-      const { data: signed, error: signedError } = await client.storage.from('usay-media').createSignedUrl(storagePath, 60 * 60);
-      if (signedError || !signed?.signedUrl) throw signedError || new Error('Could not create a media preview URL.');
+      if (previous?.storage_path) {
+        const { error: cleanupError } = await client.storage.from('usay-media').remove([previous.storage_path]);
+        if (cleanupError) console.warn('Previous profile media cleanup failed:', cleanupError.message);
+      }
       const media: Media = { uri: signed.signedUrl, type, name: a.fileName ?? undefined, size: a.fileSize ?? undefined, storagePath };
       if (kind === 'avatar') setAvatar(media);
       if (kind === 'cover') setCovers(old => index === undefined
@@ -2613,7 +2623,7 @@ export default function App() {
           <Text style={s.hint}>{isPrivateAccount ? 'New followers must be approved before they can view your private content.' : 'Anyone signed in can discover and follow your public profile.'}</Text>
           <Text style={s.fieldLabel}>Activity status</Text>
           <View style={s.activityGrid}>{['Available','Busy','Work','Drive','Gym','School','College'].map(x=><Pressable key={x} onPress={()=>setActivity(x)} style={[s.activityChip,activity===x&&s.activityActive]}><Text style={[s.activityText,activity===x&&{color:C.cyan}]}>{x}</Text></Pressable>)}</View>
-          <Pressable style={s.primary} onPress={saveProfile}><Text style={s.primaryText}>Save profile</Text></Pressable>
+          <Pressable style={[s.primary, savingProfile && { opacity: 0.6 }]} disabled={savingProfile} onPress={saveProfile}><Text style={s.primaryText}>{savingProfile ? 'Saving…' : 'Save profile'}</Text></Pressable>
         </ScrollView></View>
       </Modal>
       <Modal visible={coverExpanded} transparent animationType="fade" onRequestClose={()=>setCoverExpanded(false)}>
