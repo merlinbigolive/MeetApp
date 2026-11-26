@@ -74,3 +74,12 @@ The product must also offer a paid, one-time Global Live Boost that any eligible
 - Use a subtle, brief entrance/exit transition; respect reduced-motion settings and avoid flashing, loud, or aggressive animation.
 - Do not cover essential navigation, system status indicators, Live controls, or important content. Adapt placement/size for small screens, notches and accessibility text scaling.
 - Do not repeatedly reopen a popup the user dismissed for the same boost. Respect notification preferences and delivery throttles so the experience feels informative rather than irritating.
+
+
+### Popup screen-state and Live-room suppression (clarification)
+- Deliver/show a Global Live Boost invite popup only while the recipient is not hosting, streaming, or participating in any Live session, and is browsing a normal non-Live app screen (for example, the social/home/feed pages).
+- Never display this boost invite popup over a Live room, a Live streaming/broadcast screen, a PK screen, or any other active Live experience. Do not place it outside the Live UI as an overlay while the user is inside a Live room.
+- Re-check the recipient's current Live/session state immediately before delivery and again before rendering. If they start or join a Live while an invite is pending or visible, cancel/dismiss it immediately; do not defer it or replay it after that Live ends.
+- If the recipient is already in any Live session when the invite is due, suppress that delivery for that user and boost. Do not queue it for later.
+- This restriction is in addition to the existing requirement that the recipient must not be hosting or participating in a Live; it applies equally to being a viewer/guest inside someone else's Live room.
+- Only show the compact popup on eligible normal/social app screens, with the existing 5-second maximum, safe-area, dismissal, deduplication and notification-preference rules unchanged.
