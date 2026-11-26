@@ -209,8 +209,8 @@ export default function LiveBroadcastModal({ visible, sessionId, creatorName, on
       body: { action: "pk_respond", battle_id: invite.battle_id, accept },
     });
     setPkBusy(false);
-    if (error || data?.error) {
-      Alert.alert("PK response failed", data?.error || error?.message || "Please try again.");
+    if (error || data?.error || data?.ok !== true) {
+      Alert.alert("PK response failed", data?.error || error?.message || "This invitation expired or the other creator left Live.");
       return;
     }
     setPkInvites(items => items.filter(item => item.battle_id !== invite.battle_id));
@@ -323,8 +323,8 @@ export default function LiveBroadcastModal({ visible, sessionId, creatorName, on
   const moderateViewer = (action: "mute" | "kickout" | "block") => {
     if (!selectedViewer || !chatSessionId || !supabase || !canModerate || moderationBusy) return;
     const labels = {
-      mute: "Mute this viewer in the PK chat for 15 minutes?",
-      kickout: "Remove this viewer from both PK rooms?",
+      mute: pkBattle?.status === "active" ? "Mute this viewer in both PK chats for 15 minutes?" : "Mute this viewer in Live chat for 15 minutes?",
+      kickout: pkBattle?.status === "active" ? "Remove this viewer from both PK rooms?" : "Remove this viewer from this Live?",
       block: "Block this viewer from your future Lives and remove them from this Live?",
     };
     Alert.alert(action === "kickout" ? "Kick out viewer" : action === "block" ? "Block viewer" : "Mute viewer", labels[action], [
@@ -394,6 +394,12 @@ export default function LiveBroadcastModal({ visible, sessionId, creatorName, on
   const finishLive = async () => {
     if (ending) return;
     setEnding(true);
+    if (supabase && !isCreator && chatMembershipId) {
+      const { error: membershipEndError } = await supabase.rpc("end_live_chat_membership", {
+        target_membership_id: chatMembershipId,
+      });
+      if (membershipEndError) console.warn("Live chat membership could not be closed on leave.");
+    }
     if (supabase && isCreator && activeSessionId) {
       const { error, data } = await supabase.functions.invoke("livekit-control", {
         body: { action: "end", session_id: activeSessionId },
@@ -490,10 +496,11 @@ export default function LiveBroadcastModal({ visible, sessionId, creatorName, on
                 <Text style={styles.livePill}>● LIVE</Text>
                 <Text style={styles.liveTitle}>{title}</Text>
                 {pkBattle?.status === "active" && <Text style={styles.pkTimer}>⚔ PK {Math.floor(pkSecondsRemaining / 60)}:{String(pkSecondsRemaining % 60).padStart(2, "0")}</Text>}
-                {pkBattle?.status === "invited" && isCreator && <Text style={styles.pkTimer}>PK invitation sent…</Text>}
+                {pkBattle?.status === "invited" && isCreator && pkBattle?.invite_is_outgoing && <Text style={styles.pkTimer}>PK invitation sent…</Text>}
               </View>
               <View style={styles.liveHeaderActions}>
-                {isCreator && !!activeSessionId && <Pressable onPress={openPkPanel} style={styles.pkButton}><Text style={styles.pkButtonText}>PK</Text></Pressable>}
+                {isCreator && !!activeSessionId && !pkBattle && <Pressable onPress={openPkPanel} style={styles.pkButton}><Text style={styles.pkButtonText}>PK</Text></Pressable>}
+                {isCreator && pkBattle?.status === "invited" && <Pressable onPress={endPkBattle} disabled={pkBusy} style={styles.pkEndButton}><Text style={styles.endText}>Cancel invite</Text></Pressable>}
                 {isCreator && pkBattle?.status === "active" && <Pressable onPress={endPkBattle} disabled={pkBusy} style={styles.pkEndButton}><Text style={styles.endText}>End PK</Text></Pressable>}
                 <Pressable onPress={finishLive} disabled={ending} style={styles.endButton}>
                   {ending ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.endText}>{isCreator ? "End Live" : "Leave"}</Text>}
