@@ -8,7 +8,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
-import * as Contacts from 'expo-contacts/legacy';
+import * as Contacts from 'expo-contacts';
 import * as Localization from 'expo-localization';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { useAudioPlayer, useAudioPlayerStatus } from 'expo-audio';
