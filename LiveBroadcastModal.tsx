@@ -39,6 +39,7 @@ export default function LiveBroadcastModal({ visible, sessionId, creatorName, on
   const [showPkPanel, setShowPkPanel] = useState(false);
   const [pkBusy, setPkBusy] = useState(false);
   const [pkNow, setPkNow] = useState(Date.now());
+  const [pkServerOffsetMs, setPkServerOffsetMs] = useState(0);
   const pkConnectRef = useRef<string | null>(null);
   const [chatDraft, setChatDraft] = useState("");
   const [chatBusy, setChatBusy] = useState(false);
@@ -90,7 +91,7 @@ export default function LiveBroadcastModal({ visible, sessionId, creatorName, on
   const chatSessionId = sessionId || activeSessionId;
   const canModerate = isCreator || moderationRole === "moderator";
   const pkSecondsRemaining = pkBattle?.ends_at
-    ? Math.max(0, Math.ceil((new Date(pkBattle.ends_at).getTime() - pkNow) / 1000))
+    ? Math.max(0, Math.ceil((new Date(pkBattle.ends_at).getTime() - (pkNow + pkServerOffsetMs)) / 1000))
     : 0;
 
   useEffect(() => {
@@ -126,6 +127,7 @@ export default function LiveBroadcastModal({ visible, sessionId, creatorName, on
       if (cancelled || error) return;
       const battle = Array.isArray(data) ? data[0] : null;
       setPkBattle(battle || null);
+      if (battle?.server_now) setPkServerOffsetMs(new Date(battle.server_now).getTime() - Date.now());
       if (!battle || battle.status !== "active") {
         pkConnectRef.current = null;
         setPkOpponentCredentials(null);
