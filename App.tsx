@@ -2093,7 +2093,9 @@ export default function App() {
             {!followedUserIds.includes(post.author.id) && <Pressable disabled={followBusyIds.includes(post.author.id)} onPress={() => void toggleFollow(post.author)} style={[s.feedFollowButton, pendingFollowIds.includes(post.author.id) && s.followingButton]}><Text style={[s.feedFollowText, pendingFollowIds.includes(post.author.id) && s.followingButtonText]}>{followBusyIds.includes(post.author.id) ? '…' : pendingFollowIds.includes(post.author.id) ? 'Requested' : 'Follow'}</Text></Pressable>}
             <Pressable onPress={() => Alert.alert('Post options', 'Choose an action for this post.', [
               { text: 'Not interested', onPress: () => setFeedPosts(old => old.filter(item => item.id !== post.id)) },
+              { text: 'Hide this post', onPress: () => setFeedPosts(old => old.filter(item => item.id !== post.id)) },
               { text: 'Report', onPress: () => setReportPost(post) },
+              { text: 'Block Creator', style: 'destructive', onPress: () => blockProfile(post.author) },
               { text: 'Cancel', style: 'cancel' },
             ])} style={{padding:8}}><Ionicons name="ellipsis-horizontal" size={21} color={C.text}/></Pressable>
           </View>
