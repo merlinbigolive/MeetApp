@@ -33,6 +33,17 @@ jobs:
       - name: Install dependencies
         run: npm install --no-package-lock
 
+      - name: Generate temporary dependency lock for audit
+        run: npm install --package-lock-only --ignore-scripts
+
+      - name: Audit dependencies
+        run: |
+          npm audit --json > npm-audit.json || true
+          node -e "const a=require('./npm-audit.json'); console.log(JSON.stringify({summary:a.metadata?.vulnerabilities, vulnerabilities:Object.entries(a.vulnerabilities||{}).map(([name,v])=>({name,severity:v.severity,isDirect:v.isDirect,range:v.range,fixAvailable:v.fixAvailable}))}, null, 2))"
+
+      - name: Expo Doctor
+        run: npx expo-doctor
+
       - name: TypeScript strict check
         run: npm run typecheck
 
