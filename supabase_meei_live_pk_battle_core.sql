@@ -1,5 +1,5 @@
 -- MEEi Live PK 1v1 battle schema, RPCs, moderation, locks and security.
--- Current source snapshot of the deployed Supabase definitions.
+-- Current source snapshot of deployed Supabase definitions.
 
 create table if not exists public.live_pk_battles (
   id uuid primary key default gen_random_uuid(),
@@ -78,74 +78,51 @@ end;
 $function$
 
 
-CREATE OR REPLACE FUNCTION public.create_live_pk_invite(target_opponent_session_id uuid, selected_duration_minutes integer)
+CREATE OR REPLACE FUNCTION public.create_live_pk_invite_server(actor_id uuid, target_opponent_session_id uuid, selected_duration_minutes integer)
  RETURNS uuid
  LANGUAGE plpgsql
  SECURITY DEFINER
  SET search_path TO 'public', 'pg_temp'
 AS $function$
 declare
-  actor uuid := auth.uid();
+  actor uuid := actor_id;
   own_session public.live_sessions%rowtype;
   opponent_session public.live_sessions%rowtype;
-  opponent_allowed boolean;
   battle_id uuid;
 begin
   if actor is null then raise exception 'Sign in required.'; end if;
   if selected_duration_minutes not in (5,10,15) then raise exception 'Choose 5, 10 or 15 minutes.'; end if;
-
   select * into own_session from public.live_sessions
-  where user_id = actor and status = 'live'
-    and last_heartbeat_at > now() - interval '90 seconds'
+  where user_id=actor and status='live' and last_heartbeat_at>now()-interval '90 seconds'
   order by started_at desc nulls last limit 1;
   if own_session.id is null then raise exception 'You must be Live to invite an opponent.'; end if;
-
-  perform 1 from public.live_sessions
-  where id in (own_session.id, target_opponent_session_id)
-  order by id for update;
-
+  perform 1 from public.live_sessions where id in (own_session.id,target_opponent_session_id) order by id for update;
   select * into opponent_session from public.live_sessions
-  where id = target_opponent_session_id and status = 'live'
-    and last_heartbeat_at > now() - interval '90 seconds';
+  where id=target_opponent_session_id and status='live'
+    and last_heartbeat_at>now()-interval '90 seconds';
   if opponent_session.id is null then raise exception 'This creator is no longer Live.'; end if;
-  if opponent_session.user_id = actor then raise exception 'You cannot PK with yourself.'; end if;
-  select ce.allowed into opponent_allowed from public.check_live_entry(target_opponent_session_id) ce;
-  if not coalesce(opponent_allowed,false) or public.is_blocked_for_current_user(opponent_session.user_id) then
-    raise exception 'You are not allowed to invite this creator.';
-  end if;
-
+  if opponent_session.user_id=actor then raise exception 'You cannot PK with yourself.'; end if;
   update public.live_pk_battles
-  set status = case
-    when status = 'invited' and invite_expires_at <= now() then 'expired'
-    when status = 'active' and ends_at <= now() then 'ended'
-    else status end,
-    ended_at = case
-      when (status = 'invited' and invite_expires_at <= now())
-        or (status = 'active' and ends_at <= now()) then now()
-      else ended_at end
+  set status=case when status='invited' and invite_expires_at<=now() then 'expired'
+                  when status='active' and ends_at<=now() then 'ended' else status end,
+      ended_at=case when (status='invited' and invite_expires_at<=now())
+                     or (status='active' and ends_at<=now()) then now() else ended_at end
   where status in ('invited','active')
-    and (session_a_id in (own_session.id, opponent_session.id)
-      or session_b_id in (own_session.id, opponent_session.id));
-
+    and (session_a_id in (own_session.id,opponent_session.id)
+      or session_b_id in (own_session.id,opponent_session.id));
   if exists (
-    select 1 from public.live_pk_battles
-    where status in ('invited','active')
-      and (session_a_id in (own_session.id, opponent_session.id)
-        or session_b_id in (own_session.id, opponent_session.id))
+    select 1 from public.live_pk_battles where status in ('invited','active')
+      and (session_a_id in (own_session.id,opponent_session.id)
+        or session_b_id in (own_session.id,opponent_session.id))
   ) then raise exception 'One of these creators is already in a PK or has a pending invite.'; end if;
-
-  if own_session.id < opponent_session.id then
-    insert into public.live_pk_battles(
-      session_a_id, session_b_id, creator_a_id, creator_b_id, invited_by, duration_minutes
-    ) values (
-      own_session.id, opponent_session.id, own_session.user_id, opponent_session.user_id, actor, selected_duration_minutes
-    ) returning id into battle_id;
+  if own_session.id<opponent_session.id then
+    insert into public.live_pk_battles(session_a_id,session_b_id,creator_a_id,creator_b_id,invited_by,duration_minutes)
+    values(own_session.id,opponent_session.id,own_session.user_id,opponent_session.user_id,actor,selected_duration_minutes)
+    returning id into battle_id;
   else
-    insert into public.live_pk_battles(
-      session_a_id, session_b_id, creator_a_id, creator_b_id, invited_by, duration_minutes
-    ) values (
-      opponent_session.id, own_session.id, opponent_session.user_id, own_session.user_id, actor, selected_duration_minutes
-    ) returning id into battle_id;
+    insert into public.live_pk_battles(session_a_id,session_b_id,creator_a_id,creator_b_id,invited_by,duration_minutes)
+    values(opponent_session.id,own_session.id,opponent_session.user_id,own_session.user_id,actor,selected_duration_minutes)
+    returning id into battle_id;
   end if;
   return battle_id;
 end;
@@ -330,14 +307,14 @@ AS $function$
 $function$
 
 
-CREATE OR REPLACE FUNCTION public.moderate_live_pk_viewer(target_battle_id uuid, target_viewer_id uuid, moderation_action text)
+CREATE OR REPLACE FUNCTION public.moderate_live_pk_viewer_server(actor_id uuid, target_battle_id uuid, target_viewer_id uuid, moderation_action text)
  RETURNS boolean
  LANGUAGE plpgsql
  SECURITY DEFINER
  SET search_path TO 'public', 'pg_temp'
 AS $function$
 declare
-  actor uuid := auth.uid();
+  actor uuid := actor_id;
   battle public.live_pk_battles%rowtype;
   actor_allowed boolean;
 begin
@@ -347,72 +324,61 @@ begin
     select creator_a_id from public.live_pk_battles where id=target_battle_id
     union select creator_b_id from public.live_pk_battles where id=target_battle_id
   ) then raise exception 'A PK creator cannot be moderated as a viewer.'; end if;
-
   select * into battle from public.live_pk_battles
   where id=target_battle_id and status='active' and ends_at>now();
   if battle.id is null then raise exception 'This PK is no longer active.'; end if;
-
   select (
     actor in (battle.creator_a_id,battle.creator_b_id)
-    or exists (select 1 from public.live_moderators lm
-      where lm.creator_id=battle.creator_a_id and lm.moderator_id=actor and lm.revoked_at is null)
-    or exists (select 1 from public.live_moderators lm
-      where lm.creator_id=battle.creator_b_id and lm.moderator_id=actor and lm.revoked_at is null)
+    or exists(select 1 from public.live_moderators lm where lm.creator_id=battle.creator_a_id and lm.moderator_id=actor and lm.revoked_at is null)
+    or exists(select 1 from public.live_moderators lm where lm.creator_id=battle.creator_b_id and lm.moderator_id=actor and lm.revoked_at is null)
   ) into actor_allowed;
   if not actor_allowed then raise exception 'Only a PK creator or authorized room admin can moderate.'; end if;
-
   insert into public.live_moderation_actions(creator_id,viewer_id,session_id,action,expires_at)
   values
     (battle.creator_a_id,target_viewer_id,battle.session_a_id,moderation_action,
       case when moderation_action='mute' then now()+interval '15 minutes' else null end),
     (battle.creator_b_id,target_viewer_id,battle.session_b_id,moderation_action,
       case when moderation_action='mute' then now()+interval '15 minutes' else null end);
-
   insert into public.live_pk_moderation_audit(battle_id,actor_id,target_viewer_id,moderation_action)
-  values (battle.id,actor,target_viewer_id,moderation_action);
+  values(battle.id,actor,target_viewer_id,moderation_action);
   return true;
 end;
 $function$
 
 
-CREATE OR REPLACE FUNCTION public.respond_live_pk_invite(target_battle_id uuid, accept_invite boolean)
+CREATE OR REPLACE FUNCTION public.respond_live_pk_invite_server(actor_id uuid, target_battle_id uuid, accept_invite boolean)
  RETURNS boolean
  LANGUAGE plpgsql
  SECURITY DEFINER
  SET search_path TO 'public', 'pg_temp'
 AS $function$
 declare
-  actor uuid := auth.uid();
+  actor uuid := actor_id;
   battle public.live_pk_battles%rowtype;
   session_count integer;
 begin
   if actor is null then raise exception 'Sign in required.'; end if;
-  select * into battle from public.live_pk_battles
-  where id = target_battle_id for update;
-  if battle.id is null or battle.status <> 'invited' then return false; end if;
-  if battle.invited_by = actor or actor not in (battle.creator_a_id, battle.creator_b_id) then
+  select * into battle from public.live_pk_battles where id=target_battle_id for update;
+  if battle.id is null or battle.status<>'invited' then return false; end if;
+  if battle.invited_by=actor or actor not in (battle.creator_a_id,battle.creator_b_id) then
     raise exception 'Only the invited creator can respond.';
   end if;
-  if battle.invite_expires_at <= now() then
-    update public.live_pk_battles set status='expired', ended_at=now() where id=battle.id;
+  if battle.invite_expires_at<=now() then
+    update public.live_pk_battles set status='expired',ended_at=now() where id=battle.id;
     return false;
   end if;
-
   select count(*) into session_count from public.live_sessions
-  where id in (battle.session_a_id, battle.session_b_id)
-    and status='live' and last_heartbeat_at > now() - interval '90 seconds';
-  if session_count <> 2 then
-    update public.live_pk_battles set status='cancelled', ended_at=now() where id=battle.id;
+  where id in (battle.session_a_id,battle.session_b_id)
+    and status='live' and last_heartbeat_at>now()-interval '90 seconds';
+  if session_count<>2 then
+    update public.live_pk_battles set status='cancelled',ended_at=now() where id=battle.id;
     return false;
   end if;
-
   if accept_invite then
-    update public.live_pk_battles
-    set status='active', started_at=now(),
-        ends_at=now() + make_interval(mins => duration_minutes)
-    where id=battle.id;
+    update public.live_pk_battles set status='active',started_at=now(),
+      ends_at=now()+make_interval(mins=>duration_minutes) where id=battle.id;
   else
-    update public.live_pk_battles set status='declined', ended_at=now() where id=battle.id;
+    update public.live_pk_battles set status='declined',ended_at=now() where id=battle.id;
   end if;
   return true;
 end;
@@ -457,20 +423,21 @@ end;
 $function$
 
 
-revoke all on function public.create_live_pk_invite(uuid,integer) from public,anon;
-revoke all on function public.respond_live_pk_invite(uuid,boolean) from public,anon;
+revoke all on function public.create_live_pk_invite_server(uuid,uuid,integer) from public,anon,authenticated;
+revoke all on function public.respond_live_pk_invite_server(uuid,uuid,boolean) from public,anon,authenticated;
+revoke all on function public.moderate_live_pk_viewer_server(uuid,uuid,uuid,text) from public,anon,authenticated;
+grant execute on function public.create_live_pk_invite_server(uuid,uuid,integer) to service_role;
+grant execute on function public.respond_live_pk_invite_server(uuid,uuid,boolean) to service_role;
+grant execute on function public.moderate_live_pk_viewer_server(uuid,uuid,uuid,text) to service_role;
+
 revoke all on function public.list_my_live_pk_invites() from public,anon;
 revoke all on function public.get_live_pk_state(uuid) from public,anon;
 revoke all on function public.end_live_pk_battle(uuid) from public,anon;
 revoke all on function public.get_live_pk_chat_messages(uuid,uuid,integer) from public,anon;
-revoke all on function public.moderate_live_pk_viewer(uuid,uuid,text) from public,anon;
-grant execute on function public.create_live_pk_invite(uuid,integer) to authenticated;
-grant execute on function public.respond_live_pk_invite(uuid,boolean) to authenticated;
 grant execute on function public.list_my_live_pk_invites() to authenticated;
 grant execute on function public.get_live_pk_state(uuid) to authenticated;
 grant execute on function public.end_live_pk_battle(uuid) to authenticated;
 grant execute on function public.get_live_pk_chat_messages(uuid,uuid,integer) to authenticated;
-grant execute on function public.moderate_live_pk_viewer(uuid,uuid,text) to authenticated;
 
 create or replace function public.sync_live_pk_session_locks()
 returns trigger language plpgsql security definer set search_path = public, pg_temp as $$
@@ -502,7 +469,7 @@ create or replace function public.end_live_pk_when_session_ends()
 returns trigger language plpgsql security definer set search_path = public, pg_temp as $$
 begin
   if old.status is distinct from new.status and new.status='ended' then
-    update public.live_pk_battles set status='ended', ended_at=coalesce(ended_at,now())
+    update public.live_pk_battles set status='ended',ended_at=coalesce(ended_at,now())
     where status in ('invited','active') and (session_a_id=new.id or session_b_id=new.id);
   end if;
   return new;
