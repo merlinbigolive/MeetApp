@@ -68,7 +68,8 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
           const emailName = (session.user.email || 'meeiuser').split('@')[0]
             .toLowerCase().replace(/[^a-z0-9_]/g, '').slice(0, 18) || 'meeiuser';
           const username = emailName + '_' + session.user.id.slice(0, 6);
-          const displayName = session.user.user_metadata?.display_name || emailName;
+          const metadataDisplayName = session.user.user_metadata?.display_name;
+          const displayName = (typeof metadataDisplayName === 'string' ? metadataDisplayName.trim().slice(0, 40) : '') || emailName;
           const { error: insertError } = await client.from('profiles').insert({
             id: session.user.id,
             username,
