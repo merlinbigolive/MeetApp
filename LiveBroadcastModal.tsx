@@ -639,6 +639,23 @@ function RoomTracks({
   );
 }
 
+function OpponentTracks() {
+  const tracks = useTracks([Track.Source.Camera]);
+  const videoTracks = tracks.filter(isTrackReference);
+  return (
+    <View style={styles.trackStage}>
+      {videoTracks.length ? videoTracks.map((trackRef) => (
+        <VideoTrack key={trackRef.participant.identity} trackRef={trackRef} style={styles.video} />
+      )) : (
+        <View style={styles.cameraPlaceholder}>
+          <ActivityIndicator color="#FFFFFF" />
+          <Text style={styles.cameraText}>Connecting opponent video…</Text>
+        </View>
+      )}
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: "#071522" },
   header: { height: 58, paddingHorizontal: 18, flexDirection: "row", alignItems: "center", justifyContent: "space-between", borderBottomWidth: 1, borderBottomColor: "#1C3142" },
