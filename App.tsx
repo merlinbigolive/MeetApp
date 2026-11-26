@@ -2496,14 +2496,12 @@ export default function App() {
             <Text style={s.hint}>Choose the reason that best describes the issue. Your report is private.</Text>
             <ScrollView style={{ marginTop: 10 }} keyboardShouldPersistTaps="handled">
               {([
-                ['spam', 'Spam or misleading'],
-                ['harassment', 'Harassment or bullying'],
-                ['hate', 'Hate or hateful conduct'],
-                ['violence', 'Violence or dangerous acts'],
-                ['nudity', 'Nudity or sexual content'],
-                ['scam', 'Spam or scam'],
-                ['fake_information', 'Fake information'],
-                ['copyright', 'Copyright concern'],
+                ['nudity', 'Nudity / Sexual Content'],
+                ['violence', 'Violence'],
+                ['hate', 'Hate Speech'],
+                ['harassment', 'Harassment / Bullying'],
+                ['spam', 'Spam / Scam'],
+                ['fake_information', 'Fake Information'],
                 ['other', 'Other'],
               ] as const).map(([reason, label]) => (
                 <Pressable key={reason} disabled={!reportPost || reportBusyIds.includes(reportPost.id)} onPress={() => {
