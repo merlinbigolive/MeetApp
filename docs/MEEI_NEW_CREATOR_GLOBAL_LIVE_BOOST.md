@@ -92,3 +92,13 @@ The product must also offer a paid, one-time Global Live Boost that any eligible
 - A boost may still promote an eligible creator's Live listing inside the dedicated Live discovery page/feed for the specified boost duration. This is Live-page discovery placement, not a popup/notification and not placement in the public social feed.
 - If the user is currently inside any Live room/stream/PK, do not show a separate boost popup over the room. The Live page may show its normal in-page Live discovery content only when the user is actually on that page; never overlay an active room.
 - Remove/ignore the earlier instruction to show boost popups on normal/social/home/feed pages. The final rule is Live-page-only popup placement and zero Live Boost notifications.
+
+
+## Latest clarification: Live-room viewer-only popup eligibility (supersedes all earlier popup placement rules)
+- Global Live Boost popups and every other standalone Live-streaming-related popup/banner/invite may appear **only inside an active Live room**, and only to ordinary users who are viewers in that room.
+- Do not show these popups to either creator/participant who is actively playing a PK battle. Both PK participants are fully excluded, regardless of which room initiated the PK.
+- The popup must not appear on the Live discovery page outside a room, public social feed, Search, Reels, Profile, or any other screen outside an active Live room.
+- No Live Boost notifications of any kind: no push, system, inbox, or background notifications.
+- Enforce eligibility server-side and re-check the recipient's current room role and PK participation immediately before rendering. If the user becomes a PK participant, suppress/dismiss the popup immediately; do not queue or replay it later.
+- Ordinary viewers inside Live rooms may see eligible popups subject to the existing safety, block, privacy, deduplication, throttle, safe-area, accessibility and five-second display rules.
+- This latest viewer-only, active-Live-room rule supersedes all earlier conflicting popup placement and suppression wording in this document. Boosted Live discovery ranking may continue separately, but it must not create a popup outside an active Live room.
