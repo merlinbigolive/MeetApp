@@ -1850,6 +1850,8 @@ export default function App() {
       return;
     }
     mediaUploadLocks.current.add(uploadLockKey);
+    let uploadedStoragePath: string | null = null;
+    let mediaMetadataSaved = false;
     try {
       const mimeType = a.mimeType || (type === 'video' ? 'video/mp4' : 'image/jpeg');
       const extension = mimeType.split('/')[1]?.replace('jpeg', 'jpg').split(';')[0] || (type === 'video' ? 'mp4' : 'jpg');
@@ -1863,17 +1865,16 @@ export default function App() {
         upsert: false,
       });
       if (uploadError) throw uploadError;
+      uploadedStoragePath = storagePath;
 
       const { data: signed, error: signedError } = await client.storage.from('usay-media').createSignedUrl(storagePath, 60 * 60);
       if (signedError || !signed?.signedUrl) {
-        await client.storage.from('usay-media').remove([storagePath]);
         throw signedError || new Error('Could not create a media preview URL.');
       }
       const position = targetPosition;
       const { data: previous, error: previousError } = await client.from('profile_media')
         .select('storage_path').eq('user_id', userId).eq('kind', kind).eq('position', position).maybeSingle();
       if (previousError) {
-        await client.storage.from('usay-media').remove([storagePath]);
         throw previousError;
       }
       const { error: saveError } = await client.from('profile_media').upsert({
@@ -1886,9 +1887,9 @@ export default function App() {
         updated_at: new Date().toISOString(),
       }, { onConflict: 'user_id,kind,position' });
       if (saveError) {
-        await client.storage.from('usay-media').remove([storagePath]);
         throw saveError;
       }
+      mediaMetadataSaved = true;
       if (previous?.storage_path) {
         const { error: cleanupError } = await client.storage.from('usay-media').remove([previous.storage_path]);
         if (cleanupError) console.warn('Previous profile media cleanup failed:', cleanupError.message);
@@ -1905,6 +1906,14 @@ export default function App() {
     } catch (error: any) {
       Alert.alert('Upload failed', error?.message || 'Please try again.');
     } finally {
+      if (uploadedStoragePath && !mediaMetadataSaved) {
+        try {
+          const { error: cleanupError } = await client.storage.from('usay-media').remove([uploadedStoragePath]);
+          if (cleanupError) console.warn('Failed profile upload left an orphaned storage file:', cleanupError.message);
+        } catch (cleanupError: any) {
+          console.warn('Failed profile upload cleanup threw an error:', cleanupError?.message || cleanupError);
+        }
+      }
       mediaUploadLocks.current.delete(uploadLockKey);
     }
   };
