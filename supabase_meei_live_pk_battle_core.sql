@@ -1,5 +1,5 @@
 -- MEEi Live PK 1v1 battle schema, RPCs, moderation, locks and security.
--- Source snapshot of the active Supabase database definitions.
+-- Current source snapshot of the deployed Supabase definitions.
 
 create table if not exists public.live_pk_battles (
   id uuid primary key default gen_random_uuid(),
@@ -255,7 +255,7 @@ $function$
 
 
 CREATE OR REPLACE FUNCTION public.get_live_pk_state(target_session_id uuid)
- RETURNS TABLE(battle_id uuid, status text, duration_minutes integer, started_at timestamp with time zone, ends_at timestamp with time zone, opponent_session_id uuid, opponent_user_id uuid, opponent_username text, opponent_display_name text, invite_is_outgoing boolean)
+ RETURNS TABLE(battle_id uuid, status text, duration_minutes integer, started_at timestamp with time zone, ends_at timestamp with time zone, opponent_session_id uuid, opponent_user_id uuid, opponent_username text, opponent_display_name text, invite_is_outgoing boolean, server_now timestamp with time zone)
  LANGUAGE plpgsql
  SECURITY DEFINER
  SET search_path TO 'public', 'pg_temp'
@@ -264,24 +264,23 @@ declare
   actor uuid := auth.uid();
   battle public.live_pk_battles%rowtype;
   host_id uuid;
+  opponent_session_id uuid;
+  opponent_allowed boolean;
 begin
   if actor is null then raise exception 'Sign in required.'; end if;
-  update public.live_pk_battles b
-  set status='expired', ended_at=now()
-  where b.status='invited' and b.invite_expires_at <= now()
+  update public.live_pk_battles b set status='expired', ended_at=now()
+  where b.status='invited' and b.invite_expires_at<=now()
     and (b.session_a_id=target_session_id or b.session_b_id=target_session_id);
-  update public.live_pk_battles b
-  set status='ended', ended_at=now()
-  where b.status='active' and b.ends_at <= now()
+  update public.live_pk_battles b set status='ended', ended_at=now()
+  where b.status='active' and b.ends_at<=now()
     and (b.session_a_id=target_session_id or b.session_b_id=target_session_id);
-  update public.live_pk_battles b
-  set status='cancelled', ended_at=now()
+  update public.live_pk_battles b set status='cancelled', ended_at=now()
   where b.status in ('invited','active')
     and (b.session_a_id=target_session_id or b.session_b_id=target_session_id)
     and not exists (
       select 1 from public.live_sessions ls
       where ls.id in (b.session_a_id,b.session_b_id)
-        and ls.status='live' and ls.last_heartbeat_at > now() - interval '90 seconds'
+        and ls.status='live' and ls.last_heartbeat_at>now()-interval '90 seconds'
       group by b.id having count(*)=2
     );
   select * into battle from public.live_pk_battles b
@@ -290,18 +289,23 @@ begin
   order by b.created_at desc limit 1;
   if battle.id is null then return; end if;
   select ls.user_id into host_id from public.live_sessions ls where ls.id=target_session_id;
-  if actor <> host_id then
+  opponent_session_id := case when battle.session_a_id=target_session_id then battle.session_b_id else battle.session_a_id end;
+  if actor<>host_id then
     if not coalesce((select ce.allowed from public.check_live_entry(target_session_id) ce),false) then
       raise exception 'You are not allowed to view this PK.';
     end if;
+    select ce.allowed into opponent_allowed from public.check_live_entry(opponent_session_id) ce;
+    if not coalesce(opponent_allowed,false) then
+      raise exception 'You are not allowed to view the opponent side of this PK.';
+    end if;
   end if;
   return query
-  select battle.id, battle.status, battle.duration_minutes, battle.started_at, battle.ends_at,
-    case when battle.session_a_id=target_session_id then battle.session_b_id else battle.session_a_id end,
+  select battle.id,battle.status,battle.duration_minutes,battle.started_at,battle.ends_at,
+    opponent_session_id,
     case when battle.session_a_id=target_session_id then battle.creator_b_id else battle.creator_a_id end,
-    p.username, p.display_name, (battle.invited_by=actor)
+    p.username,p.display_name,(battle.invited_by=actor),now()
   from public.profiles p
-  where p.id = case when battle.session_a_id=target_session_id then battle.creator_b_id else battle.creator_a_id end;
+  where p.id=case when battle.session_a_id=target_session_id then battle.creator_b_id else battle.creator_a_id end;
 end;
 $function$
 
