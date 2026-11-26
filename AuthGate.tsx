@@ -24,14 +24,24 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
       return;
     }
     let alive = true;
-    supabase.auth.getSession().then(({ data, error }) => {
-      if (!alive) return;
+    let authEventVersion = 0;
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      authEventVersion += 1;
+      if (alive) {
+        setSession(nextSession);
+        setChecking(false);
+      }
+    });
+    const versionBeforeSessionCheck = authEventVersion;
+    void supabase.auth.getSession().then(({ data, error }) => {
+      if (!alive || authEventVersion !== versionBeforeSessionCheck) return;
       if (error) setMessage(error.message);
       setSession(data.session);
       setChecking(false);
-    });
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
-      if (alive) setSession(nextSession);
+    }).catch((error: any) => {
+      if (!alive || authEventVersion !== versionBeforeSessionCheck) return;
+      setMessage(error?.message || 'Could not restore your session. Please try again.');
+      setChecking(false);
     });
     return () => {
       alive = false;
@@ -64,7 +74,14 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
             username,
             display_name: displayName,
           });
-          if (insertError) throw new Error('Could not create your profile: ' + insertError.message);
+          if (insertError) {
+            // A parallel session/bootstrap may have created this profile after the initial lookup.
+            const { data: existingProfile, error: retryError } = await client
+              .from('profiles').select('id').eq('id', session.user.id).maybeSingle();
+            if (retryError || !existingProfile) {
+              throw new Error('Could not create your profile: ' + insertError.message);
+            }
+          }
         }
         if (active) setProfileReady(true);
       } catch (error: any) {
@@ -85,16 +102,21 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
     }
     setBusy(true);
     setMessage('');
-    const { error } = await client.auth.signInWithOtp({
-      email: cleanEmail,
-      options: { shouldCreateUser: true },
-    });
-    setBusy(false);
-    if (error) setMessage(error.message);
-    else {
-      setEmail(cleanEmail);
-      setSent(true);
-      setMessage('A one-time code has been sent to your email.');
+    try {
+      const { error } = await client.auth.signInWithOtp({
+        email: cleanEmail,
+        options: { shouldCreateUser: true },
+      });
+      if (error) setMessage(error.message);
+      else {
+        setEmail(cleanEmail);
+        setSent(true);
+        setMessage('A one-time code has been sent to your email.');
+      }
+    } catch (error: any) {
+      setMessage(error?.message || 'Could not send the email code. Please try again.');
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -108,13 +130,18 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
     }
     setBusy(true);
     setMessage('');
-    const { error } = await client.auth.verifyOtp({
-      email: email.trim().toLowerCase(),
-      token,
-      type: 'email',
-    });
-    setBusy(false);
-    if (error) setMessage(error.message);
+    try {
+      const { error } = await client.auth.verifyOtp({
+        email: email.trim().toLowerCase(),
+        token,
+        type: 'email',
+      });
+      if (error) setMessage(error.message);
+    } catch (error: any) {
+      setMessage(error?.message || 'Could not verify the email code. Please try again.');
+    } finally {
+      setBusy(false);
+    }
   };
 
   if (checking) {
