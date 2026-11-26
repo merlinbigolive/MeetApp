@@ -564,96 +564,119 @@ export default function App() {
     let active = true;
     const loadCloudProfile = async () => {
       if (!supabase) return;
-      const { data: authData } = await supabase.auth.getSession();
-      const userId = authData.session?.user.id;
-      if (!userId) return;
-      setCurrentUserId(userId);
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('username, display_name, bio, website_url, profession_category, activity_status, is_private, account_type, business_name, business_category, business_description, country_code, country_name')
-        .eq('id', userId)
-        .maybeSingle();
-      if (!active || error || !data) return;
-      setName(data.display_name || 'MEEi User');
-      setUsername(data.username || 'your_username');
-      setBio(data.bio || '');
-      setWebsite(data.website_url || '');
-      setOccupation(data.profession_category || '');
-      setAccountType(data.account_type === 'business' ? 'business' : 'personal');
-      setBusinessName(data.business_name || '');
-      setBusinessCategory(data.business_category || '');
-      setBusinessDescription(data.business_description || '');
-      setIsPrivateAccount(!!data.is_private);
+      try {
+        const { data: authData, error: authError } = await supabase.auth.getSession();
+        if (!active) return;
+        if (authError) {
+          console.warn('Profile session could not be restored:', authError.message);
+          Alert.alert('Profile unavailable', 'Your session could not be checked. Please reopen the app and try again.');
+          return;
+        }
+        const userId = authData.session?.user.id;
+        if (!userId) return;
+        setCurrentUserId(userId);
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('username, display_name, bio, website_url, profession_category, activity_status, is_private, account_type, business_name, business_category, business_description, country_code, country_name')
+          .eq('id', userId)
+          .maybeSingle();
+        if (!active) return;
+        if (error || !data) {
+          console.warn('Profile details could not be loaded:', error?.message || 'No profile row found.');
+          Alert.alert('Profile unavailable', 'Your profile details could not be loaded. Please check your connection and try again.');
+          return;
+        }
+        setName(data.display_name || 'MEEi User');
+        setUsername(data.username || 'your_username');
+        setBio(data.bio || '');
+        setWebsite(data.website_url || '');
+        setOccupation(data.profession_category || '');
+        setAccountType(data.account_type === 'business' ? 'business' : 'personal');
+        setBusinessName(data.business_name || '');
+        setBusinessCategory(data.business_category || '');
+        setBusinessDescription(data.business_description || '');
+        setIsPrivateAccount(!!data.is_private);
 
-      const deviceLocale = Localization.getLocales()[0];
-      const deviceCountryCode = (deviceLocale?.regionCode || 'IN').toUpperCase();
-      const deviceCountryName = getCountryDisplayName(deviceCountryCode, deviceLocale?.languageTag);
-      const savedCountryCode = String(data.country_code || '').toUpperCase();
-      const savedCountryName = String(data.country_name || '');
-      if (savedCountryCode && savedCountryName) {
-        setHomeCountryCode(savedCountryCode);
-        setHomeCountryName(savedCountryName);
-        setLiveCountry(savedCountryCode);
-      } else {
-        setHomeCountryCode(deviceCountryCode);
-        setHomeCountryName(deviceCountryName);
-        setLiveCountry(deviceCountryCode);
-        const { error: countrySaveError } = await supabase.from('profiles').update({
-          country_code: deviceCountryCode,
-          country_name: deviceCountryName,
-          updated_at: new Date().toISOString(),
-        }).eq('id', userId);
-        if (countrySaveError) console.warn('Home country could not be saved:', countrySaveError.message);
+        const deviceLocale = Localization.getLocales()[0];
+        const deviceCountryCode = (deviceLocale?.regionCode || 'IN').toUpperCase();
+        const deviceCountryName = getCountryDisplayName(deviceCountryCode, deviceLocale?.languageTag);
+        const savedCountryCode = String(data.country_code || '').toUpperCase();
+        const savedCountryName = String(data.country_name || '');
+        if (savedCountryCode && savedCountryName) {
+          setHomeCountryCode(savedCountryCode);
+          setHomeCountryName(savedCountryName);
+          setLiveCountry(savedCountryCode);
+        } else {
+          setHomeCountryCode(deviceCountryCode);
+          setHomeCountryName(deviceCountryName);
+          setLiveCountry(deviceCountryCode);
+          const { error: countrySaveError } = await supabase.from('profiles').update({
+            country_code: deviceCountryCode,
+            country_name: deviceCountryName,
+            updated_at: new Date().toISOString(),
+          }).eq('id', userId);
+          if (countrySaveError) console.warn('Home country could not be saved:', countrySaveError.message);
+          if (!active) return;
+        }
+
+        const [followingResult, followerResult, likesResult] = await Promise.all([
+          supabase.from('follows').select('*', { count: 'exact', head: true }).eq('follower_id', userId).eq('status', 'accepted'),
+          supabase.from('follows').select('*', { count: 'exact', head: true }).eq('followed_id', userId).eq('status', 'accepted'),
+          supabase.rpc('get_profile_likes_count', { target_user_id: userId }),
+        ]);
+        if (!active) return;
+        if (!followingResult.error) setFollowingCount(followingResult.count ?? 0);
+        if (!followerResult.error) setFollowerCount(followerResult.count ?? 0);
+        if (!likesResult.error) setLikesCount(Number(likesResult.data || 0));
+
+        if (data.activity_status) {
+          const status = data.activity_status.toLowerCase();
+          setActivity(status.charAt(0).toUpperCase() + status.slice(1));
+        }
+
+        const { data: mediaRows, error: mediaError } = await supabase
+          .from('profile_media')
+          .select('id, kind, position, storage_path, media_type, original_name')
+          .eq('user_id', userId)
+          .order('position', { ascending: true });
+        if (!active) return;
+        if (mediaError) {
+          console.warn('Profile media could not be loaded:', mediaError.message);
+          setAvatar(null);
+          setCovers([]);
+          setPosts([]);
+          Alert.alert('Profile media unavailable', 'Your profile details loaded, but photos and videos could not be loaded. Please check your connection and try again.');
+          return;
+        }
+        const hydrated = await Promise.all(((mediaRows || []) as CloudMediaRow[]).map(async row => {
+          const { data: signed, error: signedError } = await supabase!.storage
+            .from('usay-media').createSignedUrl(row.storage_path, 60 * 60);
+          if (signedError || !signed?.signedUrl) {
+            console.warn('Profile media URL could not be created:', row.storage_path, signedError?.message || 'Missing signed URL');
+            return null;
+          }
+          return {
+            row,
+            media: {
+              uri: signed.signedUrl,
+              type: row.media_type,
+              name: row.original_name || undefined,
+              storagePath: row.storage_path,
+            } as Media,
+          };
+        }));
+        if (!active) return;
+        const valid = hydrated.filter((item): item is NonNullable<typeof item> => item !== null);
+        setAvatar(valid.find(item => item.row.kind === 'avatar')?.media || null);
+        setCovers(valid.filter(item => item.row.kind === 'cover').map(item => item.media).slice(0, 3));
+        setPosts(valid.filter(item => item.row.kind === 'post').map(item => item.media).slice(0, 3));
+        if (valid.length < (mediaRows || []).length) {
+          Alert.alert('Some profile media unavailable', 'Your profile details loaded, but one or more photos or videos could not be opened. Please try again later.');
+        }
+      } catch (error) {
+        console.warn('Unexpected profile loading error:', error);
+        if (active) Alert.alert('Profile unavailable', 'Something went wrong while loading your profile. Please check your connection and try again.');
       }
-
-      const [followingResult, followerResult, likesResult] = await Promise.all([
-        supabase.from('follows').select('*', { count: 'exact', head: true }).eq('follower_id', userId).eq('status', 'accepted'),
-        supabase.from('follows').select('*', { count: 'exact', head: true }).eq('followed_id', userId).eq('status', 'accepted'),
-        supabase.rpc('get_profile_likes_count', { target_user_id: userId }),
-      ]);
-      if (!active) return;
-      if (!followingResult.error) setFollowingCount(followingResult.count ?? 0);
-      if (!followerResult.error) setFollowerCount(followerResult.count ?? 0);
-      if (!likesResult.error) setLikesCount(Number(likesResult.data || 0));
-
-      if (data.activity_status) {
-        const status = data.activity_status.toLowerCase();
-        setActivity(status.charAt(0).toUpperCase() + status.slice(1));
-      }
-
-      const { data: mediaRows, error: mediaError } = await supabase
-        .from('profile_media')
-        .select('id, kind, position, storage_path, media_type, original_name')
-        .eq('user_id', userId)
-        .order('position', { ascending: true });
-      if (!active) return;
-      if (mediaError) {
-        console.warn('Profile media could not be loaded:', mediaError.message);
-        setAvatar(null);
-        setCovers([]);
-        setPosts([]);
-        Alert.alert('Profile media unavailable', 'Your profile details loaded, but photos and videos could not be loaded. Please check your connection and try again.');
-        return;
-      }
-      const hydrated = await Promise.all(((mediaRows || []) as CloudMediaRow[]).map(async row => {
-        const { data: signed, error: signedError } = await supabase!.storage
-          .from('usay-media').createSignedUrl(row.storage_path, 60 * 60);
-        if (signedError || !signed?.signedUrl) return null;
-        return {
-          row,
-          media: {
-            uri: signed.signedUrl,
-            type: row.media_type,
-            name: row.original_name || undefined,
-            storagePath: row.storage_path,
-          } as Media,
-        };
-      }));
-      if (!active) return;
-      const valid = hydrated.filter((item): item is NonNullable<typeof item> => item !== null);
-      setAvatar(valid.find(item => item.row.kind === 'avatar')?.media || null);
-      setCovers(valid.filter(item => item.row.kind === 'cover').map(item => item.media).slice(0, 3));
-      setPosts(valid.filter(item => item.row.kind === 'post').map(item => item.media).slice(0, 3));
     };
     loadCloudProfile();
     return () => { active = false; };
