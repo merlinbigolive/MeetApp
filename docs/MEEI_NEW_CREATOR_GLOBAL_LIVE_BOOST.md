@@ -115,3 +115,15 @@ The application now has a secure Live-room popup delivery path:
 - No push, inbox, system, or background notifications are generated.
 
 **Integration still pending:** The secure event delivery path is in place, but the Global Live Boost / promotion backend that decides when to create a boost event is not yet present in the repository. A trusted server-side Boost workflow must call `private.enqueue_live_room_popup_event` for eligible room viewers. Do not expose this enqueue operation to the mobile client. Payment checkout remains deferred and must not be activated as part of this work.
+
+
+## Implementation update — first creator free discovery boost
+
+- Added a private, RLS-protected one-time boost ledger keyed by creator account.
+- A trusted `livekit-control` activation flow attempts the grant only after the creator's camera has been verified and a Live session is confirmed active.
+- The database verifies that the creator profile is public, the session belongs to that creator and has a fresh heartbeat, and the creator is not in an active PK.
+- The database records a server timestamp and a fixed five-minute expiry. A unique creator key and idempotent retry handling prevent reconnects or repeated activation requests from restarting the free boost.
+- Live discovery now sorts currently active free-boost sessions ahead of organic sessions, while preserving the existing country filter, privacy, block and moderation checks. This gives an eligible boost priority in worldwide and country-specific Live discovery results.
+- Paid country-targeted boost and all payment/checkout functionality remain unimplemented and disabled.
+- The separate viewer-only in-room popup producer remains pending; this implementation does not send push, inbox, system or background notifications.
+- End-to-end multi-account/device testing remains pending.
