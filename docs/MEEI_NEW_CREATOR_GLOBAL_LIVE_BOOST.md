@@ -102,3 +102,16 @@ The product must also offer a paid, one-time Global Live Boost that any eligible
 - Enforce eligibility server-side and re-check the recipient's current room role and PK participation immediately before rendering. If the user becomes a PK participant, suppress/dismiss the popup immediately; do not queue or replay it later.
 - Ordinary viewers inside Live rooms may see eligible popups subject to the existing safety, block, privacy, deduplication, throttle, safe-area, accessibility and five-second display rules.
 - This latest viewer-only, active-Live-room rule supersedes all earlier conflicting popup placement and suppression wording in this document. Boosted Live discovery ranking may continue separately, but it must not create a popup outside an active Live room.
+
+
+## Implementation update — viewer-only in-room popup gate
+
+The application now has a secure Live-room popup delivery path:
+- Popup UI is mounted only inside an active Live room and only for an ordinary viewer with an active room membership.
+- Popup events are recipient- and room-specific, bound to the exact active membership, short-lived (5 seconds by default; server limit 15 seconds), and dismissed on leave/expiry.
+- Server-side eligibility rejects the room creator, moderators, anyone participating in an active PK battle, and users blocked, muted, or kicked in that room.
+- PK participation is checked across active battles, not just the room currently open. A PK participant's outstanding popup events are permanently dismissed.
+- The event table is private, has RLS enabled, and is not readable or writable directly by client roles. Only the trusted service role can enqueue events.
+- No push, inbox, system, or background notifications are generated.
+
+**Integration still pending:** The secure event delivery path is in place, but the Global Live Boost / promotion backend that decides when to create a boost event is not yet present in the repository. A trusted server-side Boost workflow must call `private.enqueue_live_room_popup_event` for eligible room viewers. Do not expose this enqueue operation to the mobile client. Payment checkout remains deferred and must not be activated as part of this work.
