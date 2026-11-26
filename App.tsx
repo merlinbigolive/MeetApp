@@ -380,6 +380,8 @@ export default function App() {
   const [homeCountryCode, setHomeCountryCode] = useState(() => (Localization.getLocales()[0]?.regionCode || 'IN').toUpperCase());
   const [homeCountryName, setHomeCountryName] = useState(() => getCountryDisplayName((Localization.getLocales()[0]?.regionCode || 'IN').toUpperCase(), Localization.getLocales()[0]?.languageTag));
   const [liveCountry, setLiveCountry] = useState(() => (Localization.getLocales()[0]?.regionCode || 'IN').toUpperCase());
+  const [liveCountryPage, setLiveCountryPage] = useState<'explore' | 'all' | 'country'>('explore');
+  const [liveCountrySearch, setLiveCountrySearch] = useState('');
   const [loadingLiveCreators, setLoadingLiveCreators] = useState(false);
   const [followBusyIds, setFollowBusyIds] = useState<string[]>([]);
   const [selectedProfile, setSelectedProfile] = useState<PublicProfile | null>(null);
@@ -2183,27 +2185,44 @@ export default function App() {
 
   const LiveScreen = () => {
     const activeCountries = new Map(liveCreators.map(creator => [creator.country_code, creator.country_name] as const));
-    const countriesByCode = MEEI_COUNTRY_CODES.map(code => ({
-      code,
-      name: activeCountries.get(code) || getCountryDisplayName(code, 'en'),
-    }));
-    const ownCountry = countriesByCode.find(country => country.code === homeCountryCode) || { code: homeCountryCode, name: homeCountryName };
-    const countries = [ownCountry, ...countriesByCode.filter(country => country.code !== ownCountry.code).sort((a,b) => a.name.localeCompare(b.name))];
-    const visibleCreators = liveCreators.filter(creator => creator.country_code === liveCountry);
     const countryFlag = (code: string) => /^[A-Z]{2}$/.test(code)
       ? String.fromCodePoint(...code.split('').map(char => 127397 + char.charCodeAt(0)))
       : '🌐';
-    return <ScrollView contentContainerStyle={s.liveScroll}>
-      <View style={s.liveHeader}>
-        <View><Text style={s.pageTitle}>Live</Text><Text style={s.searchSubtitle}>Creators broadcasting now</Text></View>
-        <View style={s.livePulse}><View style={s.livePulseDot}/><Text style={s.livePulseText}>MEEi LIVE HOSTS</Text></View>
-      </View>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.liveCountries}>
-        {countries.map(country => <Pressable key={country.code} onPress={() => setLiveCountry(country.code)} style={[s.liveCountryChip, liveCountry === country.code && s.liveCountryChipActive]}><Text style={[s.liveCountryText, liveCountry === country.code && s.liveCountryTextActive]}>{countryFlag(country.code)}  {country.name}</Text></Pressable>)}
-      </ScrollView>
-      {loadingLiveCreators ? <View style={s.searchEmpty}><Text style={s.hint}>Finding creators who are live…</Text></View> :
-        visibleCreators.length === 0 ? <View style={s.liveEmpty}><View style={s.liveEmptyIcon}><Ionicons name="radio-outline" size={38} color={C.cyan}/></View><Text style={s.sectionTitle}>No creators live right now</Text><Text style={s.hint}>No one is live from {countries.find(country => country.code === liveCountry)?.name || liveCountry} at the moment.</Text></View> :
-        <View style={s.liveGrid}>{visibleCreators.map(creator => {
+    const prettyCountryName = (name: string) => name.split(/([ -])/).map(part =>
+      part === ' ' || part === '-' ? part : part ? part.charAt(0).toUpperCase() + part.slice(1).toLowerCase() : part
+    ).join('');
+    const countriesByCode = MEEI_COUNTRY_CODES.map(code => ({
+      code,
+      name: prettyCountryName(activeCountries.get(code) || getCountryDisplayName(code, 'en')),
+    }));
+    const ownCountry = countriesByCode.find(country => country.code === homeCountryCode) || { code: homeCountryCode, name: prettyCountryName(homeCountryName) };
+    const featuredCodes = ['IN','RU','US','CO','PK','PH','NP','BR'];
+    const featuredCountries = [
+      ownCountry,
+      ...featuredCodes.filter(code => code !== ownCountry.code).map(code => countriesByCode.find(country => country.code === code)).filter(Boolean),
+    ].filter((country, index, all) => all.findIndex(item => item?.code === country?.code) === index).slice(0, 8) as {code:string;name:string}[];
+    const allCountries = [ownCountry, ...countriesByCode.filter(country => country.code !== ownCountry.code).sort((a,b) => a.name.localeCompare(b.name))];
+    const continentCodes: Record<string, string[]> = {
+      ASIA: 'AF AM AZ BD BH BN BT CC CN CX CY GE HK ID IL IN IO IQ IR JO JP KG KH KP KR KW KZ LA LB LK MM MN MO MV MY NP OM PH PK PS QA RU SA SG TH TJ TL TM TR TW UZ VN YE'.split(' '),
+      EUROPE: 'AD AL AT AX BA BE BG BY CH CZ DE DK EE ES FI FO FR GB GG GI GR HR HU IE IM IS IT JE LI LT LU LV MC MD ME MK MT NL NO PL PT RO RS RU SE SI SJ SK SM UA VA'.split(' '),
+      AFRICA: 'AO BF BI BJ BW CD CF CG CI CM CV DJ DZ EG EH ER ET GA GH GM GN GQ GW KE KM LR LS LY MA MG ML MR MU MW MZ NA NE NG RW SC SD SL SN SO SS ST SZ TD TG TN TZ UG ZA ZM ZW'.split(' '),
+      'NORTH AMERICA': 'AG AI AW BB BL BM BQ BS BZ CA CR CU CW DM DO GD GL GP GT HN HT JM KN KY LC MF MQ MS MX NI PA PM PR SV SX TC TT US VC VG VI'.split(' '),
+      'SOUTH AMERICA': 'AR BO BR CL CO EC FK GF GY PE PY SR UY VE'.split(' '),
+      OCEANIA: 'AS AU CK FJ FM GU KI MH MP NC NF NR NU NZ PF PG PN PW SB TK TL TO TV UM VU WF WS'.split(' '),
+    };
+    const groupedCountries = Object.entries(continentCodes).map(([continent, codes]) => ({
+      continent,
+      countries: allCountries.filter(country => codes.includes(country.code)),
+    })).filter(group => group.countries.length > 0);
+    const filteredGroups = groupedCountries.map(group => ({
+      ...group,
+      countries: group.countries.filter(country => country.name.toLowerCase().includes(liveCountrySearch.trim().toLowerCase())),
+    })).filter(group => group.countries.length > 0);
+    const worldwideCreators = [...liveCreators].sort((a,b) => new Date(b.started_at).getTime() - new Date(a.started_at).getTime());
+    const visibleCreators = liveCreators.filter(creator => creator.country_code === liveCountry);
+    const renderCreatorGrid = (creators: LiveCreator[]) => creators.length === 0
+      ? <View style={s.liveEmpty}><View style={s.liveEmptyIcon}><Ionicons name="radio-outline" size={38} color={C.cyan}/></View><Text style={s.sectionTitle}>No creators live right now</Text><Text style={s.hint}>Live creators will appear here when they start broadcasting.</Text></View>
+      : <View style={s.liveGrid}>{creators.map(creator => {
           const uri = liveMediaUrls[creator.session_id];
           return <Pressable key={creator.session_id} onPress={() => {
             setLiveJoinSessionId(creator.session_id);
@@ -2212,9 +2231,37 @@ export default function App() {
             {uri ? <Image source={{ uri }} style={s.liveCardImage} resizeMode="cover"/> : <View style={s.liveCardFallback}><Ionicons name="person" size={34} color="#FFFFFF"/></View>}
             <View style={s.liveCardShade}/>
             <View style={s.liveBadge}><View style={s.liveBadgeDot}/><Text style={s.liveBadgeText}>LIVE</Text></View>
-            <View style={s.liveCardInfo}><Text style={s.liveCardName} numberOfLines={1}>{creator.display_name}</Text><Text style={s.liveCardMeta} numberOfLines={1}>{creator.username.replace(/[@#]/g, '')} · {creator.country_name}</Text>{!!creator.title && <Text style={s.liveCardTitle} numberOfLines={1}>{creator.title}</Text>}</View>
+            <View style={s.liveCardInfo}><Text style={s.liveCardName} numberOfLines={1}>{creator.display_name}</Text><Text style={s.liveCardMeta} numberOfLines={1}>{countryFlag(creator.country_code)}  {prettyCountryName(creator.country_name)}</Text>{!!creator.title && <Text style={s.liveCardTitle} numberOfLines={1}>{creator.title}</Text>}</View>
           </Pressable>;
-        })}</View>}
+        })}</View>;
+    if (liveCountryPage === 'all') return <ScrollView contentContainerStyle={s.liveScroll} keyboardShouldPersistTaps="handled">
+      <View style={s.liveHeader}>
+        <Pressable onPress={() => { setLiveCountryPage('explore'); setLiveCountrySearch(''); }} style={{flexDirection:'row',alignItems:'center',gap:8}}><Ionicons name="arrow-back" size={22} color={C.text}/><Text style={s.liveExploreTitle}>ALL COUNTRIES</Text></Pressable>
+        <Text style={s.liveExploreMeta}>World regions</Text>
+      </View>
+      <View style={s.searchBox}><Ionicons name="search" size={18} color={C.muted}/><TextInput value={liveCountrySearch} onChangeText={setLiveCountrySearch} placeholder="Search country" placeholderTextColor={C.muted} style={s.searchInput}/>{!!liveCountrySearch && <Pressable onPress={()=>setLiveCountrySearch('')}><Ionicons name="close-circle" size={18} color={C.muted}/></Pressable>}</View>
+      {filteredGroups.map(group => <View key={group.continent} style={{gap:10,marginTop:7}}>
+        <Text style={s.liveContinentTitle}>{group.continent}</Text>
+        <View style={s.liveAllCountriesGrid}>{group.countries.map(country => <Pressable key={country.code} onPress={() => { setLiveCountry(country.code); setLiveCountryPage('country'); }} style={s.liveAllCountryItem}><Text style={s.liveAllCountryFlag}>{countryFlag(country.code)}</Text><Text style={s.liveAllCountryName}>{country.name}</Text></Pressable>)}</View>
+      </View>)}
+      {filteredGroups.length === 0 && <Text style={s.hint}>No countries match your search.</Text>}
+    </ScrollView>;
+    if (liveCountryPage === 'country') return <ScrollView contentContainerStyle={s.liveScroll}>
+      <View style={s.liveHeader}>
+        <Pressable onPress={() => setLiveCountryPage('explore')} style={{flexDirection:'row',alignItems:'center',gap:8}}><Ionicons name="arrow-back" size={22} color={C.text}/><Text style={s.liveExploreTitle}>{countryFlag(liveCountry)}  {allCountries.find(country=>country.code===liveCountry)?.name || liveCountry}</Text></Pressable>
+        <Pressable onPress={() => setLiveCountryPage('all')}><Text style={s.liveMoreText}>MORE  ›</Text></Pressable>
+      </View>
+      {loadingLiveCreators ? <View style={s.searchEmpty}><Text style={s.hint}>Finding creators who are live…</Text></View> : renderCreatorGrid(visibleCreators)}
+    </ScrollView>;
+    return <ScrollView contentContainerStyle={s.liveScroll}>
+      <View style={s.liveHeader}>
+        <Text style={s.liveMainTitle}>MEEi LIVE HOSTS</Text>
+        <Pressable onPress={() => setLiveCountryPage('all')}><Text style={s.liveMoreText}>MORE  ›</Text></Pressable>
+      </View>
+      <View style={s.liveSectionHeader}><Text style={s.liveSectionTitle}>Countries & regions</Text><Pressable onPress={() => setLiveCountryPage('all')}><Text style={s.liveMoreText}>MORE  ›</Text></Pressable></View>
+      <View style={s.liveFeaturedGrid}>{featuredCountries.map(country => <Pressable key={country.code} onPress={() => {setLiveCountry(country.code);setLiveCountryPage('country');}} style={s.liveFeaturedCountry}><Text style={s.liveFeaturedFlag}>{countryFlag(country.code)}</Text><Text style={s.liveFeaturedName}>{country.name}</Text></Pressable>)}</View>
+      <View style={s.liveSectionHeader}><Text style={s.liveSectionTitle}>Trending</Text><Ionicons name="options-outline" size={22} color={C.text}/></View>
+      {loadingLiveCreators ? <View style={s.searchEmpty}><Text style={s.hint}>Finding creators who are live…</Text></View> : renderCreatorGrid(worldwideCreators)}
     </ScrollView>;
   };
 
@@ -2643,6 +2690,21 @@ const createStyles = (palette: typeof LIGHT_C) => {
   reelTileViewsText:{color:'#FFFFFF',fontSize:10,fontWeight:'700'},
   searchEmpty:{minHeight:180,alignItems:'center',justifyContent:'center',gap:8},
   liveScroll:{padding:18,paddingTop:54,paddingBottom:30,gap:16},
+  liveMainTitle:{color:C.text,fontSize:27,fontWeight:'900',letterSpacing:0.4},
+  liveExploreTitle:{color:C.text,fontSize:20,fontWeight:'900',letterSpacing:0.3},
+  liveExploreMeta:{color:C.muted,fontSize:11,fontWeight:'600'},
+  liveSectionHeader:{flexDirection:'row',alignItems:'center',justifyContent:'space-between',marginTop:4},
+  liveSectionTitle:{color:C.text,fontSize:16,fontWeight:'800'},
+  liveMoreText:{color:C.text,fontSize:13,fontWeight:'700'},
+  liveFeaturedGrid:{flexDirection:'row',flexWrap:'wrap',justifyContent:'space-between',rowGap:17,marginTop:3},
+  liveFeaturedCountry:{width:'23%',alignItems:'center',gap:7,paddingVertical:5},
+  liveFeaturedFlag:{fontSize:34},
+  liveFeaturedName:{color:C.text,fontSize:12,fontWeight:'600',textAlign:'center'},
+  liveContinentTitle:{color:C.text,fontSize:16,fontWeight:'900',letterSpacing:1.1,marginTop:5},
+  liveAllCountriesGrid:{flexDirection:'row',flexWrap:'wrap',justifyContent:'space-between',rowGap:12},
+  liveAllCountryItem:{width:'31%',minHeight:70,alignItems:'center',justifyContent:'center',gap:5,padding:7,borderRadius:12,backgroundColor:C.panel2,borderWidth:1,borderColor:C.border},
+  liveAllCountryFlag:{fontSize:25},
+  liveAllCountryName:{color:C.text,fontSize:11,fontWeight:'600',textAlign:'center'},
   liveHeader:{flexDirection:'row',alignItems:'center',justifyContent:'space-between'},
   livePulse:{flexDirection:'row',alignItems:'center',gap:6,paddingHorizontal:10,paddingVertical:7,borderRadius:16,backgroundColor:'#FFF0F1'},
   livePulseDot:{width:7,height:7,borderRadius:4,backgroundColor:'#E54862'},
