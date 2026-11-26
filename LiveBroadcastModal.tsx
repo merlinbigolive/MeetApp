@@ -8,7 +8,9 @@ import { Track } from "livekit-client";
 import { supabase } from "./supabase";
 
 type RoomCredentials = { url: string; token: string; room_name: string; role: "creator" | "viewer" };
-type LiveChatMessage = { id: string; user_id: string; username: string; body: string; created_at: string; avatar_path: string | null };
+type LiveChatMessage = { id: string; user_id: string; username: string; body: string; created_at: string; avatar_path: string | null; origin_session_id?: string; side_label?: string };
+type PKCreator = { session_id: string; user_id: string; username: string; display_name: string; title: string };
+type PKInvite = { battle_id: string; opponent_session_id: string; opponent_user_id: string; opponent_username: string; opponent_display_name: string; duration_minutes: number; invite_expires_at: string };
 type MiniProfile = { user_id: string; username: string; display_name: string; bio: string | null; avatarUrl: string | null };
 
 type Props = {
@@ -29,6 +31,15 @@ export default function LiveBroadcastModal({ visible, sessionId, creatorName, on
   const [ending, setEnding] = useState(false);
   const [chatMessages, setChatMessages] = useState<LiveChatMessage[]>([]);
   const [chatMembershipId, setChatMembershipId] = useState<string | null>(null);
+  const [pkBattle, setPkBattle] = useState<any | null>(null);
+  const [pkOpponentCredentials, setPkOpponentCredentials] = useState<RoomCredentials | null>(null);
+  const [pkInvites, setPkInvites] = useState<PKInvite[]>([]);
+  const [pkCreators, setPkCreators] = useState<PKCreator[]>([]);
+  const [pkDuration, setPkDuration] = useState<5 | 10 | 15>(5);
+  const [showPkPanel, setShowPkPanel] = useState(false);
+  const [pkBusy, setPkBusy] = useState(false);
+  const [pkNow, setPkNow] = useState(Date.now());
+  const pkConnectRef = useRef<string | null>(null);
   const [chatDraft, setChatDraft] = useState("");
   const [chatBusy, setChatBusy] = useState(false);
   const [selectedViewer, setSelectedViewer] = useState<MiniProfile | null>(null);
@@ -78,6 +89,9 @@ export default function LiveBroadcastModal({ visible, sessionId, creatorName, on
 
   const chatSessionId = sessionId || activeSessionId;
   const canModerate = isCreator || moderationRole === "moderator";
+  const pkSecondsRemaining = pkBattle?.ends_at
+    ? Math.max(0, Math.ceil((new Date(pkBattle.ends_at).getTime() - pkNow) / 1000))
+    : 0;
 
   useEffect(() => {
     if (!visible || !sessionId || !supabase) { setModerationRole(isCreator ? "creator" : "viewer"); return; }
@@ -92,19 +106,131 @@ export default function LiveBroadcastModal({ visible, sessionId, creatorName, on
     if (!visible || !chatSessionId || !supabase || (!isCreator && !chatMembershipId)) return;
     let cancelled = false;
     const loadChat = async () => {
-      const { data, error } = await supabase!.rpc("get_live_chat_messages", {
-        target_session_id: chatSessionId,
-        message_limit: 60,
-        target_membership_id: chatMembershipId,
-      });
-      if (!cancelled && !error && Array.isArray(data)) {
-        setChatMessages([...data].reverse() as LiveChatMessage[]);
-      }
+      const rpcName = pkBattle?.status === "active" ? "get_live_pk_chat_messages" : "get_live_chat_messages";
+      const args = pkBattle?.status === "active"
+        ? { target_session_id: chatSessionId, target_membership_id: chatMembershipId, message_limit: 80 }
+        : { target_session_id: chatSessionId, message_limit: 60, target_membership_id: chatMembershipId };
+      const { data, error } = await supabase!.rpc(rpcName, args);
+      if (!cancelled && !error && Array.isArray(data)) setChatMessages([...data].reverse() as LiveChatMessage[]);
     };
     void loadChat();
-    const timer = setInterval(() => { void loadChat(); }, 4000);
+    const timer = setInterval(() => { void loadChat(); }, 3000);
     return () => { cancelled = true; clearInterval(timer); };
-  }, [visible, chatSessionId, chatMembershipId, isCreator]);
+  }, [visible, chatSessionId, chatMembershipId, isCreator, pkBattle?.status, pkBattle?.battle_id]);
+
+  useEffect(() => {
+    if (!visible || !chatSessionId || !supabase) return;
+    let cancelled = false;
+    const loadPkState = async () => {
+      const { data, error } = await supabase!.rpc("get_live_pk_state", { target_session_id: chatSessionId });
+      if (cancelled || error) return;
+      const battle = Array.isArray(data) ? data[0] : null;
+      setPkBattle(battle || null);
+      if (!battle || battle.status !== "active") {
+        pkConnectRef.current = null;
+        setPkOpponentCredentials(null);
+        return;
+      }
+      setPkNow(Date.now());
+      if (pkConnectRef.current === battle.battle_id) return;
+      pkConnectRef.current = battle.battle_id;
+      const { data: connected, error: connectError } = await supabase!.functions.invoke("livekit-control", {
+        body: { action: "pk_join", session_id: chatSessionId },
+      });
+      if (cancelled) return;
+      if (connectError || connected?.error || !connected?.opponent?.token) {
+        pkConnectRef.current = null;
+        console.warn("MEEi PK opponent connection was not confirmed.", connected?.error || connectError?.message);
+        return;
+      }
+      setPkOpponentCredentials({
+        url: connected.opponent.url,
+        room_name: connected.opponent.room_name,
+        token: connected.opponent.token,
+        role: "viewer",
+      });
+    };
+    void loadPkState();
+    const timer = setInterval(() => { void loadPkState(); }, 2500);
+    return () => { cancelled = true; clearInterval(timer); };
+  }, [visible, chatSessionId]);
+
+  useEffect(() => {
+    if (!visible || !isCreator || !activeSessionId || !supabase) { setPkInvites([]); return; }
+    let cancelled = false;
+    const loadInvites = async () => {
+      const { data, error } = await supabase!.functions.invoke("livekit-control", { body: { action: "pk_inbox" } });
+      if (!cancelled && !error && Array.isArray(data?.invites)) setPkInvites(data.invites as PKInvite[]);
+    };
+    void loadInvites();
+    const timer = setInterval(() => { void loadInvites(); }, 5000);
+    return () => { cancelled = true; clearInterval(timer); };
+  }, [visible, isCreator, activeSessionId]);
+
+  useEffect(() => {
+    if (pkBattle?.status !== "active") return;
+    const timer = setInterval(() => setPkNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [pkBattle?.status, pkBattle?.ends_at]);
+
+  const openPkPanel = async () => {
+    if (!supabase || !isCreator || !activeSessionId) return;
+    setShowPkPanel(true);
+    setPkBusy(true);
+    const { data, error } = await supabase.rpc("get_live_creators", { country_filter: null });
+    const { data: authData } = await supabase.auth.getUser();
+    setPkBusy(false);
+    if (error) {
+      Alert.alert("PK creators unavailable", error.message || "Please try again.");
+      return;
+    }
+    setPkCreators((Array.isArray(data) ? data : []).filter((item: PKCreator) => item.user_id !== authData.user?.id) as PKCreator[]);
+  };
+
+  const sendPkInvite = async (opponent: PKCreator) => {
+    if (!supabase || pkBusy) return;
+    setPkBusy(true);
+    const { data, error } = await supabase.functions.invoke("livekit-control", {
+      body: { action: "pk_invite", opponent_session_id: opponent.session_id, duration_minutes: pkDuration },
+    });
+    setPkBusy(false);
+    if (error || data?.error) {
+      Alert.alert("PK invite failed", data?.error || error?.message || "Please try again.");
+      return;
+    }
+    setShowPkPanel(false);
+    Alert.alert("PK invitation sent", `Invitation sent to @${opponent.username}. They have 45 seconds to accept.`);
+  };
+
+  const respondPkInvite = async (invite: PKInvite, accept: boolean) => {
+    if (!supabase || pkBusy) return;
+    setPkBusy(true);
+    const { data, error } = await supabase.functions.invoke("livekit-control", {
+      body: { action: "pk_respond", battle_id: invite.battle_id, accept },
+    });
+    setPkBusy(false);
+    if (error || data?.error) {
+      Alert.alert("PK response failed", data?.error || error?.message || "Please try again.");
+      return;
+    }
+    setPkInvites(items => items.filter(item => item.battle_id !== invite.battle_id));
+  };
+
+  const endPkBattle = async () => {
+    if (!supabase || !pkBattle?.battle_id || pkBusy) return;
+    setPkBusy(true);
+    const { data, error } = await supabase.functions.invoke("livekit-control", {
+      body: { action: "pk_end", battle_id: pkBattle.battle_id },
+    });
+    setPkBusy(false);
+    if (error || data?.error) {
+      Alert.alert("Could not end PK", data?.error || error?.message || "Please try again.");
+      return;
+    }
+    setPkBattle(null);
+    setPkOpponentCredentials(null);
+    pkConnectRef.current = null;
+  };
 
   const sendLiveMessage = async () => {
     if (!supabase || !chatSessionId || !chatDraft.trim() || chatBusy) return;
@@ -119,11 +245,13 @@ export default function LiveBroadcastModal({ visible, sessionId, creatorName, on
       return;
     }
     setChatDraft("");
-    const { data } = await supabase.rpc("get_live_chat_messages", {
-      target_session_id: chatSessionId,
-      message_limit: 60,
-      target_membership_id: chatMembershipId,
-    });
+    const { data } = pkBattle?.status === "active"
+      ? await supabase.rpc("get_live_pk_chat_messages", {
+          target_session_id: chatSessionId, target_membership_id: chatMembershipId, message_limit: 80,
+        })
+      : await supabase.rpc("get_live_chat_messages", {
+          target_session_id: chatSessionId, message_limit: 60, target_membership_id: chatMembershipId,
+        });
     if (Array.isArray(data)) setChatMessages([...data].reverse() as LiveChatMessage[]);
   };
 
@@ -203,20 +331,26 @@ export default function LiveBroadcastModal({ visible, sessionId, creatorName, on
       { text: "Cancel", style: "cancel" },
       { text: action === "block" ? "Block" : action === "kickout" ? "Kick out" : "Mute", style: action === "block" ? "destructive" : "default", onPress: async () => {
         setModerationBusy(true);
-        const { data, error } = await supabase!.functions.invoke("livekit-control", {
-          body: { action: "moderate", session_id: chatSessionId, target_viewer_id: selectedViewer.user_id, moderation_action: action },
-        });
+        const { data, error } = pkBattle?.status === "active"
+          ? await supabase!.functions.invoke("livekit-control", {
+              body: { action: "pk_moderate", battle_id: pkBattle.battle_id, target_viewer_id: selectedViewer.user_id, moderation_action: action },
+            })
+          : await supabase!.functions.invoke("livekit-control", {
+              body: { action: "moderate", session_id: chatSessionId, target_viewer_id: selectedViewer.user_id, moderation_action: action },
+            });
         setModerationBusy(false);
         if (error || data?.error) {
           Alert.alert("Action failed", data?.error || error?.message || "Please try again.");
           return;
         }
         setSelectedViewer(null);
-        const { data: refreshed } = await supabase!.rpc("get_live_chat_messages", {
-          target_session_id: chatSessionId,
-          message_limit: 60,
-          target_membership_id: chatMembershipId,
-        });
+        const { data: refreshed } = pkBattle?.status === "active"
+          ? await supabase!.rpc("get_live_pk_chat_messages", {
+              target_session_id: chatSessionId, target_membership_id: chatMembershipId, message_limit: 80,
+            })
+          : await supabase!.rpc("get_live_chat_messages", {
+              target_session_id: chatSessionId, message_limit: 60, target_membership_id: chatMembershipId,
+            });
         if (Array.isArray(refreshed)) setChatMessages([...refreshed].reverse() as LiveChatMessage[]);
         if (action === "kickout" || action === "block") Alert.alert("Viewer removed", "The viewer has been removed from this Live.");
       } },
@@ -279,6 +413,10 @@ export default function LiveBroadcastModal({ visible, sessionId, creatorName, on
     setActiveSessionId(null);
     setChatMembershipId(null);
     setChatMessages([]);
+    setPkBattle(null);
+    setPkOpponentCredentials(null);
+    setPkInvites([]);
+    pkConnectRef.current = null;
     setEnding(false);
     onClose();
   };
