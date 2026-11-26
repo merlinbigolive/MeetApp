@@ -31,6 +31,19 @@ Additional subscriber benefits may include clearly labelled subscriber-only Live
 - Show profile decoration and subscriber-only feature entitlements only while the subscription is active, with clear expired/cancelled states.
 - Do not imply that a creator is Premium merely because they are currently Live; Premium is a subscription entitlement.
 
+
+## Cosmetic items and room-entry effects (subscription + standalone purchases)
+- The active Premium subscription includes a coordinated premium profile decoration and a matching Live-room entry effect. When the subscriber enters a Live room, show their display name with the selected entry animation/effect. The entry effect is cosmetic only and must not imply moderator/admin/verified status.
+- Users may also purchase cosmetic items independently, without subscribing to a creator or holding Premium: (a) profile decorations, (b) Live-room entry effects that display the user's name, and (c) profile skins/themes.
+- Each standalone cosmetic is offered with an explicitly labelled **7-day (weekly)** or **30-day (monthly)** validity option. Do not invent or hard-code prices in this specification; show the exact price and expiry before the user confirms.
+- Each cosmetic is an independent entitlement/slot. Users can own multiple designs and select/equip one active design per applicable slot; switching designs must not erase unexpired ownership. A purchased cosmetic remains available until its own expiry even if a Premium subscription ends. Conversely, subscription expiry removes only subscription-included cosmetics, not separately purchased active cosmetics.
+- Validity begins at successful, server-verified purchase/activation and expires using server time. No automatic renewal or repeat charge for weekly/monthly cosmetic items unless a separate, explicit auto-renew consent flow is approved. Expiry, refunds and chargebacks must update entitlements idempotently.
+- Provide preview-before-purchase, clear active/expiry status, and an inventory/manage/equip experience. Never equip a paid item before verified purchase. Keep profile skins readable, accessible and safe-area compliant; decorations must not obscure profile content.
+- Room-entry effects should be brief, performant and respectful: display the entering user's name clearly, avoid blocking room controls or chat, obey reduced-motion/accessibility preferences, and apply anti-spam/cooldown limits. Users and room hosts should have controls to mute/hide entry effects; moderation must not depend on cosmetic ownership.
+- Premium-included cosmetics and standalone cosmetics must use the same rendering/equipment system, while their entitlement sources and expiry rules remain separate and auditable.
+- Cosmetic purchases are a separate cosmetic entitlement stream from creator subscriptions and Live Gifts / Beans. Do not imply that cosmetic purchases are creator subscriptions or creator gifts, and do not mix their accounting with Beans.
+- Cosmetic billing and collection remain deferred to the final monetization phase with subscription billing. This specification does not authorize activating payments now.
+
 ## Creator experience
 - Creator dashboard shows active subscribers, new subscriptions, renewal / expiry events, gross collections, MEEi share, creator share, refunds / adjustments and payout status.
 - Creators can describe subscriber benefits, subject to MEEi content and safety policies. Benefits must be explicit before the fan subscribes and must not be misleading.
@@ -61,7 +74,11 @@ Before implementation, verify current Google Play / Apple billing requirements f
 - No watch-limit pop-up or viewing paywall appears when a free user's watch time reaches one hour or any other threshold.
 - Free users cannot join audio/video guest Live without an active eligible subscription; active subscribers can request guest access subject to creator acceptance and safety controls.
 - Subscribers receive 10 free video-call minutes per rolling 12-hour window; additional minutes require a separately approved, explicitly confirmed paid minute pack. No minute-pack billing before final monetization approval.
-- Active subscribers receive the premium profile decoration and badge for the entitled period.
+- Active subscribers receive the premium profile decoration, matching name-bearing Live-room entry effect and badge for the entitled period.
+- Users can independently preview and purchase profile decorations, name-bearing Live-room entry effects and profile skins for clearly disclosed 7-day or 30-day validity; these purchases do not require Premium.
+- Standalone cosmetic ownership/expiry is independent of subscription status; subscription expiry does not revoke separately purchased unexpired cosmetics.
+- Cosmetic entitlements are server-verified, expire on server time, support inventory/equip/preview and do not auto-renew without explicit consent.
+- Entry effects are brief, accessible, rate-limited and user/host-hideable; profile skins preserve readability.
 - Subscriber-only Lives are clearly labelled before entry and never presented as unrestricted free content.
 - Subscriber benefits are explicit and verifiable; active subscribers receive their entitled benefits only for the paid period.
 - Renewal, failed renewal, cancellation, expiry, refund and chargeback transitions are server-authoritative and idempotent.
