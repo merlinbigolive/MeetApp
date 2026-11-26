@@ -260,7 +260,7 @@ export default function LiveBroadcastModal({ visible, sessionId, creatorName, on
     setShowViewerMenu(false);
     try {
       let profile: any = null;
-      if (canModerate) {
+      if (isCreator) {
         const { data, error } = await supabase.rpc("get_live_viewer_profile", {
           target_session_id: chatSessionId, target_viewer_id: viewerId,
         });
@@ -323,8 +323,8 @@ export default function LiveBroadcastModal({ visible, sessionId, creatorName, on
   const moderateViewer = (action: "mute" | "kickout" | "block") => {
     if (!selectedViewer || !chatSessionId || !supabase || !canModerate || moderationBusy) return;
     const labels = {
-      mute: "Mute this viewer in Live chat for 12 hours?",
-      kickout: "Remove this viewer from this Live for 12 hours?",
+      mute: "Mute this viewer in the PK chat for 15 minutes?",
+      kickout: "Remove this viewer from both PK rooms?",
       block: "Block this viewer from your future Lives and remove them from this Live?",
     };
     Alert.alert(action === "kickout" ? "Kick out viewer" : action === "block" ? "Block viewer" : "Mute viewer", labels[action], [
@@ -448,28 +448,57 @@ export default function LiveBroadcastModal({ visible, sessionId, creatorName, on
           </ScrollView>
         ) : (
           <View style={styles.room}>
-            <LiveKitRoom
-              serverUrl={credentials.url}
-              token={credentials.token}
-              connect={true}
-              audio={isCreator}
-              video={isCreator}
-              options={{ adaptiveStream: { pixelDensity: "screen" } }}
-            >
-              <RoomTracks
-                creator={isCreator}
-                roomName={roomName}
-                title={title}
-                countryCode={countryCode.toUpperCase()}
-                countryName={countryName}
-                onActivated={handleActivated}
-              />
-            </LiveKitRoom>
+            <View style={pkOpponentCredentials ? styles.pkVideoRow : styles.videoStageSingle}>
+              <View style={styles.pkVideoPane}>
+                <LiveKitRoom
+                  serverUrl={credentials.url}
+                  token={credentials.token}
+                  connect={true}
+                  audio={isCreator}
+                  video={isCreator}
+                  options={{ adaptiveStream: { pixelDensity: "screen" } }}
+                >
+                  <RoomTracks
+                    creator={isCreator}
+                    roomName={roomName}
+                    title={title}
+                    countryCode={countryCode.toUpperCase()}
+                    countryName={countryName}
+                    onActivated={handleActivated}
+                  />
+                </LiveKitRoom>
+                {pkOpponentCredentials && <Text style={styles.pkSideBadge}>YOUR SIDE</Text>}
+              </View>
+              {pkOpponentCredentials && (
+                <View style={styles.pkVideoPane}>
+                  <LiveKitRoom
+                    serverUrl={pkOpponentCredentials.url}
+                    token={pkOpponentCredentials.token}
+                    connect={true}
+                    audio={false}
+                    video={false}
+                    options={{ adaptiveStream: { pixelDensity: "screen" } }}
+                  >
+                    <OpponentTracks />
+                  </LiveKitRoom>
+                  <Text style={styles.pkSideBadge}>OPPONENT</Text>
+                </View>
+              )}
+            </View>
             <View style={styles.liveOverlay}>
-              <View><Text style={styles.livePill}>● LIVE</Text><Text style={styles.liveTitle}>{title}</Text></View>
-              <Pressable onPress={finishLive} disabled={ending} style={styles.endButton}>
-                {ending ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.endText}>{isCreator ? "End Live" : "Leave"}</Text>}
-              </Pressable>
+              <View>
+                <Text style={styles.livePill}>● LIVE</Text>
+                <Text style={styles.liveTitle}>{title}</Text>
+                {pkBattle?.status === "active" && <Text style={styles.pkTimer}>⚔ PK {Math.floor(pkSecondsRemaining / 60)}:{String(pkSecondsRemaining % 60).padStart(2, "0")}</Text>}
+                {pkBattle?.status === "invited" && isCreator && <Text style={styles.pkTimer}>PK invitation sent…</Text>}
+              </View>
+              <View style={styles.liveHeaderActions}>
+                {isCreator && !!activeSessionId && <Pressable onPress={openPkPanel} style={styles.pkButton}><Text style={styles.pkButtonText}>PK</Text></Pressable>}
+                {isCreator && pkBattle?.status === "active" && <Pressable onPress={endPkBattle} disabled={pkBusy} style={styles.pkEndButton}><Text style={styles.endText}>End PK</Text></Pressable>}
+                <Pressable onPress={finishLive} disabled={ending} style={styles.endButton}>
+                  {ending ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.endText}>{isCreator ? "End Live" : "Leave"}</Text>}
+                </Pressable>
+              </View>
             </View>
             <View style={styles.liveChatPanel}>
               <ScrollView style={styles.liveChatList} contentContainerStyle={{ gap: 8 }} keyboardShouldPersistTaps="handled">
@@ -478,6 +507,7 @@ export default function LiveBroadcastModal({ visible, sessionId, creatorName, on
                     <Pressable onPress={() => void openViewerProfile(message.user_id)}>
                       <Text style={styles.liveChatUsername}>{message.username.replace(/^[@#]/, "")}</Text>
                     </Pressable>
+                    {!!message.side_label && <Text style={styles.pkSideLabel}>{message.side_label}</Text>}
                     <Text style={styles.liveChatBody}>{message.body}</Text>
                   </View>
                 ))}
@@ -490,6 +520,57 @@ export default function LiveBroadcastModal({ visible, sessionId, creatorName, on
             </View>
             {isCreator && !activeSessionId && <Text style={styles.waiting}>Publishing camera… preparing Live discovery</Text>}
             {isCreator && !!activeSessionId && <Text style={styles.waiting}>Your broadcast is visible on MEEi Live.</Text>}
+            <Modal visible={showPkPanel} transparent animationType="slide" onRequestClose={() => setShowPkPanel(false)}>
+              <Pressable style={styles.profileBackdrop} onPress={() => setShowPkPanel(false)}>
+                <Pressable style={styles.pkPanelCard} onPress={() => {}}>
+                  <View style={styles.pkPanelHeader}>
+                    <Text style={styles.pkPanelTitle}>Start a Live PK</Text>
+                    <Pressable onPress={() => setShowPkPanel(false)}><Text style={styles.moreButtonText}>×</Text></Pressable>
+                  </View>
+                  <Text style={styles.pkPanelHint}>Choose battle duration</Text>
+                  <View style={styles.pkDurationRow}>
+                    {([5,10,15] as const).map((minutes) => (
+                      <Pressable key={minutes} onPress={() => setPkDuration(minutes)} style={[styles.pkDurationOption, pkDuration === minutes && styles.pkDurationSelected]}>
+                        <Text style={[styles.pkDurationText, pkDuration === minutes && styles.pkDurationTextSelected]}>{minutes} min</Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                  <Text style={styles.pkPanelHint}>Choose a creator who is Live now</Text>
+                  {pkBusy ? <ActivityIndicator color="#168BE8" /> : (
+                    <ScrollView style={styles.pkCreatorList}>
+                      {pkCreators.map((creator) => (
+                        <Pressable key={creator.session_id} onPress={() => void sendPkInvite(creator)} style={styles.pkCreatorRow}>
+                          <View style={styles.pkCreatorAvatar}><Text style={styles.pkCreatorAvatarText}>{(creator.display_name || creator.username || "M").slice(0,1).toUpperCase()}</Text></View>
+                          <View style={{ flex: 1 }}>
+                            <Text style={styles.pkCreatorName}>{creator.display_name || creator.username}</Text>
+                            <Text style={styles.pkCreatorUsername}>@{creator.username} · {creator.title}</Text>
+                          </View>
+                          <Text style={styles.pkInviteAction}>Invite</Text>
+                        </Pressable>
+                      ))}
+                      {pkCreators.length === 0 && <Text style={styles.pkPanelHint}>No other eligible creators are Live right now.</Text>}
+                    </ScrollView>
+                  )}
+                </Pressable>
+              </Pressable>
+            </Modal>
+            <Modal visible={pkInvites.length > 0} transparent animationType="fade" onRequestClose={() => setPkInvites([])}>
+              <View style={styles.profileBackdrop}>
+                <View style={styles.pkPanelCard}>
+                  <Text style={styles.pkPanelTitle}>PK invitation</Text>
+                  {pkInvites.slice(0,3).map((invite) => (
+                    <View key={invite.battle_id} style={styles.pkInviteCard}>
+                      <Text style={styles.pkCreatorName}>@{invite.opponent_username} challenged you!</Text>
+                      <Text style={styles.pkPanelHint}>{invite.duration_minutes}-minute Live PK battle</Text>
+                      <View style={styles.pkDurationRow}>
+                        <Pressable disabled={pkBusy} onPress={() => void respondPkInvite(invite, false)} style={styles.pkDeclineButton}><Text style={styles.pkDeclineText}>Decline</Text></Pressable>
+                        <Pressable disabled={pkBusy} onPress={() => void respondPkInvite(invite, true)} style={styles.pkAcceptButton}><Text style={styles.pkAcceptText}>Accept PK</Text></Pressable>
+                      </View>
+                    </View>
+                  ))}
+                </View>
+              </View>
+            </Modal>
             <Modal visible={!!selectedViewer} transparent animationType="fade" onRequestClose={() => { setSelectedViewer(null); setShowViewerMenu(false); }}>
               <Pressable style={styles.profileBackdrop} onPress={() => { setSelectedViewer(null); setShowViewerMenu(false); }}>
                 <Pressable style={styles.profileCard} onPress={() => {}}>
@@ -505,7 +586,7 @@ export default function LiveBroadcastModal({ visible, sessionId, creatorName, on
                   {showViewerMenu && canModerate && <View style={styles.viewerMenu}>\n                    {isCreator && <Pressable disabled={moderationBusy} onPress={toggleModerator} style={styles.viewerMenuItem}><Text style={styles.viewerMenuText}>{selectedIsModerator ? "Remove Admin" : "Set as Admin"}</Text></Pressable>}
                     <Pressable disabled={moderationBusy} onPress={() => moderateViewer("mute")} style={styles.viewerMenuItem}><Text style={styles.viewerMenuText}>Mute for 12 hours</Text></Pressable>
                     <Pressable disabled={moderationBusy} onPress={() => moderateViewer("kickout")} style={styles.viewerMenuItem}><Text style={styles.viewerMenuText}>Kick out for 12 hours</Text></Pressable>
-                    <Pressable disabled={moderationBusy} onPress={() => moderateViewer("block")} style={styles.viewerMenuItem}><Text style={[styles.viewerMenuText,{color:"#D83B4B"}]}>Block permanently</Text></Pressable>
+                    {pkBattle?.status !== "active" && <Pressable disabled={moderationBusy} onPress={() => moderateViewer("block")} style={styles.viewerMenuItem}><Text style={[styles.viewerMenuText,{color:"#D83B4B"}]}>Block permanently</Text></Pressable>}
                   </View>}
                 </Pressable>
               </Pressable>
@@ -575,6 +656,37 @@ const styles = StyleSheet.create({
   primaryText: { color: "#FFFFFF", fontSize: 16, fontWeight: "800" },
   note: { color: "#9DB0C0", fontSize: 12, lineHeight: 18, textAlign: "center", marginTop: 6 },
   room: { flex: 1, backgroundColor: "#000000" },
+  videoStageSingle: { flex: 1 },
+  pkVideoRow: { flex: 1, flexDirection: "row" },
+  pkVideoPane: { flex: 1, overflow: "hidden", backgroundColor: "#000000" },
+  pkSideBadge: { position: "absolute", top: 74, left: 8, color: "#FFFFFF", backgroundColor: "#071522CC", overflow: "hidden", borderRadius: 8, paddingHorizontal: 8, paddingVertical: 5, fontSize: 10, fontWeight: "900" },
+  liveHeaderActions: { flexDirection: "row", alignItems: "center", gap: 7 },
+  pkButton: { backgroundColor: "#7C4DFF", borderRadius: 20, paddingHorizontal: 15, paddingVertical: 11 },
+  pkButtonText: { color: "#FFFFFF", fontWeight: "900" },
+  pkEndButton: { backgroundColor: "#A45B20", borderRadius: 20, paddingHorizontal: 12, paddingVertical: 11 },
+  pkTimer: { color: "#FFE28A", fontSize: 13, fontWeight: "900", marginTop: 6, textShadowColor: "#000000", textShadowRadius: 4 },
+  pkSideLabel: { color: "#FFE28A", fontSize: 10, fontWeight: "900" },
+  pkPanelCard: { backgroundColor: "#FFFFFF", borderRadius: 20, padding: 18, gap: 13, maxHeight: "75%" },
+  pkPanelHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  pkPanelTitle: { color: "#172B3A", fontSize: 19, fontWeight: "900" },
+  pkPanelHint: { color: "#71879A", fontSize: 12 },
+  pkDurationRow: { flexDirection: "row", gap: 8, alignItems: "center" },
+  pkDurationOption: { flex: 1, borderWidth: 1, borderColor: "#D8E6F1", borderRadius: 12, paddingVertical: 11, alignItems: "center" },
+  pkDurationSelected: { backgroundColor: "#EAF3FF", borderColor: "#168BE8" },
+  pkDurationText: { color: "#526B7D", fontWeight: "800" },
+  pkDurationTextSelected: { color: "#168BE8" },
+  pkCreatorList: { maxHeight: 320 },
+  pkCreatorRow: { flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 11, borderBottomWidth: 1, borderBottomColor: "#EEF2F5" },
+  pkCreatorAvatar: { width: 40, height: 40, borderRadius: 20, backgroundColor: "#EAF3FF", alignItems: "center", justifyContent: "center" },
+  pkCreatorAvatarText: { color: "#168BE8", fontSize: 16, fontWeight: "900" },
+  pkCreatorName: { color: "#172B3A", fontSize: 14, fontWeight: "900" },
+  pkCreatorUsername: { color: "#71879A", fontSize: 11, marginTop: 2 },
+  pkInviteAction: { color: "#168BE8", fontSize: 12, fontWeight: "900" },
+  pkInviteCard: { borderTopWidth: 1, borderTopColor: "#EEF2F5", paddingTop: 12, gap: 8 },
+  pkAcceptButton: { flex: 1, backgroundColor: "#168BE8", borderRadius: 12, paddingVertical: 12, alignItems: "center" },
+  pkAcceptText: { color: "#FFFFFF", fontWeight: "900" },
+  pkDeclineButton: { flex: 1, backgroundColor: "#F1F5F8", borderRadius: 12, paddingVertical: 12, alignItems: "center" },
+  pkDeclineText: { color: "#526B7D", fontWeight: "900" },
   trackStage: { flex: 1, backgroundColor: "#000000", justifyContent: "center" },
   video: { flex: 1, width: "100%" },
   cameraPlaceholder: { flex: 1, alignItems: "center", justifyContent: "center", gap: 12 },
