@@ -13,6 +13,7 @@ type LiveChatMessage = { id: string; user_id: string; username: string; body: st
 type PKCreator = { session_id: string; user_id: string; username: string; display_name: string; title: string };
 type PKInvite = { battle_id: string; opponent_session_id: string; opponent_user_id: string; opponent_username: string; opponent_display_name: string; duration_minutes: number; invite_expires_at: string };
 type MiniProfile = { user_id: string; username: string; display_name: string; bio: string | null; avatarUrl: string | null };
+type LiveRoomPopupEvent = { event_id: string; event_type: string; title: string; message: string; expires_at: string };
 
 type Props = {
   visible: boolean;
@@ -40,6 +41,7 @@ export default function LiveBroadcastModal({ visible, sessionId, creatorName, on
   const [chatMessages, setChatMessages] = useState<LiveChatMessage[]>([]);
   const [chatMembershipId, setChatMembershipId] = useState<string | null>(null);
   const [chatMembershipBusy, setChatMembershipBusy] = useState(false);
+  const [roomPopup, setRoomPopup] = useState<LiveRoomPopupEvent | null>(null);
   const [pkBattle, setPkBattle] = useState<any | null>(null);
   const [pkOpponentCredentials, setPkOpponentCredentials] = useState<RoomCredentials | null>(null);
   const [pkInvites, setPkInvites] = useState<PKInvite[]>([]);
@@ -137,6 +139,56 @@ export default function LiveBroadcastModal({ visible, sessionId, creatorName, on
   const pkSecondsRemaining = pkBattle?.ends_at
     ? Math.max(0, Math.ceil((new Date(pkBattle.ends_at).getTime() - (pkNow + pkServerOffsetMs)) / 1000))
     : 0;
+
+  useEffect(() => {
+    const client = supabase;
+    const eligibleClientView = visible && !isCreator && !!sessionId && !!chatMembershipId
+      && moderationRole === "viewer" && pkBattle?.status !== "active" && !pkOpponentCredentials && !!client;
+    if (!eligibleClientView || !client) {
+      if (roomPopup) {
+        if (client) void client.rpc("dismiss_my_live_room_popup_event", { p_event_id: roomPopup.event_id });
+        setRoomPopup(null);
+      }
+      return;
+    }
+    let cancelled = false;
+    const loadEligiblePopup = async () => {
+      const { data, error } = await client.rpc("get_my_live_room_popup_event", {
+        target_session_id: sessionId,
+      });
+      if (cancelled) return;
+      if (error) {
+        console.warn("Live room popup eligibility could not be checked.");
+        setRoomPopup(null);
+        return;
+      }
+      const row = Array.isArray(data) ? data[0] : null;
+      if (!row?.event_id || !row?.expires_at) {
+        setRoomPopup(null);
+        return;
+      }
+      setRoomPopup({
+        event_id: String(row.event_id),
+        event_type: String(row.event_type || "other"),
+        title: String(row.title || ""),
+        message: String(row.message || ""),
+        expires_at: String(row.expires_at),
+      });
+    };
+    void loadEligiblePopup();
+    const timer = setInterval(() => { void loadEligiblePopup(); }, 1500);
+    return () => { cancelled = true; clearInterval(timer); };
+  }, [visible, isCreator, sessionId, chatMembershipId, moderationRole, pkBattle?.status, pkOpponentCredentials]);
+
+  useEffect(() => {
+    if (!roomPopup) return;
+    const remaining = Math.max(0, Math.min(5000, new Date(roomPopup.expires_at).getTime() - Date.now()));
+    const timer = setTimeout(() => {
+      setRoomPopup(null);
+      if (supabase) void supabase.rpc("dismiss_my_live_room_popup_event", { p_event_id: roomPopup.event_id });
+    }, remaining);
+    return () => clearTimeout(timer);
+  }, [roomPopup?.event_id, roomPopup?.expires_at]);
 
   useEffect(() => {
     if (!visible || !sessionId || !supabase) { setModerationRole(isCreator ? "creator" : "viewer"); return; }
@@ -460,6 +512,10 @@ export default function LiveBroadcastModal({ visible, sessionId, creatorName, on
   const finishLive = async () => {
     if (ending) return;
     setEnding(true);
+    if (roomPopup && supabase) {
+      await supabase.rpc("dismiss_my_live_room_popup_event", { p_event_id: roomPopup.event_id });
+      setRoomPopup(null);
+    }
     if (supabase && !isCreator && chatMembershipId) {
       const { error: membershipEndError } = await supabase.rpc("end_live_chat_membership", {
         target_membership_id: chatMembershipId,
@@ -573,6 +629,20 @@ export default function LiveBroadcastModal({ visible, sessionId, creatorName, on
                 </Pressable>
               </View>
             </View>
+            {roomPopup && !isCreator && moderationRole === "viewer" && pkBattle?.status !== "active" && !pkOpponentCredentials && (
+              <View pointerEvents="box-none" style={{ position: "absolute", top: 74, left: 18, right: 18, zIndex: 60, alignItems: "center" }}>
+                <View style={{ width: "100%", backgroundColor: "#101C2A", borderColor: "#2799D6", borderWidth: 1, borderRadius: 16, padding: 14, elevation: 12 }}>
+                  <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                    <Text style={{ color: "#FFFFFF", fontSize: 15, fontWeight: "800", flex: 1 }}>{roomPopup.title}</Text>
+                    <Pressable onPress={() => {
+                      setRoomPopup(null);
+                      if (supabase) void supabase.rpc("dismiss_my_live_room_popup_event", { p_event_id: roomPopup.event_id });
+                    }}><Text style={{ color: "#B9C9D8", fontSize: 20, fontWeight: "700" }}>×</Text></Pressable>
+                  </View>
+                  <Text style={{ color: "#E2EDF7", fontSize: 13, lineHeight: 18, marginTop: 6 }}>{roomPopup.message}</Text>
+                </View>
+              </View>
+            )}
             <View style={styles.liveChatPanel}>
               <ScrollView style={styles.liveChatList} contentContainerStyle={{ gap: 8 }} keyboardShouldPersistTaps="handled">
                 {chatMessages.slice(-40).map((message) => (
