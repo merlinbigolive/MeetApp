@@ -113,7 +113,7 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
 
   const sendCode = async () => {
     const client = supabase;
-    if (!client) return;
+    if (!client || busy) return;
     const cleanEmail = email.trim().toLowerCase();
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
       setMessage('Please enter a valid email address.');
@@ -129,6 +129,7 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
       if (error) setMessage(error.message);
       else {
         setEmail(cleanEmail);
+        setCode('');
         setSent(true);
         setMessage('A one-time code has been sent to your email.');
       }
@@ -141,7 +142,7 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
 
   const verifyCode = async () => {
     const client = supabase;
-    if (!client) return;
+    if (!client || busy) return;
     const token = code.trim();
     if (!/^\d{6}$/.test(token)) {
       setMessage('Enter the 6-digit code from your email.');
@@ -218,9 +219,16 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
               {busy ? <ActivityIndicator color="#FFFFFF" /> :
                 <Text style={styles.buttonText}>{sent ? 'Verify email code' : 'Send email code'}</Text>}
             </Pressable>
-            {sent && <Pressable disabled={busy} onPress={() => { setSent(false); setCode(''); setMessage(''); }}>
-              <Text style={styles.link}>Use a different email</Text>
-            </Pressable>}
+            {sent && (
+              <>
+                <Pressable disabled={busy} onPress={sendCode}>
+                  <Text style={styles.link}>Resend code</Text>
+                </Pressable>
+                <Pressable disabled={busy} onPress={() => { setSent(false); setCode(''); setMessage(''); }}>
+                  <Text style={styles.link}>Use a different email</Text>
+                </Pressable>
+              </>
+            )}
           </>
         )}
         {!!message && <Text style={styles.message}>{message}</Text>}
