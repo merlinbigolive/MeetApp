@@ -1,5 +1,6 @@
 -- MEEi saved posts and post reporting.
 -- Run once in Supabase SQL Editor. Safe to re-run.
+-- Includes fake_information for the approved MEEi report reason list.
 
 create table if not exists public.saved_posts (
   id uuid primary key default gen_random_uuid(),
@@ -53,11 +54,16 @@ create table if not exists public.post_reports (
   id uuid primary key default gen_random_uuid(),
   reporter_id uuid not null references public.profiles(id) on delete cascade,
   post_id uuid not null references public.posts(id) on delete cascade,
-  reason text not null check (reason in ('spam','harassment','hate','violence','nudity','scam','copyright','other')),
+  reason text not null check (reason in ('spam','harassment','hate','violence','nudity','scam','fake_information','copyright','other')),
   status text not null default 'pending' check (status in ('pending','reviewed','actioned','dismissed')),
   created_at timestamptz not null default now(),
   unique (reporter_id, post_id)
 );
+
+-- Keep existing installations compatible when this setup is re-run.
+alter table public.post_reports drop constraint if exists post_reports_reason_check;
+alter table public.post_reports add constraint post_reports_reason_check
+  check (reason in ('spam','harassment','hate','violence','nudity','scam','fake_information','copyright','other'));
 
 create index if not exists post_reports_status_created_idx
   on public.post_reports (status, created_at asc);
