@@ -209,8 +209,8 @@ export default function LiveBroadcastModal({ visible, sessionId, creatorName, on
       body: { action: "pk_respond", battle_id: invite.battle_id, accept },
     });
     setPkBusy(false);
-    if (error || data?.error || data?.ok !== true) {
-      Alert.alert("PK response failed", data?.error || error?.message || "This invitation expired or the other creator left Live.");
+    if (error || data?.error) {
+      Alert.alert("PK response failed", data?.error || error?.message || "Please try again.");
       return;
     }
     if (data?.ok !== true) {
