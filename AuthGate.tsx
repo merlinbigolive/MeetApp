@@ -55,8 +55,8 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
           .from('profiles').select('id').eq('id', session.user.id).maybeSingle();
         if (error) throw new Error('Could not check your profile: ' + error.message);
         if (!data) {
-          const emailName = (session.user.email || 'usayuser').split('@')[0]
-            .toLowerCase().replace(/[^a-z0-9_]/g, '').slice(0, 18) || 'usayuser';
+          const emailName = (session.user.email || 'meeiuser').split('@')[0]
+            .toLowerCase().replace(/[^a-z0-9_]/g, '').slice(0, 18) || 'meeiuser';
           const username = emailName + '_' + session.user.id.slice(0, 6);
           const displayName = session.user.user_metadata?.display_name || emailName;
           const { error: insertError } = await client.from('profiles').insert({
