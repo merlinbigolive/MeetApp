@@ -31,6 +31,7 @@ export default function LiveBroadcastModal({ visible, sessionId, creatorName, on
   const [ending, setEnding] = useState(false);
   const [chatMessages, setChatMessages] = useState<LiveChatMessage[]>([]);
   const [chatMembershipId, setChatMembershipId] = useState<string | null>(null);
+  const [chatMembershipBusy, setChatMembershipBusy] = useState(false);
   const [pkBattle, setPkBattle] = useState<any | null>(null);
   const [pkOpponentCredentials, setPkOpponentCredentials] = useState<RoomCredentials | null>(null);
   const [pkInvites, setPkInvites] = useState<PKInvite[]>([]);
@@ -60,14 +61,15 @@ export default function LiveBroadcastModal({ visible, sessionId, creatorName, on
         body: { action: "join", session_id: sessionId },
       });
       if (cancelled) return;
-      if (error || !data?.token || !data?.url || !data?.room_name || !data?.membership_id) {
+      if (error || !data?.token || !data?.url || !data?.room_name) {
         Alert.alert("Unable to join Live", data?.error || error?.message || "Please try again.");
         setBusy(false);
         onClose();
         return;
       }
       setChatMessages([]);
-      setChatMembershipId(String(data.membership_id));
+      setChatMembershipId(null);
+      setChatMembershipBusy(false);
       setCredentials({ url: data.url, token: data.token, room_name: data.room_name, role: "viewer" });
       setRoomName(data.room_name);
       setBusy(false);
@@ -90,6 +92,20 @@ export default function LiveBroadcastModal({ visible, sessionId, creatorName, on
 
   const chatSessionId = sessionId || activeSessionId;
   const canModerate = isCreator || moderationRole === "moderator";
+  const establishChatMembership = async () => {
+    if (!supabase || isCreator || !sessionId || chatMembershipId || chatMembershipBusy) return;
+    setChatMembershipBusy(true);
+    const { data, error } = await supabase.functions.invoke("livekit-control", {
+      body: { action: "chat_join", session_id: sessionId },
+    });
+    setChatMembershipBusy(false);
+    if (error || data?.error || !data?.membership_id) {
+      Alert.alert("Live chat unavailable", data?.error || error?.message || "Please retry joining chat.");
+      return;
+    }
+    setChatMessages([]);
+    setChatMembershipId(String(data.membership_id));
+  };
   const pkSecondsRemaining = pkBattle?.ends_at
     ? Math.max(0, Math.ceil((new Date(pkBattle.ends_at).getTime() - (pkNow + pkServerOffsetMs)) / 1000))
     : 0;
@@ -255,7 +271,7 @@ export default function LiveBroadcastModal({ visible, sessionId, creatorName, on
   };
 
   const sendLiveMessage = async () => {
-    if (!supabase || !chatSessionId || !chatDraft.trim() || chatBusy) return;
+    if (!supabase || !chatSessionId || !chatDraft.trim() || chatBusy || (!isCreator && !chatMembershipId)) return;
     setChatBusy(true);
     const { error } = await supabase.rpc("send_live_chat_message", {
       target_session_id: chatSessionId,
@@ -440,6 +456,7 @@ export default function LiveBroadcastModal({ visible, sessionId, creatorName, on
     setRoomName("");
     setActiveSessionId(null);
     setChatMembershipId(null);
+    setChatMembershipBusy(false);
     setChatMessages([]);
     setPkBattle(null);
     setPkOpponentCredentials(null);
@@ -485,6 +502,7 @@ export default function LiveBroadcastModal({ visible, sessionId, creatorName, on
                   audio={isCreator}
                   video={isCreator}
                   options={{ adaptiveStream: { pixelDensity: "screen" } }}
+                  onConnected={() => { if (!isCreator) void establishChatMembership(); }}
                 >
                   <RoomTracks
                     creator={isCreator}
@@ -540,11 +558,13 @@ export default function LiveBroadcastModal({ visible, sessionId, creatorName, on
                     <Text style={styles.liveChatBody}>{message.body}</Text>
                   </View>
                 ))}
-                {chatMessages.length === 0 && <Text style={styles.liveChatHint}>Be the first to say hello!</Text>}
+                {!isCreator && !chatMembershipId
+                  ? <Pressable onPress={() => void establishChatMembership()} disabled={chatMembershipBusy}><Text style={styles.liveChatHint}>{chatMembershipBusy ? "Joining chat…" : "Tap to retry chat connection"}</Text></Pressable>
+                  : chatMessages.length === 0 && <Text style={styles.liveChatHint}>Be the first to say hello!</Text>}
               </ScrollView>
               <View style={styles.liveChatComposer}>
                 <TextInput value={chatDraft} onChangeText={setChatDraft} placeholder="Say something…" placeholderTextColor="#AFC0CF" maxLength={500} style={styles.liveChatInput} returnKeyType="send" onSubmitEditing={sendLiveMessage}/>
-                <Pressable onPress={sendLiveMessage} disabled={!chatDraft.trim() || chatBusy} style={styles.liveChatSend}><Text style={styles.liveChatSendText}>{chatBusy ? "…" : "Send"}</Text></Pressable>
+                <Pressable onPress={sendLiveMessage} disabled={!chatDraft.trim() || chatBusy || (!isCreator && !chatMembershipId)} style={styles.liveChatSend}><Text style={styles.liveChatSendText}>{chatBusy ? "…" : "Send"}</Text></Pressable>
               </View>
             </View>
             {isCreator && !activeSessionId && <Text style={styles.waiting}>Publishing camera… preparing Live discovery</Text>}
