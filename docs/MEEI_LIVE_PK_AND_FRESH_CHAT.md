@@ -70,3 +70,22 @@ Add a synchronized 1v1 Live PK experience to MEEi and make Live chat join behavi
 - Both sides see new comments from both rooms with correct side labels and no duplicates.
 - Authorized creator/admin from either side can moderate users on either side during the active PK; unauthorized users cannot.
 - Ending PK leaves both underlying Live sessions running unless their creators independently end them.
+
+## Implementation status — 2026-11-26
+
+### Implemented in Supabase and app source
+- Added per-entry `live_chat_memberships` with a server-generated UUID cursor and server timestamp.
+- Viewer chat reads require a membership belonging to the authenticated user and requested Live session; SQL filters messages to `created_at >= joined_at`.
+- Added membership leave invalidation. A viewer's old cursor is marked closed when they leave and cannot be reused to read chat.
+- Updated `livekit-control` join to establish the membership cursor before returning the viewer token.
+- Added PK invitation and battle tables with 5/10/15-minute duration validation, 45-second invitation expiry, server start/end timestamps, and per-session lock rows to prevent a creator entering multiple simultaneous PKs.
+- Added authenticated RPCs for create/respond/list/state/end, shared PK comments, and cross-side moderation audit.
+- Added a Live-session end trigger that ends any pending/active PK involving that session.
+- Added Edge Function actions: `pk_invite`, `pk_inbox`, `pk_respond`, `pk_join`, `pk_moderate`, and `pk_end`. Creator room publishing is checked before an invite is sent or accepted. Opponent room tokens are read-only and server-issued.
+- Added server-time offset for the shared countdown and client expiry handling.
+- Updated `LiveBroadcastModal.tsx` with PK creator selection, duration choices, invite accept/decline, dual LiveKit room video panes, shared two-side comments with side labels, and PK-scoped username-tap mute/kick actions.
+
+### Verification still required
+- Supabase migrations applied successfully and Edge Function `livekit-control` is ACTIVE at version 9.
+- Database function definitions, SECURITY DEFINER flags, search paths, RLS and grants were inspected.
+- No two-account end-to-end PK test or physical Android/iOS device test has been performed yet. In particular, the two simultaneous React Native LiveKit room connections, media/audio behavior, network recovery, and moderation removal must be verified in development builds before treating PK as production-ready.
