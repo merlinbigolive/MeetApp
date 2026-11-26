@@ -1,5 +1,6 @@
--- MEEi Live PK 1v1 battle schema, RPCs and security.
--- Current source snapshot of the deployed database definitions.
+-- MEEi Live PK 1v1 battle schema, RPCs, moderation, locks and security.
+-- Source snapshot of the active Supabase database definitions.
+
 create table if not exists public.live_pk_battles (
   id uuid primary key default gen_random_uuid(),
   session_a_id uuid not null references public.live_sessions(id) on delete cascade,
@@ -21,6 +22,7 @@ create unique index if not exists live_pk_active_session_a_uq on public.live_pk_
 create unique index if not exists live_pk_active_session_b_uq on public.live_pk_battles(session_b_id) where status in ('invited','active');
 create index if not exists live_pk_invited_creator_idx on public.live_pk_battles(creator_a_id,creator_b_id,invite_expires_at) where status='invited';
 create index if not exists live_pk_active_ends_idx on public.live_pk_battles(ends_at) where status='active';
+
 create table if not exists public.live_pk_moderation_audit (
   id uuid primary key default gen_random_uuid(),
   battle_id uuid not null references public.live_pk_battles(id) on delete cascade,
@@ -29,11 +31,20 @@ create table if not exists public.live_pk_moderation_audit (
   moderation_action text not null check (moderation_action in ('mute','kickout')),
   created_at timestamptz not null default now()
 );
+create table if not exists public.live_pk_session_locks (
+  session_id uuid primary key references public.live_sessions(id) on delete cascade,
+  battle_id uuid not null references public.live_pk_battles(id) on delete cascade,
+  created_at timestamptz not null default now()
+);
 alter table public.live_pk_battles enable row level security;
 alter table public.live_pk_moderation_audit enable row level security;
+alter table public.live_pk_session_locks enable row level security;
 revoke all on public.live_pk_battles from anon,authenticated;
 revoke all on public.live_pk_moderation_audit from anon,authenticated;
+revoke all on public.live_pk_session_locks from anon,authenticated;
 grant all on public.live_pk_battles to service_role;
+grant all on public.live_pk_moderation_audit to service_role;
+grant all on public.live_pk_session_locks to service_role;
 
 CREATE OR REPLACE FUNCTION public.consume_my_meei_rate_limit(p_action_key text)
  RETURNS boolean
@@ -160,6 +171,24 @@ end;
 $function$
 
 
+CREATE OR REPLACE FUNCTION public.end_live_pk_when_session_ends()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public', 'pg_temp'
+AS $function$
+begin
+  if old.status is distinct from new.status and new.status='ended' then
+    update public.live_pk_battles
+    set status='ended', ended_at=coalesce(ended_at,now())
+    where status in ('invited','active')
+      and (session_a_id=new.id or session_b_id=new.id);
+  end if;
+  return new;
+end;
+$function$
+
+
 CREATE OR REPLACE FUNCTION public.get_live_pk_chat_messages(target_session_id uuid, target_membership_id uuid, message_limit integer DEFAULT 80)
  RETURNS TABLE(id uuid, user_id uuid, username text, body text, created_at timestamp with time zone, avatar_path text, origin_session_id uuid, side_label text)
  LANGUAGE plpgsql
@@ -185,7 +214,7 @@ begin
   opponent_session_id := case when battle.session_a_id=target_session_id then battle.session_b_id else battle.session_a_id end;
 
   if actor=host_id then
-    joined_at := '-infinity'::timestamptz;
+    joined_at := battle.started_at;
   else
     if not coalesce((select ce.allowed from public.check_live_entry(target_session_id) ce),false) then
       raise exception 'You are not allowed to view this PK.';
@@ -198,6 +227,7 @@ begin
     if not coalesce(opponent_allowed,false) then
       raise exception 'You are not allowed to view the opponent side of this PK.';
     end if;
+    joined_at := greatest(joined_at,battle.started_at);
   end if;
 
   return query
@@ -384,6 +414,45 @@ begin
 end;
 $function$
 
+
+CREATE OR REPLACE FUNCTION public.sync_live_pk_session_locks()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public', 'pg_temp'
+AS $function$
+declare
+  inserted_count integer;
+begin
+  if tg_op='INSERT' then
+    if new.status in ('invited','active') then
+      insert into public.live_pk_session_locks(session_id,battle_id)
+      values (new.session_a_id,new.id),(new.session_b_id,new.id)
+      on conflict (session_id) do nothing;
+      get diagnostics inserted_count = row_count;
+      if inserted_count <> 2 then
+        raise exception 'One of these creators is already in another PK.';
+      end if;
+    end if;
+    return new;
+  end if;
+
+  if old.status in ('invited','active') and new.status not in ('invited','active') then
+    delete from public.live_pk_session_locks where battle_id=old.id;
+  elsif old.status not in ('invited','active') and new.status in ('invited','active') then
+    insert into public.live_pk_session_locks(session_id,battle_id)
+    values (new.session_a_id,new.id),(new.session_b_id,new.id)
+    on conflict (session_id) do nothing;
+    get diagnostics inserted_count = row_count;
+    if inserted_count <> 2 then
+      raise exception 'One of these creators is already in another PK.';
+    end if;
+  end if;
+  return new;
+end;
+$function$
+
+
 revoke all on function public.create_live_pk_invite(uuid,integer) from public,anon;
 revoke all on function public.respond_live_pk_invite(uuid,boolean) from public,anon;
 revoke all on function public.list_my_live_pk_invites() from public,anon;
@@ -398,3 +467,52 @@ grant execute on function public.get_live_pk_state(uuid) to authenticated;
 grant execute on function public.end_live_pk_battle(uuid) to authenticated;
 grant execute on function public.get_live_pk_chat_messages(uuid,uuid,integer) to authenticated;
 grant execute on function public.moderate_live_pk_viewer(uuid,uuid,text) to authenticated;
+
+create or replace function public.sync_live_pk_session_locks()
+returns trigger language plpgsql security definer set search_path = public, pg_temp as $$
+declare inserted_count integer;
+begin
+  if tg_op='INSERT' then
+    if new.status in ('invited','active') then
+      insert into public.live_pk_session_locks(session_id,battle_id)
+      values (new.session_a_id,new.id),(new.session_b_id,new.id)
+      on conflict (session_id) do nothing;
+      get diagnostics inserted_count = row_count;
+      if inserted_count <> 2 then raise exception 'One of these creators is already in another PK.'; end if;
+    end if;
+    return new;
+  end if;
+  if old.status in ('invited','active') and new.status not in ('invited','active') then
+    delete from public.live_pk_session_locks where battle_id=old.id;
+  elsif old.status not in ('invited','active') and new.status in ('invited','active') then
+    insert into public.live_pk_session_locks(session_id,battle_id)
+    values (new.session_a_id,new.id),(new.session_b_id,new.id)
+    on conflict (session_id) do nothing;
+    get diagnostics inserted_count = row_count;
+    if inserted_count <> 2 then raise exception 'One of these creators is already in another PK.'; end if;
+  end if;
+  return new;
+end; $$;
+
+create or replace function public.end_live_pk_when_session_ends()
+returns trigger language plpgsql security definer set search_path = public, pg_temp as $$
+begin
+  if old.status is distinct from new.status and new.status='ended' then
+    update public.live_pk_battles set status='ended', ended_at=coalesce(ended_at,now())
+    where status in ('invited','active') and (session_a_id=new.id or session_b_id=new.id);
+  end if;
+  return new;
+end; $$;
+
+drop trigger if exists live_pk_session_locks_sync on public.live_pk_battles;
+create trigger live_pk_session_locks_sync after insert or update of status on public.live_pk_battles
+for each row execute function public.sync_live_pk_session_locks();
+drop trigger if exists live_session_end_pk_cleanup on public.live_sessions;
+create trigger live_session_end_pk_cleanup after update of status on public.live_sessions
+for each row execute function public.end_live_pk_when_session_ends();
+
+insert into public.live_pk_session_locks(session_id,battle_id)
+select session_a_id,id from public.live_pk_battles where status in ('invited','active')
+union all
+select session_b_id,id from public.live_pk_battles where status in ('invited','active')
+on conflict (session_id) do nothing;
