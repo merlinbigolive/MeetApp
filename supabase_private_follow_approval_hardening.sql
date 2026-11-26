@@ -3,6 +3,16 @@
 -- original follows table (no status column) and the follow-request extension.
 -- A pending follow request must never grant access to private profile/media/posts.
 
+-- Remove legacy permissive policies that would OR-bypass the stricter rules below.
+-- These were left behind by earlier setup scripts and defeat private-account approval.
+drop policy if exists "profiles_read_authenticated" on public.profiles;
+drop policy if exists "follows_read_authenticated" on public.follows;
+drop policy if exists "follows_insert_own" on public.follows;
+drop policy if exists "posts_read_allowed" on public.posts;
+drop policy if exists "comments_read_allowed" on public.post_comments;
+drop policy if exists "comments_insert_own" on public.post_comments;
+
+
 drop policy if exists "profiles_read_visible" on public.profiles;
 create policy "profiles_read_visible" on public.profiles
 for select to authenticated
