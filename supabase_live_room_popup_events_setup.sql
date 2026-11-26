@@ -8,6 +8,7 @@ create table if not exists private.live_room_popup_events (
   id uuid primary key default gen_random_uuid(),
   recipient_user_id uuid not null references auth.users(id) on delete cascade,
   session_id uuid not null references public.live_sessions(id) on delete cascade,
+  membership_id uuid not null references public.live_chat_memberships(id) on delete cascade,
   event_type text not null check (event_type in ('global_live_boost','live_promotion','room_invite','other')),
   title text not null check (char_length(trim(title)) between 1 and 80),
   message text not null check (char_length(trim(message)) between 1 and 220),
@@ -42,6 +43,7 @@ as $$
 declare
   v_id uuid;
   v_role text;
+  v_membership_id uuid;
 begin
   v_role := coalesce(nullif(current_setting('request.jwt.claims', true), '')::jsonb ->> 'role', '');
   if v_role <> 'service_role' then
@@ -55,13 +57,15 @@ begin
     raise exception 'Invalid Live room popup payload' using errcode = '22023';
   end if;
 
-  if not exists (
-    select 1 from public.live_sessions ls
-    join public.live_chat_memberships m on m.session_id = ls.id
-    where ls.id = p_session_id and ls.status = 'live'
-      and ls.user_id <> p_recipient_user_id
-      and m.viewer_id = p_recipient_user_id and m.left_at is null
-  ) then
+  select m.id into v_membership_id
+  from public.live_sessions ls
+  join public.live_chat_memberships m on m.session_id = ls.id
+  where ls.id = p_session_id and ls.status = 'live'
+    and ls.user_id <> p_recipient_user_id
+    and m.viewer_id = p_recipient_user_id and m.left_at is null
+  order by m.joined_at desc
+  limit 1;
+  if v_membership_id is null then
     raise exception 'Recipient is not an active viewer in this Live room' using errcode = '42501';
   end if;
 
@@ -90,9 +94,9 @@ begin
   end if;
 
   insert into private.live_room_popup_events (
-    recipient_user_id, session_id, event_type, title, message, expires_at
+    recipient_user_id, session_id, membership_id, event_type, title, message, expires_at
   ) values (
-    p_recipient_user_id, p_session_id, p_event_type, trim(p_title), trim(p_message),
+    p_recipient_user_id, p_session_id, v_membership_id, p_event_type, trim(p_title), trim(p_message),
     now() + make_interval(secs => p_ttl_seconds)
   ) returning id into v_id;
   return v_id;
@@ -157,6 +161,8 @@ begin
   return query
     select e.id, e.event_type, e.title, e.message, e.expires_at
     from private.live_room_popup_events e
+    join public.live_chat_memberships m
+      on m.id = e.membership_id and m.viewer_id = v_uid and m.left_at is null
     where e.recipient_user_id = v_uid and e.session_id = target_session_id
       and e.dismissed_at is null and e.expires_at > now()
     order by e.created_at desc limit 1;
