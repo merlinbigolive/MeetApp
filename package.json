@@ -28,7 +28,7 @@
     "react-native-url-polyfill": "^2.0.0",
     "expo-video": "~3.0.14",
     "@react-native-async-storage/async-storage": "2.2.0",
-    "expo-audio": "~1.0.14",
+    "expo-audio": "~1.1.1",
     "expo-speech-recognition": "sdk-54",
     "expo-notifications": "~0.32.15",
     "expo-dev-client": "~6.0.21",
