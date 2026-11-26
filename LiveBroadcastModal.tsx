@@ -48,7 +48,7 @@ export default function LiveBroadcastModal({ visible, sessionId, creatorName, on
         body: { action: "join", session_id: sessionId },
       });
       if (cancelled) return;
-      if (error || !data?.token || !data?.url || !data?.room_name) {
+      if (error || !data?.token || !data?.url || !data?.room_name || !data?.membership_id) {
         Alert.alert("Unable to join Live", data?.error || error?.message || "Please try again.");
         setBusy(false);
         onClose();
