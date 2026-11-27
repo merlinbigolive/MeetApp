@@ -2287,13 +2287,14 @@ export default function App() {
 
 
   const PublicFeedScreen = () => {
-    const { height: viewportHeight } = useWindowDimensions();
+    const [viewportHeight, setViewportHeight] = useState(0);
     const [feedScrollY, setFeedScrollY] = useState(0);
     const [feedPostTops, setFeedPostTops] = useState<Record<string, number>>({});
     return <ScrollView
       contentContainerStyle={s.feedScroll}
       showsVerticalScrollIndicator={false}
       scrollEventThrottle={16}
+      onLayout={event => setViewportHeight(event.nativeEvent.layout.height)}
       onScroll={event => setFeedScrollY(event.nativeEvent.contentOffset.y)}
     >
       <View style={s.feedHeader}>
@@ -2352,7 +2353,7 @@ export default function App() {
   };
 
   const DiscoverScreen = () => {
-    const { height: viewportHeight } = useWindowDimensions();
+    const [viewportHeight, setViewportHeight] = useState(0);
     const [scrollY, setScrollY] = useState(0);
     const [reelsGridTop, setReelsGridTop] = useState(0);
     const query = profileSearch.trim().replace(/^[@#]+/, '').toLowerCase();
@@ -2379,6 +2380,7 @@ export default function App() {
       contentContainerStyle={s.discoverScroll}
       keyboardShouldPersistTaps="handled"
       scrollEventThrottle={16}
+      onLayout={event => setViewportHeight(event.nativeEvent.layout.height)}
       onScroll={event => setScrollY(event.nativeEvent.contentOffset.y)}
     >
       <View style={s.searchHeader}>
