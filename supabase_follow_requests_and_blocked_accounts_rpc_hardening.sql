@@ -3,12 +3,16 @@
 --   1. supabase_private_follow_requests_setup.sql
 --   2. supabase_global_account_blocking_setup.sql
 --   3. supabase_follow_rpc_global_blocking_hardening.sql
+--   4. supabase_private_follow_approval_hardening.sql
 -- This MUST be the final migration that defines request_profile_follow,
 -- respond_to_follow_request, block_user, or unblock_user. Earlier scripts
 -- redefine weaker versions and can remove the shared account-pair locks.
--- After all function definitions, run the SECURITY DEFINER search_path and
--- EXECUTE-grant hardening scripts. Do not apply these SQL files to production
--- until the two-account RLS/concurrency integration tests have passed.
+-- After every SECURITY DEFINER function definition in the deployment sequence,
+-- run the SECURITY DEFINER search_path and EXECUTE-grant hardening scripts.
+-- Apply profile/media ownership and least-privilege grants only after their
+-- corresponding RLS policies and storage ownership rules are installed.
+-- Do not apply these SQL files to production until the two-account RLS and
+-- concurrency integration tests have passed.
 -- All functions require an authenticated actor; follow requests respect symmetric global blocks.
 
 -- Remove legacy permissive insert policies. Follow creation must use the
