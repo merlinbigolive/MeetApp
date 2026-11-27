@@ -11,6 +11,10 @@ test('selects only the most visible video above the visibility threshold', () =>
   assert.equal(selectActiveVideo({ first: 0.31, second: 0.82, third: 0.64 }), 'second');
 });
 
+test('activates a video exactly at the default visibility threshold', () => {
+  assert.equal(selectActiveVideo({ edge: 0.25 }), 'edge');
+});
+
 test('does not activate a video below the default threshold', () => {
   assert.equal(selectActiveVideo({ first: 0.24, second: 0.1 }), null);
 });
