@@ -2139,10 +2139,15 @@ export default function App() {
 
   const PublishedPostTile = ({ post, onPress, onLike, onComments }: { post: PublishedPost; onPress: () => void; onLike: () => void; onComments: () => void }) => (
     <View style={s.publishedTile}>
-      <Pressable onPress={onPress}>
-        {post.media.type === 'image'
-          ? <Image source={{ uri: post.media.uri }} style={s.publishedImage} />
-          : <View style={s.publishedVideo}><Ionicons name="play-circle" size={34} color="#FFFFFF"/><Text style={s.videoText}>VIDEO</Text></View>}
+      <Pressable disabled={!!post.media.unavailable} onPress={onPress}>
+        {post.media.unavailable
+          ? <View style={[s.publishedVideo, { backgroundColor: C.card, alignItems: 'center', justifyContent: 'center' }]}>
+              <Ionicons name="alert-circle-outline" size={28} color={C.muted}/>
+              <Text style={[s.videoText, { color: C.muted }]}>PREVIEW UNAVAILABLE</Text>
+            </View>
+          : post.media.type === 'image'
+            ? <Image source={{ uri: post.media.uri }} style={s.publishedImage} />
+            : <View style={s.publishedVideo}><Ionicons name="play-circle" size={34} color="#FFFFFF"/><Text style={s.videoText}>VIDEO</Text></View>}
       </Pressable>
       {!!post.caption && <Text style={s.publishedCaption} numberOfLines={2}>{post.caption}</Text>}
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
