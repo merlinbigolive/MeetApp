@@ -16,7 +16,7 @@ import { ExpoSpeechRecognitionModule, useSpeechRecognitionEvent } from 'expo-spe
 import { supabase } from './supabase';
 import { validateProfile } from './profileValidation';
 import { selectActiveVideo } from './videoPlayback';
-import { buildProfileMediaUpdate, buildProfileUpdate, mapProfileMediaRecord, mapProfileRecord, resolveProfileCountry, resolveProfileMediaPreview } from './profilePersistence';
+import { buildProfileMediaUpdate, buildProfileUpdate, mapProfileRecord, resolveProfileCountry, resolveProfileMediaPreview } from './profilePersistence';
 import LiveBroadcastModal from './LiveBroadcastModal';
 
 type Media = { uri: string; type: 'image' | 'video'; name?: string; size?: number; mimeType?: string; storagePath?: string; unavailable?: boolean };
