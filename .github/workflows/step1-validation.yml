@@ -13,8 +13,8 @@ permissions:
   contents: read
 
 concurrency:
-  # Isolate each source commit so a stale runner from an older commit cannot block newer PR validation.
-  group: step1-validation-${{ github.event.pull_request.number || github.ref }}-${{ github.sha }}
+  # One active validation per PR (or branch for push runs); newer commits cancel stale runs.
+  group: step1-validation-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
