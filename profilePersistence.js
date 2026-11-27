@@ -87,4 +87,16 @@ function buildProfileMediaUpdate(record) {
   };
 }
 
-module.exports = { mapProfileRecord, buildProfileUpdate, buildProfileMediaUpdate, mapProfileMediaRecord, resolveProfileCountry };
+async function resolveProfileMediaPreview(record, createSignedUrl) {
+  try {
+    const { data, error } = await createSignedUrl(record.storage_path);
+    return {
+      media: mapProfileMediaRecord(record, error ? null : data?.signedUrl),
+      error: error || null,
+    };
+  } catch (error) {
+    return { media: mapProfileMediaRecord(record, null), error };
+  }
+}
+
+module.exports = { mapProfileRecord, buildProfileUpdate, buildProfileMediaUpdate, mapProfileMediaRecord, resolveProfileMediaPreview, resolveProfileCountry };
