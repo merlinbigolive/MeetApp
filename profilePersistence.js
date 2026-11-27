@@ -1,5 +1,10 @@
+const PROFILE_ACTIVITY_STATUSES = new Set([
+  'available', 'busy', 'work', 'drive', 'gym', 'school', 'college',
+]);
+
 function mapProfileRecord(record) {
-  const status = typeof record.activity_status === 'string' ? record.activity_status.toLowerCase() : '';
+  const rawStatus = typeof record.activity_status === 'string' ? record.activity_status.toLowerCase() : '';
+  const status = PROFILE_ACTIVITY_STATUSES.has(rawStatus) ? rawStatus : '';
   return {
     name: record.display_name || 'MEEi User',
     username: record.username || 'your_username',
@@ -19,6 +24,8 @@ function mapProfileRecord(record) {
 
 function buildProfileUpdate(profile, updatedAt) {
   const isBusiness = profile.accountType === 'business';
+  const requestedActivity = typeof profile.activity === 'string' ? profile.activity.toLowerCase() : '';
+  const activityStatus = PROFILE_ACTIVITY_STATUSES.has(requestedActivity) ? requestedActivity : 'available';
   return {
     display_name: profile.name.trim(),
     username: profile.username.trim().replace(/[@#]/g, '').toLowerCase(),
@@ -32,7 +39,7 @@ function buildProfileUpdate(profile, updatedAt) {
     is_private: !!profile.isPrivateAccount,
     country_code: profile.countryCode,
     country_name: profile.countryName,
-    activity_status: profile.activity.toLowerCase(),
+    activity_status: activityStatus,
     updated_at: updatedAt,
   };
 }
