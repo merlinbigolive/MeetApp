@@ -54,8 +54,8 @@ test('follow/block RPCs enforce auth, RLS, symmetric blocks and transaction seri
     await seed();
     const publicResult = await psql(asUser(A, `select public.request_profile_follow('${C}');`));
     const privateResult = await psql(asUser(A, `select public.request_profile_follow('${B}');`));
-    assert.equal(publicResult.stdout.trim().split('\\n').at(-1), 'accepted');
-    assert.equal(privateResult.stdout.trim().split('\\n').at(-1), 'pending');
+    assert.equal(publicResult.stdout.trim().split(/\r?\n/).at(-1), 'accepted');
+    assert.equal(privateResult.stdout.trim().split(/\r?\n/).at(-1), 'pending');
     const rows = await psql(`select follower_id || ':' || followed_id || ':' || status from public.follows order by followed_id;`);
     assert.match(rows.stdout, new RegExp(`${A}:${B}:pending`));
     assert.match(rows.stdout, new RegExp(`${A}:${C}:accepted`));
@@ -74,7 +74,7 @@ test('follow/block RPCs enforce auth, RLS, symmetric blocks and transaction seri
     await seed();
     await psql(`insert into public.follows(follower_id, followed_id, status) values ('${A}', '${B}', 'pending');`);
     const approved = await psql(asUser(B, `select public.respond_to_follow_request('${A}', true);`));
-    assert.equal(approved.stdout.trim().split('\\n').at(-1), 't');
+    assert.equal(approved.stdout.trim().split(/\r?\n/).at(-1), 't');
     await psql(asUser(B, `select public.block_user('${A}');`));
     const remaining = await psql(`select count(*) from public.follows where follower_id='${A}' and followed_id='${B}';`);
     assert.equal(remaining.stdout.trim(), '0');
@@ -85,10 +85,10 @@ test('follow/block RPCs enforce auth, RLS, symmetric blocks and transaction seri
     await seed();
     await psql(`insert into public.follows(follower_id, followed_id, status) values ('${A}', '${B}', 'pending'), ('${D}', '${E}', 'accepted');`);
     const visible = await psql(asUser(A, 'select count(*) from public.follows;'));
-    assert.equal(visible.stdout.trim().split('\\n').at(-1), '1');
+    assert.equal(visible.stdout.trim().split(/\r?\n/).at(-1), '1');
     await assert.rejects(psql(asUser(A, `insert into public.follows(follower_id, followed_id, status) values ('${A}', '${C}', 'accepted');`)), /permission denied/i);
     const blocks = await psql(asUser(A, `select count(*) from public.user_blocks;`));
-    assert.equal(blocks.stdout.trim().split('\\n').at(-1), '0');
+    assert.equal(blocks.stdout.trim().split(/\r?\n/).at(-1), '0');
   });
 
   await t.test('concurrent follow and block cannot leave a follow relationship after the block commits', async () => {
