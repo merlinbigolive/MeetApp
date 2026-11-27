@@ -3,15 +3,26 @@ const assert = require('node:assert/strict');
 const { readFileSync } = require('node:fs');
 const { join } = require('node:path');
 const { buildProfileUpdate, buildProfileMediaUpdate } = require('../profilePersistence');
+const { buildProfileBootstrapPayloads } = require('../profileBootstrap');
 
 const sql = readFileSync(join(__dirname, '..', 'supabase_profile_access_privilege_hardening.sql'), 'utf8');
 
-function grantedUpdateColumns(tableName) {
+function grantedColumns(privilege, tableName) {
+  const escaped = tableName.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\function grantedUpdateColumns(tableName) {
   const escaped = tableName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const match = sql.match(new RegExp('grant update \\(([\\s\\S]*?)\\) on table public\\.' + escaped, 'i'));
   assert.ok(match, 'UPDATE column grant exists for ' + tableName);
   return new Set(match[1].split(',').map(column => column.trim()).filter(Boolean));
+}');
+  const match = sql.match(new RegExp('grant ' + privilege + ' \\(([\\s\\S]*?)\\) on table public\\.' + escaped, 'i'));
+  assert.ok(match, privilege.toUpperCase() + ' column grant exists for ' + tableName);
+  const columns = match[1].split(',').map(column => column.trim()).filter(Boolean);
+  assert.equal(new Set(columns).size, columns.length, 'column grants must not contain duplicates for ' + tableName);
+  return new Set(columns);
 }
+
+function grantedUpdateColumns(tableName) { return grantedColumns('update', tableName); }
+function grantedInsertColumns(tableName) { return grantedColumns('insert', tableName); }
 
 test('profile update payload only uses columns granted by profile hardening migration', () => {
   const payload = buildProfileUpdate({
