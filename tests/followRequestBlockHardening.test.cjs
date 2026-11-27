@@ -111,7 +111,7 @@ test('all follow/block RPCs derive the same order-independent account-pair lock 
       'i'
     );
     assert.match(fn, canonicalPairKey, name + ' must normalize account order before locking');
-    assert.match(fn, /actor_id\\s+uuid\\s*:=\\s*auth\\.uid\\(\\)/i);
-    assert.match(fn, /if\\s+actor_id\\s+is\\s+null\\s+then[\\s\\S]*?authentication required/i);
+    assert.match(fn, /actor_id\s+uuid\s*:=\s*auth\.uid\(\)/i);
+    assert.match(fn, /if\s+actor_id\s+is\s+null\s+then[\s\S]*?authentication required/i);
   }
 });
