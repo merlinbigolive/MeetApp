@@ -1935,6 +1935,27 @@ export default function App() {
     return () => { active = false; };
   }, [currentUserId, tab, mediaRefreshKey]);
 
+  useEffect(() => {
+    if (!supabase || mediaRefreshKey === 0 || !viewer?.storagePath) return;
+    let active = true;
+    const client = supabase;
+    const media = viewer;
+    const refreshOpenViewer = async () => {
+      const { media: refreshed, errorMessage } = await resolveProfileMediaPreview({
+        storage_path: media.storagePath!,
+        media_type: media.type,
+        original_name: media.name || null,
+      }, storagePath => client.storage.from('usay-media').createSignedUrl(storagePath, 60 * 60));
+      if (!active || viewer !== media) return;
+      if (refreshed.unavailable) {
+        console.warn('Open media viewer URL could not be refreshed:', media.storagePath, errorMessage || 'Missing signed URL');
+      }
+      setViewer(refreshed as Media);
+    };
+    void refreshOpenViewer();
+    return () => { active = false; };
+  }, [mediaRefreshKey]);
+
   const chooseMedia = async (kind: 'avatar' | 'cover' | 'post', index?: number) => {
     if (kind === 'cover' && covers.length >= 3 && index === undefined) {
       Alert.alert('Cover gallery full', 'You can add up to 3 cover photos/videos.');
