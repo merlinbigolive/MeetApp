@@ -187,3 +187,38 @@ test('marks profile media as available when a signed preview URL exists', () => 
     unavailable: false,
   });
 });
+
+
+test('keeps profile media metadata when signed URL creation returns an error', async () => {
+  const row = { media_type: 'image', original_name: 'avatar.jpg', storage_path: 'owner/avatar.jpg' };
+  const expectedError = new Error('storage unavailable');
+  const result = await require('../profilePersistence').resolveProfileMediaPreview(row, async () => ({
+    data: null, error: expectedError,
+  }));
+  assert.equal(result.media.unavailable, true);
+  assert.equal(result.media.storagePath, row.storage_path);
+  assert.equal(result.error, expectedError);
+});
+
+test('keeps profile media metadata when signed URL creation throws', async () => {
+  const row = { media_type: 'video', original_name: 'cover.mp4', storage_path: 'owner/cover.mp4' };
+  const expectedError = new Error('network failure');
+  const result = await require('../profilePersistence').resolveProfileMediaPreview(row, async () => {
+    throw expectedError;
+  });
+  assert.deepEqual(result.media, {
+    uri: '', type: 'video', name: 'cover.mp4',
+    storagePath: row.storage_path, unavailable: true,
+  });
+  assert.equal(result.error, expectedError);
+});
+
+test('returns a usable preview when signed URL creation succeeds', async () => {
+  const row = { media_type: 'image', original_name: null, storage_path: 'owner/post.jpg' };
+  const result = await require('../profilePersistence').resolveProfileMediaPreview(row, async path => ({
+    data: { signedUrl: 'https://signed.example/' + path }, error: null,
+  }));
+  assert.equal(result.media.uri, 'https://signed.example/owner/post.jpg');
+  assert.equal(result.media.unavailable, false);
+  assert.equal(result.error, null);
+});
