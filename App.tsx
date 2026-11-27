@@ -15,6 +15,7 @@ import { useAudioPlayer, useAudioPlayerStatus } from 'expo-audio';
 import { ExpoSpeechRecognitionModule, useSpeechRecognitionEvent } from 'expo-speech-recognition';
 import { supabase } from './supabase';
 import { validateProfile } from './profileValidation';
+import { buildProfileUpdate, mapProfileRecord } from './profilePersistence';
 import LiveBroadcastModal from './LiveBroadcastModal';
 
 type Media = { uri: string; type: 'image' | 'video'; name?: string; size?: number; mimeType?: string; storagePath?: string };
@@ -589,16 +590,17 @@ export default function App() {
           Alert.alert('Profile unavailable', 'Your profile details could not be loaded. Please check your connection and try again.');
           return;
         }
-        setName(data.display_name || 'MEEi User');
-        setUsername(data.username || 'your_username');
-        setBio(data.bio || '');
-        setWebsite(data.website_url || '');
-        setOccupation(data.profession_category || '');
-        setAccountType(data.account_type === 'business' ? 'business' : 'personal');
-        setBusinessName(data.business_name || '');
-        setBusinessCategory(data.business_category || '');
-        setBusinessDescription(data.business_description || '');
-        setIsPrivateAccount(!!data.is_private);
+        const profileForm = mapProfileRecord(data);
+        setName(profileForm.name);
+        setUsername(profileForm.username);
+        setBio(profileForm.bio);
+        setWebsite(profileForm.website);
+        setOccupation(profileForm.occupation);
+        setAccountType(profileForm.accountType);
+        setBusinessName(profileForm.businessName);
+        setBusinessCategory(profileForm.businessCategory);
+        setBusinessDescription(profileForm.businessDescription);
+        setIsPrivateAccount(profileForm.isPrivateAccount);
 
         const deviceLocale = Localization.getLocales()[0];
         const deviceCountryCode = (deviceLocale?.regionCode || 'IN').toUpperCase();
@@ -632,10 +634,7 @@ export default function App() {
         if (!followerResult.error) setFollowerCount(followerResult.count ?? 0);
         if (!likesResult.error) setLikesCount(Number(likesResult.data || 0));
 
-        if (data.activity_status) {
-          const status = data.activity_status.toLowerCase();
-          setActivity(status.charAt(0).toUpperCase() + status.slice(1));
-        }
+        if (profileForm.activity) setActivity(profileForm.activity);
 
         const { data: mediaRows, error: mediaError } = await supabase
           .from('profile_media')
@@ -1746,22 +1745,23 @@ export default function App() {
       if (sessionError) throw sessionError;
       const userId = authData.session?.user.id;
       if (!userId) throw new Error('Please sign in again before saving your profile.');
-      const { data: updatedProfile, error } = await client.from('profiles').update({
-        display_name: cleanName,
+      const updatePayload = buildProfileUpdate({
+        name: cleanName,
         username: cleanUsername,
-        bio: bio.trim(),
-        website_url: cleanWebsite || null,
-        profession_category: occupation.trim() || null,
-        account_type: accountType,
-        business_name: accountType === 'business' ? cleanBusinessName : null,
-        business_category: accountType === 'business' ? cleanBusinessCategory : null,
-        business_description: accountType === 'business' ? businessDescription.trim() || null : null,
-        is_private: isPrivateAccount,
-        country_code: homeCountryCode,
-        country_name: homeCountryName,
-        activity_status: activity.toLowerCase(),
-        updated_at: new Date().toISOString(),
-      }).eq('id', userId).select('id').maybeSingle();
+        bio,
+        website: cleanWebsite,
+        occupation,
+        accountType,
+        businessName: cleanBusinessName,
+        businessCategory: cleanBusinessCategory,
+        businessDescription,
+        isPrivateAccount,
+        countryCode: homeCountryCode,
+        countryName: homeCountryName,
+        activity,
+      }, new Date().toISOString());
+      const { data: updatedProfile, error } = await client.from('profiles')
+        .update(updatePayload).eq('id', userId).select('id').maybeSingle();
       if (error) throw error;
       if (!updatedProfile) throw new Error('Your profile could not be found or updated. Please sign in again and retry.');
       setUsername(cleanUsername);
