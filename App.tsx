@@ -3,7 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
 import * as Notifications from 'expo-notifications';
 import {
-  ActivityIndicator, Alert, Image, Modal, Pressable, ScrollView, StatusBar, StyleSheet, Platform, Share,
+  ActivityIndicator, Alert, AppState, Image, Modal, Pressable, ScrollView, StatusBar, StyleSheet, Platform, Share,
   Text, TextInput, View, useWindowDimensions, useColorScheme, Animated, PanResponder
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -426,6 +426,7 @@ export default function App() {
   const [commentsLoading, setCommentsLoading] = useState(false);
   const [commentSending, setCommentSending] = useState(false);
   const [postsRefreshKey, setPostsRefreshKey] = useState(0);
+  const [mediaRefreshKey, setMediaRefreshKey] = useState(0);
   const [likedVideoIds, setLikedVideoIds] = useState<string[]>([]);
   const [likeBusyIds, setLikeBusyIds] = useState<string[]>([]);
   const [videoUrls, setVideoUrls] = useState<Record<string, string>>({});
@@ -465,6 +466,27 @@ export default function App() {
   const [translatingMessageIds, setTranslatingMessageIds] = useState<string[]>([]);
   const [currentUserId, setCurrentUserId] = useState('');
   const [messageSoundEnabled, setMessageSoundEnabled] = useState(true);
+
+  useEffect(() => {
+    let previousState = AppState.currentState;
+    const refreshSignedMedia = () => {
+      setMediaRefreshKey(value => value + 1);
+      setPostsRefreshKey(value => value + 1);
+    };
+    const subscription = AppState.addEventListener('change', nextState => {
+      const returnedToForeground = previousState !== 'active' && nextState === 'active';
+      previousState = nextState;
+      if (returnedToForeground) refreshSignedMedia();
+    });
+    const interval = setInterval(() => {
+      if (AppState.currentState === 'active') refreshSignedMedia();
+    }, 50 * 60 * 1000);
+    return () => {
+      subscription.remove();
+      clearInterval(interval);
+    };
+  }, []);
+
   useEffect(() => {
     let active = true;
     AsyncStorage.getItem('@meei/appearance_mode').then(saved => {
@@ -870,7 +892,7 @@ export default function App() {
     };
     loadDiscoverProfiles();
     return () => { active = false; };
-  }, [tab, debouncedProfileSearch]);
+  }, [tab, debouncedProfileSearch, mediaRefreshKey]);
 
   useEffect(() => {
     const videoCategories: SearchCategory[] = ['Videos', 'Reels', 'Trending', 'Funny', 'Vlogs', 'Cinema'];
@@ -915,7 +937,7 @@ export default function App() {
     };
     loadSearchVideos();
     return () => { active = false; };
-  }, [tab, searchCategory, debouncedProfileSearch]);
+  }, [tab, searchCategory, debouncedProfileSearch, mediaRefreshKey]);
 
 
   useEffect(() => {
@@ -1008,7 +1030,7 @@ export default function App() {
     };
     void loadPublicFeed();
     return () => { active = false; };
-  }, [tab, postsRefreshKey]);
+  }, [tab, postsRefreshKey, mediaRefreshKey]);
 
   useEffect(() => {
     if (tab !== 'Live' || !supabase) return;
@@ -1044,7 +1066,7 @@ export default function App() {
       active = false;
       void supabase?.removeChannel(channel);
     };
-  }, [tab]);
+  }, [tab, mediaRefreshKey]);
 
   useEffect(() => {
     if (!selectedProfile || !supabase) return;
@@ -1134,7 +1156,7 @@ export default function App() {
     };
     loadOtherProfile();
     return () => { active = false; };
-  }, [selectedProfile?.id, followedUserIds]);
+  }, [selectedProfile?.id, followedUserIds, mediaRefreshKey]);
 
   const toggleFollow = async (profile: PublicProfile) => {
     if (!supabase || followBusyIds.includes(profile.id)) return;
@@ -1883,6 +1905,21 @@ export default function App() {
     if (kind === 'post') setPosts(hydrated.map(item => item.media).slice(0, 3));
     return (rows || []) as CloudMediaRow[];
   };
+
+  useEffect(() => {
+    if (!supabase || !currentUserId || tab !== 'Profile' || mediaRefreshKey === 0) return;
+    const refreshOwnGalleries = async () => {
+      const results = await Promise.allSettled((['avatar', 'cover', 'post'] as const).map(kind =>
+        refreshOwnMediaGallery(supabase!, currentUserId, kind)
+      ));
+      results.forEach((result, index) => {
+        if (result.status === 'rejected') {
+          console.warn('Profile media URL refresh failed:', ['avatar', 'cover', 'post'][index], result.reason);
+        }
+      });
+    };
+    void refreshOwnGalleries();
+  }, [currentUserId, tab, mediaRefreshKey]);
 
   const chooseMedia = async (kind: 'avatar' | 'cover' | 'post', index?: number) => {
     if (kind === 'cover' && covers.length >= 3 && index === undefined) {
