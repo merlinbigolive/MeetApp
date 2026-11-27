@@ -1,4 +1,7 @@
 -- MEEi follow-request and blocked-account RPC hardening.
+-- Apply after supabase_private_follow_requests_setup.sql and
+-- supabase_global_account_blocking_setup.sql. This replaces their SECURITY
+-- DEFINER RPCs with authenticated, block-aware, serialized implementations.
 -- All functions require an authenticated actor; follow requests respect symmetric global blocks.
 
 -- Serialize follow/block changes for the same account pair. SECURITY DEFINER
