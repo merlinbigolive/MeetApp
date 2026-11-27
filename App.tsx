@@ -962,15 +962,25 @@ export default function App() {
       }));
       const avatarMap = new Map(avatarEntries.filter((entry): entry is NonNullable<typeof entry> => entry !== null));
       const hydrated = await Promise.all(visibleRows.map(async (row: any) => {
-        const { data } = await supabase!.storage.from('usay-media').createSignedUrl(row.media_path, 3600);
         const author = authors.get(row.user_id);
-        if (!data?.signedUrl || !author) return null;
+        if (!author) return null;
+        const preview = await resolveProfileMediaPreview({
+          media_type: row.post_type === 'video' ? 'video' : 'image',
+          original_name: null,
+          storage_path: row.media_path,
+        }, storagePath => supabase!.storage.from('usay-media').createSignedUrl(storagePath, 3600));
+        if (preview.media.unavailable) {
+          console.warn('Public feed media preview could not be created:', row.media_path, preview.errorMessage || 'Missing signed URL');
+        }
         return { ...row, author, authorAvatar: avatarMap.get(row.user_id) || null,
-          media: { uri: data.signedUrl, type: row.post_type === 'video' ? 'video' : 'image', storagePath: row.media_path } as Media,
+          media: preview.media as Media,
           like_count: 0, viewer_liked: false, comment_count: 0 } as FeedPost;
       }));
       if (!active) return;
       const valid = hydrated.filter((post): post is FeedPost => post !== null);
+      if (valid.some(post => post.media.unavailable)) {
+        Alert.alert('Some feed media unavailable', 'Some public post previews could not be opened. The posts remain in your feed; try refreshing later.');
+      }
       if (valid.length) {
         const [engagement, commentCounts, reactionsResult] = await Promise.all([
           supabase!.rpc('get_profile_post_engagement', { target_post_ids: valid.map(post => post.id) }),
@@ -2383,17 +2393,22 @@ export default function App() {
             ])} style={{padding:8}}><Ionicons name="ellipsis-horizontal" size={21} color={C.text}/></Pressable>
           </View>
           {!!post.caption && <Text style={s.feedCaption}>{post.caption}</Text>}
-          {post.post_type === 'video' ? <FeedVideoMedia
-            id={post.id}
-            uri={post.media.uri}
-            onPress={() => setViewer(post.media)}
-            postTop={feedPostTops[post.id] ?? -1}
-            scrollY={feedScrollY}
-            viewportHeight={viewportHeight}
-            active={activeVideoId === post.id}
-            onVisibilityChange={reportVideoVisibility}
-          /> :
-            <Pressable onPress={() => setViewer(post.media)}><Image source={{uri:post.media.uri}} style={s.feedMedia} resizeMode="cover"/></Pressable>}
+          {post.media.unavailable
+            ? <View style={[s.feedMedia, { minHeight: 180, backgroundColor: C.card, alignItems: 'center', justifyContent: 'center' }]}>
+                <Ionicons name="alert-circle-outline" size={30} color={C.muted}/>
+                <Text style={[s.videoText, { color: C.muted }]}>PREVIEW UNAVAILABLE</Text>
+              </View>
+            : post.post_type === 'video' ? <FeedVideoMedia
+                id={post.id}
+                uri={post.media.uri}
+                onPress={() => setViewer(post.media)}
+                postTop={feedPostTops[post.id] ?? -1}
+                scrollY={feedScrollY}
+                viewportHeight={viewportHeight}
+                active={activeVideoId === post.id}
+                onVisibilityChange={reportVideoVisibility}
+              /> :
+                <Pressable onPress={() => setViewer(post.media)}><Image source={{uri:post.media.uri}} style={s.feedMedia} resizeMode="cover"/></Pressable>}
           <View style={s.feedActions}>
             <Pressable onPress={() => void togglePublishedPostLike(post,false)} style={s.feedAction}><Ionicons name={post.viewer_liked?'heart':'heart-outline'} size={23} color={post.viewer_liked?'#E64D72':C.text}/><Text style={s.feedActionText}>{post.like_count}</Text></Pressable>
             <Pressable onPress={() => openPostComments(post)} style={s.feedAction}><Ionicons name="chatbubble-outline" size={21} color={C.text}/><Text style={s.feedActionText}>{post.comment_count}</Text></Pressable>
