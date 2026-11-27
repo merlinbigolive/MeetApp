@@ -22,11 +22,27 @@ test('builds primary and fallback usernames within the database length and chara
   assert.equal(payloads.fallback.username, 'user_1234567890abcdef');
 });
 
+test('reserves official handles even when numeric suffixes are added', () => {
+  const { isReservedUsername } = require('../profileValidation');
+  for (const username of ['meei123', 'meeiofficial123', 'meeimoderationteam7', 'moderationteam42']) {
+    assert.equal(isReservedUsername(username), true);
+  }
+  assert.equal(isReservedUsername('creator_123'), false);
+});
+
 test('uses a safe fallback display name when metadata is absent or blank', () => {
   const payloads = buildProfileBootstrapPayloads({
     id: user.id, email: '  New.User@example.com', user_metadata: { display_name: '  ' },
   });
   assert.equal(payloads.primary.display_name, 'newuser');
+});
+
+test('avoids reserved email handles when generating the initial profile username', () => {
+  for (const email of ['meei@example.com', 'meeiofficial@example.com', 'meei2026@example.com', 'moderationteam@example.com']) {
+    const payloads = buildProfileBootstrapPayloads({ id: user.id, email });
+    assert.match(payloads.primary.username, /^member_[a-f0-9]{6}$/);
+    assert.match(payloads.primary.username, /^[a-z0-9_]{3,25}$/);
+  }
 });
 
 test('rejects a missing signed-in user ID', () => {
