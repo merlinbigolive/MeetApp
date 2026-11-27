@@ -1846,7 +1846,7 @@ export default function App() {
       const { media, errorMessage: signedError } = await resolveProfileMediaPreview(row, storagePath =>
         client.storage.from('usay-media').createSignedUrl(storagePath, 60 * 60));
       if (media.unavailable) {
-        console.warn('Profile media preview could not be refreshed:', row.storage_path, signedError?.message || 'Missing signed URL');
+        console.warn('Profile media preview could not be refreshed:', row.storage_path, signedError || 'Missing signed URL');
       }
       return { position: row.position, media: media as Media };
     }));
