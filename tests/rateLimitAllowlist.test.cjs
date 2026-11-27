@@ -48,11 +48,11 @@ test('private rate-limit function keeps the complete supported action set aligne
 
 
 test('private rate-limit RPC fails closed and is not directly callable by client roles', () => {
-  assert.match(migration, /v_user_id\\s+uuid\\s*:=\\s*auth\\.uid\\(\\)/i);
-  assert.match(migration, /if v_user_id is null[\\s\\S]*?Authentication required/i);
-  assert.match(migration, /set search_path\\s*=\\s*pg_catalog\\s*,\\s*private\\s*,\\s*pg_temp/i);
+  assert.match(migration, /v_user_id\s+uuid\s*:=\s*auth\.uid\(\)/i);
+  assert.match(migration, /if v_user_id is null[\s\S]*?Authentication required/i);
+  assert.match(migration, /set search_path\s*=\s*pg_catalog\s*,\s*private\s*,\s*pg_temp/i);
   assert.match(
     migration,
-    /revoke all on function private\\.consume_user_rate_limit\\(text, integer, integer\\)\\s+from public, anon, authenticated/i
+    /revoke all on function private\.consume_user_rate_limit\(text, integer, integer\)\s+from public, anon, authenticated/i
   );
 });
