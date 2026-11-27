@@ -27,7 +27,7 @@ function validateProfile(input) {
   if (input.businessName.length > 80 || input.businessCategory.length > 60 || input.businessDescription.trim().length > 500) {
     return { title: 'Business details too long', message: 'Business name: 80 characters, category: 60, description: 500.' };
   }
-  if (input.website && !/^(https?:\\/\\/)?([\\w-]+\\.)+[a-z]{2,}(\\/[^\\s]*)?$/i.test(input.website)) {
+  if (input.website && !/^(https?:\/\/)?([\w-]+\.)+[a-z]{2,}(\/[^\s]*)?$/i.test(input.website)) {
     return { title: 'Check website', message: 'Enter a valid website address.' };
   }
   return null;
