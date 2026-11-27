@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { mapProfileRecord, buildProfileUpdate } = require('../profilePersistence');
+const { mapProfileRecord, buildProfileUpdate, resolveProfileCountry } = require('../profilePersistence');
 
 test('maps a complete personal profile record to editable fields', () => {
   const result = mapProfileRecord({
@@ -92,4 +92,46 @@ test('falls back to Available for an unsupported activity status', () => {
   const payload = buildProfileUpdate({ ...base, activity: 'Online' }, 'timestamp');
   assert.equal(payload.activity_status, 'available');
   assert.equal(mapProfileRecord({ activity_status: 'online' }).activity, '');
+});
+
+
+test('uses device country only when both saved country fields are missing', () => {
+  const result = resolveProfileCountry({
+    deviceCountryCode: 'in', deviceCountryName: 'India', getDisplayName: code => ({ IN: 'India' }[code] || code),
+  });
+  assert.deepEqual(result, {
+    countryCode: 'IN', countryName: 'India',
+    persistFields: { country_code: 'IN', country_name: 'India' },
+  });
+});
+
+test('derives and persists a missing country name from the saved country code', () => {
+  const result = resolveProfileCountry({
+    savedCountryCode: 'us', deviceCountryCode: 'IN', deviceCountryName: 'India',
+    getDisplayName: code => code === 'US' ? 'United States' : code,
+  });
+  assert.deepEqual(result, {
+    countryCode: 'US', countryName: 'United States',
+    persistFields: { country_name: 'United States' },
+  });
+});
+
+test('preserves a saved country name when the country code is missing', () => {
+  const result = resolveProfileCountry({
+    savedCountryName: 'United Kingdom', deviceCountryCode: 'IN', deviceCountryName: 'India',
+    getDisplayName: code => code,
+  });
+  assert.deepEqual(result, {
+    countryCode: 'IN', countryName: 'United Kingdom', persistFields: {},
+  });
+});
+
+test('preserves both saved country fields without writing fallbacks', () => {
+  const result = resolveProfileCountry({
+    savedCountryCode: 'ca', savedCountryName: 'Canada',
+    deviceCountryCode: 'IN', deviceCountryName: 'India', getDisplayName: code => code,
+  });
+  assert.deepEqual(result, {
+    countryCode: 'CA', countryName: 'Canada', persistFields: {},
+  });
 });
