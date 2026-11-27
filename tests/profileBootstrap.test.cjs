@@ -89,7 +89,10 @@ test('reports the fallback insert error when both username attempts fail', async
       user,
       findProfile: async () => false,
       insertProfile: async payload => {
-        throw new Error(payload.username.startsWith('user_') ? 'fallback rejected' : 'primary rejected');
+        throw Object.assign(
+          new Error(payload.username.startsWith('user_') ? 'fallback rejected' : 'primary rejected'),
+          { code: '23505' },
+        );
       },
     }),
     /Could not create your profile: fallback rejected/,
