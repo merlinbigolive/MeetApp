@@ -112,8 +112,8 @@ test('follow/block RPCs enforce auth, RLS, symmetric blocks and transaction seri
     `);
     const visibleToA = await psql(asUser(A, 'select count(*) from public.follows;'));
     const visibleToB = await psql(asUser(B, 'select count(*) from public.follows;'));
-    assert.equal(visibleToA.stdout.trim().split(/\\r?\\n/).at(-1), '0');
-    assert.equal(visibleToB.stdout.trim().split(/\\r?\\n/).at(-1), '0');
+    assert.equal(visibleToA.stdout.trim().split(/\r?\n/).at(-1), '0');
+    assert.equal(visibleToB.stdout.trim().split(/\r?\n/).at(-1), '0');
   });
 
   await t.test('a follower can unfollow only their own relationship; the followed account cannot delete it', async () => {
