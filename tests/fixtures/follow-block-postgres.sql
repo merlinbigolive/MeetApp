@@ -82,7 +82,7 @@ as $$
       where (b.blocker_id = auth.uid() and b.blocked_id = other_user_id)
          or (b.blocker_id = other_user_id and b.blocked_id = auth.uid())
     );
-$;
+$$;
 
 -- Mirror the deployed restrictive global-block policies on follows.
 create policy global_block_follows_select on public.follows
