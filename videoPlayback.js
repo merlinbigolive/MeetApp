@@ -5,7 +5,7 @@ function selectActiveVideo(visibilityById, minimumVisibleRatio = 0.25) {
   for (const [id, rawRatio] of Object.entries(visibilityById)) {
     const ratio = Number(rawRatio);
     if (!id || !Number.isFinite(ratio) || ratio < minimumVisibleRatio || ratio > 1) continue;
-    if (ratio > highestRatio) {
+    if (activeId === null || ratio > highestRatio) {
       activeId = id;
       highestRatio = ratio;
     }
