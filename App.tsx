@@ -14,6 +14,7 @@ import { useVideoPlayer, VideoView } from 'expo-video';
 import { useAudioPlayer, useAudioPlayerStatus } from 'expo-audio';
 import { ExpoSpeechRecognitionModule, useSpeechRecognitionEvent } from 'expo-speech-recognition';
 import { supabase } from './supabase';
+import { validateProfile } from './profileValidation';
 import LiveBroadcastModal from './LiveBroadcastModal';
 
 type Media = { uri: string; type: 'image' | 'video'; name?: string; size?: number; mimeType?: string; storagePath?: string };
@@ -1722,36 +1723,20 @@ export default function App() {
     const cleanName = name.trim();
     const cleanUsername = username.trim().replace(/[@#]/g, '').toLowerCase();
     const cleanWebsite = website.trim();
-    if (!cleanName || cleanName.length > 40) {
-      Alert.alert('Check display name', 'Enter a display name between 1 and 40 characters.');
-      return;
-    }
-    if (!/^[a-z0-9_]{3,25}$/.test(cleanUsername)) {
-      Alert.alert('Check username', 'Username must be 3–25 characters and use only lowercase letters, numbers, or underscores.');
-      return;
-    }
-    const normalizedUsername = cleanUsername.replace(/[^a-z0-9]/g, '');
-    const reservedUsernames = new Set(['meei', 'meeiapp', 'meeiofficial', 'meeisvip', 'svipteam', 'meeimoderation', 'meeimoderationteam', 'moderation', 'moderationteam']);
-    if (/^meei[0-9]+$/.test(normalizedUsername) || reservedUsernames.has(normalizedUsername)) {
-      Alert.alert('Username reserved', 'This username is reserved for the official MEEi or Moderation Team account. Please choose another username.');
-      return;
-    }
-    if (bio.trim().length > 300) {
-      Alert.alert('Bio too long', 'Your bio can contain up to 300 characters.');
-      return;
-    }
     const cleanBusinessName = businessName.trim();
     const cleanBusinessCategory = businessCategory.trim();
-    if (accountType === 'business' && (!cleanBusinessName || !cleanBusinessCategory)) {
-      Alert.alert('Business details required', 'Enter your business name and category before switching to a professional business account.');
-      return;
-    }
-    if (cleanBusinessName.length > 80 || cleanBusinessCategory.length > 60 || businessDescription.trim().length > 500) {
-      Alert.alert('Business details too long', 'Business name: 80 characters, category: 60, description: 500.');
-      return;
-    }
-    if (cleanWebsite && !/^(https?:\/\/)?([\w-]+\.)+[a-z]{2,}(\/[^\s]*)?$/i.test(cleanWebsite)) {
-      Alert.alert('Check website', 'Enter a valid website address.');
+    const validationError = validateProfile({
+      name: cleanName,
+      username: cleanUsername,
+      bio,
+      accountType,
+      businessName: cleanBusinessName,
+      businessCategory: cleanBusinessCategory,
+      businessDescription,
+      website: cleanWebsite,
+    });
+    if (validationError) {
+      Alert.alert(validationError.title, validationError.message);
       return;
     }
     savingProfileLock.current = true;
