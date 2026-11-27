@@ -1,6 +1,146 @@
 -- MEEi follow-request and blocked-account RPC hardening.
 -- All functions require an authenticated actor; follow requests respect symmetric global blocks.
 
+-- Serialize follow/block changes for the same account pair. SECURITY DEFINER
+-- functions bypass table RLS, so the block check must live inside this RPC too.
+-- The shared transaction lock prevents a concurrent block from being followed by
+-- a stale follow insert (and serializes unblock with new follow requests).
+create or replace function public.request_profile_follow(target_user_id uuid)
+returns text
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $function$
+declare
+  actor_id uuid := auth.uid();
+  target_private boolean;
+  result_status text;
+  pair_lock_key text;
+begin
+  if actor_id is null then
+    raise exception 'Authentication required.';
+  end if;
+
+  if target_user_id is null or target_user_id = actor_id then
+    raise exception 'Invalid account to follow.';
+  end if;
+
+  pair_lock_key := case
+    when actor_id::text < target_user_id::text
+      then actor_id::text || ':' || target_user_id::text
+    else target_user_id::text || ':' || actor_id::text
+  end;
+  perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended(pair_lock_key, 0));
+
+  if public.is_blocked_for_current_user(target_user_id) then
+    raise exception 'Cannot follow an account when either account has blocked the other.';
+  end if;
+
+  select p.is_private into target_private
+  from public.profiles p
+  where p.id = target_user_id;
+
+  if not found then
+    raise exception 'Profile not found.';
+  end if;
+
+  result_status := case when target_private then 'pending' else 'accepted' end;
+
+  insert into public.follows (follower_id, followed_id, status)
+  values (actor_id, target_user_id, result_status)
+  on conflict (follower_id, followed_id)
+  do update set status = excluded.status, created_at = now();
+
+  return result_status;
+end;
+$function$;
+
+revoke all on function public.request_profile_follow(uuid) from public, anon;
+grant execute on function public.request_profile_follow(uuid) to authenticated;
+
+-- Keep the same account-pair lock around block creation and follow removal.
+create or replace function public.block_user(target_user_id uuid)
+returns boolean
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $function$
+declare
+  actor_id uuid := auth.uid();
+  pair_lock_key text;
+begin
+  if actor_id is null then
+    raise exception 'Authentication required.';
+  end if;
+
+  if target_user_id is null or target_user_id = actor_id then
+    raise exception 'Invalid account to block.';
+  end if;
+
+  pair_lock_key := case
+    when actor_id::text < target_user_id::text
+      then actor_id::text || ':' || target_user_id::text
+    else target_user_id::text || ':' || actor_id::text
+  end;
+  perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended(pair_lock_key, 0));
+
+  if not exists (select 1 from public.profiles p where p.id = target_user_id) then
+    raise exception 'Account not found.';
+  end if;
+
+  insert into public.user_blocks (blocker_id, blocked_id)
+  values (actor_id, target_user_id)
+  on conflict (blocker_id, blocked_id) do nothing;
+
+  delete from public.follows
+  where (follower_id = actor_id and followed_id = target_user_id)
+     or (follower_id = target_user_id and followed_id = actor_id);
+
+  return true;
+end;
+$function$;
+
+revoke all on function public.block_user(uuid) from public, anon;
+grant execute on function public.block_user(uuid) to authenticated;
+
+-- Serialize unblock with a concurrent follow request for the same pair.
+create or replace function public.unblock_user(target_user_id uuid)
+returns boolean
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $function$
+declare
+  actor_id uuid := auth.uid();
+  pair_lock_key text;
+  changed integer;
+begin
+  if actor_id is null then
+    raise exception 'Authentication required.';
+  end if;
+
+  if target_user_id is null or target_user_id = actor_id then
+    raise exception 'Invalid account to unblock.';
+  end if;
+
+  pair_lock_key := case
+    when actor_id::text < target_user_id::text
+      then actor_id::text || ':' || target_user_id::text
+    else target_user_id::text || ':' || actor_id::text
+  end;
+  perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended(pair_lock_key, 0));
+
+  delete from public.user_blocks
+  where blocker_id = actor_id and blocked_id = target_user_id;
+
+  get diagnostics changed = row_count;
+  return changed > 0;
+end;
+$function$;
+
+revoke all on function public.unblock_user(uuid) from public, anon;
+grant execute on function public.unblock_user(uuid) to authenticated;
+
 create or replace function public.get_my_follow_requests()
 returns table(
   follower_id uuid,
