@@ -71,3 +71,24 @@ test('block and unblock RPCs share the same transaction lock as follow requests'
   const lockCount = (sql.match(/pg_advisory_xact_lock\(pg_catalog\.hashtextextended\(pair_lock_key, 0\)\)/gi) || []).length;
   assert.equal(lockCount, 4, 'follow, approval, block, and unblock must all use the same pair lock');
 });
+
+
+const globalBlockSql = readFileSync(
+  join(__dirname, '..', 'supabase_global_account_blocking_setup.sql'),
+  'utf8'
+);
+const commentVisibilityFixSql = readFileSync(
+  join(__dirname, '..', 'supabase_global_block_comment_author_visibility_fix.sql'),
+  'utf8'
+);
+
+test('global block visibility hides blocked comment authors and comments on blocked posts', () => {
+  for (const source of [globalBlockSql, commentVisibilityFixSql]) {
+    const policy = source.match(/create policy "global_block_comments_select"[\\s\\S]*?\\);/i)?.[0];
+    assert.ok(policy, 'restrictive comment visibility policy must exist');
+    assert.match(policy, /as restrictive/i);
+    assert.match(policy, /user_id = auth\\.uid\\(\\)/i, 'users can retain access to their own comments');
+    assert.match(policy, /not public\\.is_blocked_for_current_user\\(user_id\\)/i, 'blocked comment authors must be hidden');
+    assert.match(policy, /public\\.is_blocked_for_current_user\\(p\\.user_id\\)/i, 'comments on blocked users posts must be hidden');
+  }
+});
