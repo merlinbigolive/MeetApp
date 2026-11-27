@@ -6,14 +6,14 @@ test('maps a complete personal profile record to editable fields', () => {
   const result = mapProfileRecord({
     display_name: 'Creator', username: 'creator_1', bio: 'Hello',
     website_url: 'https://example.com', profession_category: 'Artist',
-    account_type: 'personal', is_private: true, activity_status: 'ONLINE',
+    account_type: 'personal', is_private: true, activity_status: 'AVAILABLE',
     country_code: 'in', country_name: 'India',
   });
   assert.deepEqual(result, {
     name: 'Creator', username: 'creator_1', bio: 'Hello',
     website: 'https://example.com', occupation: 'Artist',
     accountType: 'personal', businessName: '', businessCategory: '',
-    businessDescription: '', isPrivateAccount: true, activity: 'Online',
+    businessDescription: '', isPrivateAccount: true, activity: 'Available',
     countryCode: 'IN', countryName: 'India',
   });
 });
@@ -55,7 +55,7 @@ test('builds a normalized personal profile update and clears business-only field
     website_url: 'https://example.com', profession_category: 'Artist',
     account_type: 'personal', business_name: null, business_category: null,
     business_description: null, is_private: true, country_code: 'IN',
-    country_name: 'India', activity_status: 'online',
+    country_name: 'India', activity_status: 'available',
     updated_at: '2026-11-27T00:00:00.000Z',
   });
 });
@@ -80,3 +80,16 @@ test('stores empty optional profile fields as null', () => {
   assert.equal(payload.business_description, null);
 });
 
+
+test('accepts only activity statuses supported by the database constraint', () => {
+  for (const activity of ['Available', 'Busy', 'Work', 'Drive', 'Gym', 'School', 'College']) {
+    const payload = buildProfileUpdate({ ...base, activity }, 'timestamp');
+    assert.equal(payload.activity_status, activity.toLowerCase());
+  }
+});
+
+test('falls back to Available for an unsupported activity status', () => {
+  const payload = buildProfileUpdate({ ...base, activity: 'Online' }, 'timestamp');
+  assert.equal(payload.activity_status, 'available');
+  assert.equal(mapProfileRecord({ activity_status: 'online' }).activity, '');
+});
