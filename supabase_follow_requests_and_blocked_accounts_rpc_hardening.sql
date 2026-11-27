@@ -219,6 +219,7 @@ set search_path = public, pg_temp
 as $function$
 declare
   actor_id uuid := auth.uid();
+  pair_lock_key text;
   changed integer;
 begin
   if actor_id is null then
@@ -228,6 +229,13 @@ begin
   if target_follower_id is null or target_follower_id = actor_id or approve is null then
     raise exception 'Invalid follow request.';
   end if;
+
+  pair_lock_key := case
+    when actor_id::text < target_follower_id::text
+      then actor_id::text || ':' || target_follower_id::text
+    else target_follower_id::text || ':' || actor_id::text
+  end;
+  perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended(pair_lock_key, 0));
 
   if approve and public.is_blocked_for_current_user(target_follower_id) then
     raise exception 'Cannot accept a follow request when either account has blocked the other.';
