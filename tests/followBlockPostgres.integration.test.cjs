@@ -161,6 +161,50 @@ test('follow/block RPCs enforce auth, RLS, symmetric blocks and transaction seri
     assert.equal(state.stdout.trim(), '1:0');
   });
 
+  await t.test('a block racing with follow-request approval wins and approval rechecks the block after locking', async () => {
+    await seed();
+    await psql(`insert into public.follows(follower_id, followed_id, status) values ('${A}', '${B}', 'pending');`);
+    // Hold the blocking RPC inside its DELETE after it has acquired the shared pair lock.
+    await psql(`
+      create or replace function public.test_delay_follow_delete()
+      returns trigger language plpgsql as $
+      begin perform pg_sleep(1.2); return old; end;
+      $;
+      create trigger test_delay_follow_delete before delete on public.follows
+      for each row execute function public.test_delay_follow_delete();
+    `);
+    const blockPromise = psql(asUser(A, `select public.block_user('${B}');`));
+    let blockIsInsideDelay = false;
+    for (let attempt = 0; attempt < 50; attempt += 1) {
+      const activity = await psql(`
+        select count(*) from pg_stat_activity
+        where datname = current_database()
+          and state = 'active'
+          and wait_event = 'PgSleep'
+          and query ilike '%block_user%';
+      `);
+      if (Number(activity.stdout.trim()) > 0) {
+        blockIsInsideDelay = true;
+        break;
+      }
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    assert.equal(blockIsInsideDelay, true, 'the block transaction must hold the pair lock before approval starts');
+    const approvalPromise = psql(asUser(B, `select public.respond_to_follow_request('${A}', true);`));
+    const [blockResult, approvalResult] = await Promise.allSettled([blockPromise, approvalPromise]);
+    assert.equal(blockResult.status, 'fulfilled', 'the blocking transaction should commit');
+    assert.equal(blockResult.value.stdout.trim().split(/\\r?\\n/).at(-1), 't');
+    assert.equal(approvalResult.status, 'rejected', 'approval must fail after the block transaction wins the pair lock');
+    assert.match(String(approvalResult.reason?.stderr || approvalResult.reason), /Cannot accept a follow request/i);
+    await psql('drop trigger if exists test_delay_follow_delete on public.follows; drop function if exists public.test_delay_follow_delete();');
+    const state = await psql(`
+      select
+        (select count(*) from public.user_blocks where blocker_id='${A}' and blocked_id='${B}') || ':' ||
+        (select count(*) from public.follows where follower_id='${A}' and followed_id='${B}');
+    `);
+    assert.equal(state.stdout.trim(), '1:0');
+  });
+
   await t.test('all four RPCs use the same transaction-scoped advisory lock', async () => {
     const result = await psql(`
       select count(*) from pg_proc p
