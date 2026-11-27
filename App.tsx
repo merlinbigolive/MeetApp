@@ -1900,7 +1900,7 @@ export default function App() {
         .select('storage_path').eq('user_id', userId).eq('kind', kind).eq('position', targetPosition).maybeSingle();
       if (previousError) throw previousError;
 
-      const { error: saveError } = await client.from('profile_media').upsert({
+      const mediaRecord = {
         user_id: userId,
         kind,
         position: targetPosition,
@@ -1908,8 +1908,24 @@ export default function App() {
         media_type: type,
         original_name: a.fileName ?? null,
         updated_at: new Date().toISOString(),
-      }, { onConflict: 'user_id,kind,position' });
-      if (saveError) throw saveError;
+      };
+      if (previous?.storage_path) {
+        // Compare-and-swap the exact row we inspected. If another device changed
+        // this slot meanwhile, do not overwrite its newer media.
+        const { data: replacedRow, error: replaceError } = await client.from('profile_media')
+          .update(mediaRecord).eq('user_id', userId).eq('kind', kind)
+          .eq('position', targetPosition).eq('storage_path', previous.storage_path)
+          .select('id').maybeSingle();
+        if (replaceError) throw replaceError;
+        if (!replacedRow) throw new Error('This gallery slot changed on another device. Refresh your profile and try again.');
+      } else {
+        // Insert-only for an empty slot: a concurrent upload must hit the unique
+        // slot constraint instead of silently replacing another device's upload.
+        const { data: insertedRow, error: insertError } = await client.from('profile_media')
+          .insert(mediaRecord).select('id').maybeSingle();
+        if (insertError) throw insertError;
+        if (!insertedRow) throw new Error('Your media could not be saved. Please refresh and try again.');
+      }
       mediaMetadataSaved = true;
 
       if (previous?.storage_path) {
