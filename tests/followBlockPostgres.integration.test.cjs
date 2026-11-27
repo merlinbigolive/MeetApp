@@ -103,7 +103,22 @@ test('follow/block RPCs enforce auth, RLS, symmetric blocks and transaction seri
     `);
 
     const followPromise = psql(asUser(A, `select public.request_profile_follow('${B}');`));
-    await new Promise(resolve => setTimeout(resolve, 250));
+    let followIsInsideDelay = false;
+    for (let attempt = 0; attempt < 50; attempt += 1) {
+      const activity = await psql(`
+        select count(*) from pg_stat_activity
+        where datname = current_database()
+          and state = 'active'
+          and wait_event = 'PgSleep'
+          and query ilike '%request_profile_follow%';
+      `);
+      if (Number(activity.stdout.trim()) > 0) {
+        followIsInsideDelay = true;
+        break;
+      }
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    assert.equal(followIsInsideDelay, true, 'the follow transaction must hold its pair lock before the competing block starts');
     const blockPromise = psql(asUser(B, `select public.block_user('${A}');`));
     await Promise.allSettled([followPromise, blockPromise]);
 
