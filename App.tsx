@@ -1913,7 +1913,9 @@ export default function App() {
     // A session switch must never apply one account's gallery to another account.
     const { data: sessionData, error: sessionError } = await client.auth.getSession();
     if (sessionError) throw sessionError;
-    if (sessionData.session?.user.id !== userId) return (rows || []) as CloudMediaRow[];
+    if (sessionData.session?.user.id !== userId) {
+      throw new Error('The signed-in account changed while profile media was refreshing. Please reload your profile and try again.');
+    }
     // A refresh may finish after the account or visible tab changes. Callers
     // can invalidate the result so stale signed URLs never overwrite new state.
     if (shouldApply()) {
