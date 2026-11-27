@@ -73,7 +73,7 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
           },
           insertProfile: async (payload: { id: string; username: string; display_name: string }) => {
             const { error } = await client.from('profiles').insert(payload);
-            if (error) throw new Error(error.message);
+            if (error) throw Object.assign(new Error(error.message), { code: error.code });
           },
         });
         if (active) setProfileReady(true);
