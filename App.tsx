@@ -1960,9 +1960,11 @@ export default function App() {
 
       // Remove the owned metadata row first; storage cleanup must never run before this succeeds.
       if (!media.storagePath) throw new Error('This media item has no saved storage reference. Refresh your profile and try again.');
-      const { error: deleteError } = await client.from('profile_media').delete()
-        .eq('user_id', userId).eq('kind', kind).eq('storage_path', media.storagePath);
+      const { data: deletedRow, error: deleteError } = await client.from('profile_media').delete()
+        .eq('user_id', userId).eq('kind', kind).eq('storage_path', media.storagePath)
+        .select('id').maybeSingle();
       if (deleteError) throw deleteError;
+      if (!deletedRow) throw new Error('This media item was already changed. Refresh your profile and try again.');
 
       let storageCleanupFailed = false;
       if (media.storagePath) {
