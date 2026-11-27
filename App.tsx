@@ -1968,7 +1968,7 @@ export default function App() {
         kind,
         position: targetPosition,
         storage_path: storagePath,
-        media_type: type,
+        media_type: type as 'image' | 'video',
         original_name: a.fileName ?? null,
         updated_at: new Date().toISOString(),
       };
