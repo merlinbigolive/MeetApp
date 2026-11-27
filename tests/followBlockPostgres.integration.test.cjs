@@ -102,6 +102,20 @@ test('follow/block RPCs enforce auth, RLS, symmetric blocks and transaction seri
     assert.equal(blocks.stdout.trim().split(/\r?\n/).at(-1), '0');
   });
 
+  await t.test('restrictive global-block RLS hides follow rows when either account has blocked the other', async () => {
+    await seed();
+    await psql(`
+      insert into public.follows(follower_id, followed_id, status)
+      values ('${A}', '${B}', 'pending');
+      insert into public.user_blocks(blocker_id, blocked_id)
+      values ('${B}', '${A}');
+    `);
+    const visibleToA = await psql(asUser(A, 'select count(*) from public.follows;'));
+    const visibleToB = await psql(asUser(B, 'select count(*) from public.follows;'));
+    assert.equal(visibleToA.stdout.trim().split(/\\r?\\n/).at(-1), '0');
+    assert.equal(visibleToB.stdout.trim().split(/\\r?\\n/).at(-1), '0');
+  });
+
   await t.test('a follower can unfollow only their own relationship; the followed account cannot delete it', async () => {
     await seed();
     await psql(`
