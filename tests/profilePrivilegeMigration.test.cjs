@@ -59,16 +59,19 @@ test('profile media replacement payload only uses columns granted by profile har
 
 
 test('profile hardening revokes broad client grants and preserves only intended operations', () => {
-  assert.match(sql, /revoke all privileges on table public\\.profiles from anon, authenticated;/i);
-  assert.match(sql, /revoke all privileges on table public\\.profile_media from anon, authenticated;/i);
-  assert.match(sql, /grant select on table public\\.profiles to authenticated;/i);
-  assert.match(sql, /grant select on table public\\.profile_media to authenticated;/i);
-  assert.doesNotMatch(sql, /grant delete on table public\\.profiles\\b/i);
-  assert.match(sql, /grant delete on table public\\.profile_media to authenticated;/i);
+  assert.ok(sql.includes('revoke all privileges on table public.profiles from anon, authenticated;'));
+  assert.ok(sql.includes('revoke all privileges on table public.profile_media from anon, authenticated;'));
+  assert.ok(sql.includes('grant select on table public.profiles to authenticated;'));
+  assert.ok(sql.includes('grant select on table public.profile_media to authenticated;'));
+  assert.doesNotMatch(sql, /grant delete on table public\.profiles\b/i);
+  assert.ok(sql.includes('grant delete on table public.profile_media to authenticated;'));
 });
 
 test('profile media insert and update grants exclude immutable ownership fields on update', () => {
-  const insert = grantedInsertColumns('profile_media');
+  const mediaInsertMatch = sql.match(/grant insert\s*\(([\s\S]*?)\)\s*on\s+table\s+public\.profile_media/i);
+  assert.ok(mediaInsertMatch, 'INSERT column grant exists for profile_media');
+  const insert = new Set(mediaInsertMatch[1].split(',').map(column => column.trim()).filter(Boolean));
+  assert.equal(insert.size, mediaInsertMatch[1].split(',').map(column => column.trim()).filter(Boolean).length, 'profile_media INSERT grant must not contain duplicate columns');
   for (const column of ['user_id', 'kind', 'position', 'storage_path', 'media_type', 'original_name', 'updated_at']) {
     assert.ok(insert.has(column), 'profile_media.' + column + ' must be allowed for media creation');
   }
