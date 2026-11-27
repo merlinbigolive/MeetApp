@@ -222,3 +222,13 @@ test('returns a usable preview when signed URL creation succeeds', async () => {
   assert.equal(result.media.unavailable, false);
   assert.equal(result.errorMessage, null);
 });
+
+
+test('profile writes require the same signed-in account whose profile was loaded', () => {
+  const { isProfileSessionOwner } = require('../profilePersistence');
+  assert.equal(isProfileSessionOwner('user-a', 'user-a'), true);
+  assert.equal(isProfileSessionOwner('user-b', 'user-a'), false);
+  assert.equal(isProfileSessionOwner(null, 'user-a'), false);
+  assert.equal(isProfileSessionOwner('user-a', null), false);
+  assert.equal(isProfileSessionOwner('', 'user-a'), false);
+});
