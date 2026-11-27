@@ -95,6 +95,9 @@ test('follow/block RPCs enforce auth, RLS, symmetric blocks and transaction seri
     const visible = await psql(asUser(A, 'select count(*) from public.follows;'));
     assert.equal(visible.stdout.trim().split(/\r?\n/).at(-1), '1');
     await assert.rejects(psql(asUser(A, `insert into public.follows(follower_id, followed_id, status) values ('${A}', '${C}', 'accepted');`)), /permission denied/i);
+    await assert.rejects(psql(asUser(A, `update public.follows set status='accepted' where follower_id='${A}' and followed_id='${B}';`)), /permission denied/i);
+    const unchanged = await psql(`select status from public.follows where follower_id='${A}' and followed_id='${B}';`);
+    assert.equal(unchanged.stdout.trim(), 'pending');
     const blocks = await psql(asUser(A, `select count(*) from public.user_blocks;`));
     assert.equal(blocks.stdout.trim().split(/\r?\n/).at(-1), '0');
   });
@@ -128,7 +131,10 @@ test('follow/block RPCs enforce auth, RLS, symmetric blocks and transaction seri
     }
     assert.equal(followIsInsideDelay, true, 'the follow transaction must hold its pair lock before the competing block starts');
     const blockPromise = psql(asUser(B, `select public.block_user('${A}');`));
-    await Promise.allSettled([followPromise, blockPromise]);
+    const [followResult, blockResult] = await Promise.allSettled([followPromise, blockPromise]);
+    assert.equal(followResult.status, 'fulfilled', 'the serialized follow RPC should complete before the competing block');
+    assert.equal(blockResult.status, 'fulfilled', 'the competing block RPC should complete after acquiring the pair lock');
+    assert.equal(blockResult.value.stdout.trim().split(/\\r?\\n/).at(-1), 't');
 
     await psql('drop trigger if exists test_delay_follow_insert on public.follows; drop function if exists public.test_delay_follow_insert();');
     const state = await psql(`
