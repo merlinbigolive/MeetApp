@@ -152,7 +152,7 @@ function VoiceMessageBubble({ uri, transcript, mine }: { uri: string; transcript
 }
 
 function CoverMediaSlide({ media }: { media: Media }) {
-  const player = useVideoPlayer(media.type === 'video' ? media.uri : null, p => { p.loop = true; });
+  const player = useVideoPlayer(media.type === 'video' && !media.unavailable ? media.uri : null, p => { p.loop = true; });
   useEffect(() => {
     if (media.type === 'video') player.play();
     return () => { if (media.type === 'video') player.pause(); };
@@ -2140,8 +2140,8 @@ export default function App() {
       <View style={s.top}><Text style={s.pageTitle}>MEEi</Text></View>
       <Animated.View style={[s.identity, { paddingTop: coverRevealProgress.interpolate({ inputRange: [0, 1], outputRange: [92, 282] }) }]}>
         <Animated.View style={[s.coverBackdrop, { height: coverRevealProgress.interpolate({ inputRange: [0, 1], outputRange: [235, 450] }) }]}>
-          {covers[0]?.type === 'image' ? <Image source={{uri:covers[0].uri}} style={s.coverBackdropImage}/> :
-            covers[0]?.type === 'video' ? <ProfileCoverVideo uri={covers[0].uri} /> :
+          {covers[0]?.type === 'image' && !covers[0]?.unavailable ? <Image source={{uri:covers[0].uri}} style={s.coverBackdropImage}/> :
+            covers[0]?.type === 'video' && !covers[0]?.unavailable ? <ProfileCoverVideo uri={covers[0].uri} /> :
             <View style={s.coverBackdropEmpty}/>}
           <View style={s.coverBackdropShade}/>
           {isOwnProfile && <Pressable disabled={uploadingMediaKinds.cover} onPress={() => chooseMedia('cover')} style={s.coverEdit}>{uploadingMediaKinds.cover ? <ActivityIndicator size="small" color="#FFFFFF"/> : <Ionicons name="camera" size={15} color="#FFFFFF"/>}</Pressable>}
