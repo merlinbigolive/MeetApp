@@ -4,6 +4,11 @@
 -- DEFINER RPCs with authenticated, block-aware, serialized implementations.
 -- All functions require an authenticated actor; follow requests respect symmetric global blocks.
 
+-- Remove legacy permissive insert policies. Follow creation must use the
+-- serialized SECURITY DEFINER RPCs below, never a direct client table insert.
+drop policy if exists "follows_insert_self" on public.follows;
+drop policy if exists "follows_insert_public_only" on public.follows;
+
 -- Serialize follow/block changes for the same account pair. SECURITY DEFINER
 -- functions bypass table RLS, so the block check must live inside this RPC too.
 -- The shared transaction lock prevents a concurrent block from being followed by
