@@ -1865,7 +1865,13 @@ export default function App() {
         targetPosition = 0;
       } else {
         const orderedPositions = existingRows.map(row => row.position);
-        const visibleRow = index === undefined ? undefined : existingRows[index];
+        const visibleMedia = index === undefined ? undefined : (kind === 'cover' ? covers[index] : posts[index]);
+        const visibleRow = visibleMedia?.storagePath
+          ? existingRows.find(row => row.storage_path === visibleMedia.storagePath)
+          : undefined;
+        if (index !== undefined && !visibleRow) {
+          throw new Error('This gallery item could not be matched to its saved record. Refresh your profile and try again.');
+        }
         targetPosition = visibleRow?.position ?? [0, 1, 2].find(position => !orderedPositions.includes(position)) ?? -1;
         if (targetPosition < 0) {
           Alert.alert('Gallery full', 'Remove an existing item before adding another.');
@@ -1953,8 +1959,9 @@ export default function App() {
       }
 
       // Remove the owned metadata row first; storage cleanup must never run before this succeeds.
+      if (!media.storagePath) throw new Error('This media item has no saved storage reference. Refresh your profile and try again.');
       const { error: deleteError } = await client.from('profile_media').delete()
-        .eq('user_id', userId).eq('kind', kind).eq('position', index);
+        .eq('user_id', userId).eq('kind', kind).eq('storage_path', media.storagePath);
       if (deleteError) throw deleteError;
 
       let storageCleanupFailed = false;
