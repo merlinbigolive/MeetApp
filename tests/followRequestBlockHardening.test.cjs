@@ -84,6 +84,7 @@ const commentVisibilityFixSql = readFileSync(
 
 test('global block visibility hides blocked comment authors and comments on blocked posts', () => {
   for (const source of [globalBlockSql, commentVisibilityFixSql]) {
+    assert.match(source, /drop policy if exists "global_block_comments_select_v2"/i, "legacy v2 restrictive policy must be replaced to avoid duplicate filters");
     const policy = source.match(/create policy "global_block_comments_select"[\s\S]*?\);/i)?.[0];
     assert.ok(policy, 'restrictive comment visibility policy must exist');
     assert.match(policy, /as restrictive/i);
