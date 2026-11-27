@@ -4,6 +4,7 @@
 -- setup can receive the corrected restrictive policy without replaying setup.
 
 drop policy if exists "global_block_comments_select" on public.post_comments;
+drop policy if exists "global_block_comments_select_v2" on public.post_comments;
 
 create policy "global_block_comments_select" on public.post_comments
 as restrictive
