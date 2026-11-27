@@ -3,7 +3,7 @@ function normalizeEmail(email) {
 }
 
 function isValidEmail(email) {
-  return /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email);
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
 function normalizeOtp(code) {
@@ -11,7 +11,7 @@ function normalizeOtp(code) {
 }
 
 function isValidOtp(token) {
-  return /^\\d{6}$/.test(token);
+  return /^\d{6}$/.test(token);
 }
 
 module.exports = { normalizeEmail, isValidEmail, normalizeOtp, isValidOtp };
