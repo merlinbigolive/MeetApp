@@ -25,16 +25,10 @@ using (
   )
 );
 
--- Clients cannot create accepted follows directly. The RPC decides status.
+-- Follow creation must go through the SECURITY DEFINER RPC so status,
+-- privacy, and global-block checks cannot be bypassed by direct table inserts.
 drop policy if exists "follows_insert_self" on public.follows;
-create policy "follows_insert_public_only" on public.follows
-for insert to authenticated
-with check (
-  follower_id = auth.uid()
-  and followed_id <> auth.uid()
-  and status = 'accepted'
-  and exists (select 1 from public.profiles p where p.id = followed_id and p.is_private = false)
-);
+drop policy if exists "follows_insert_public_only" on public.follows;
 
 create or replace function public.request_profile_follow(target_user_id uuid)
 returns text
