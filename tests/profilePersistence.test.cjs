@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { mapProfileRecord, buildProfileUpdate, resolveProfileCountry } = require('../profilePersistence');
+const { mapProfileRecord, buildProfileUpdate, buildProfileMediaUpdate, resolveProfileCountry } = require('../profilePersistence');
 
 test('maps a complete personal profile record to editable fields', () => {
   const result = mapProfileRecord({
@@ -134,4 +134,25 @@ test('preserves both saved country fields without writing fallbacks', () => {
   assert.deepEqual(result, {
     countryCode: 'CA', countryName: 'Canada', persistFields: {},
   });
+});
+
+test('builds a least-privilege update payload for an existing profile media row', () => {
+  const payload = buildProfileMediaUpdate({
+    user_id: 'owner-id',
+    kind: 'cover',
+    position: 1,
+    storage_path: 'owner-id/cover/new-file.jpg',
+    media_type: 'image',
+    original_name: 'new-file.jpg',
+    updated_at: '2026-11-27T00:00:00.000Z',
+  });
+  assert.deepEqual(payload, {
+    position: 1,
+    storage_path: 'owner-id/cover/new-file.jpg',
+    media_type: 'image',
+    original_name: 'new-file.jpg',
+    updated_at: '2026-11-27T00:00:00.000Z',
+  });
+  assert.equal(Object.hasOwn(payload, 'user_id'), false);
+  assert.equal(Object.hasOwn(payload, 'kind'), false);
 });
