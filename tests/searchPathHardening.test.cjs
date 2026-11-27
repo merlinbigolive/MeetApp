@@ -17,6 +17,7 @@ test('SECURITY DEFINER hardening removes existing pg_temp entries before appendi
 
 test('SECURITY DEFINER hardening preserves trusted schema order and defaults an empty path safely', () => {
   assert.match(sql, /unnest\(string_to_array\(current_path, ','\)\) with ordinality/i);
+  assert.match(sql, /unnest\(coalesce\(f\.proconfig, array\[\]::text\[\]\)\) as config\(setting\)/i);
   assert.match(sql, /order by ordinality/i);
   assert.match(sql, /if current_path is null then\s+current_path := 'public';\s+end if;/i);
 });
