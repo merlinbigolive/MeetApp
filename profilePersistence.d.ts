@@ -14,3 +14,16 @@ export type ProfileForm = {
 };
 export function mapProfileRecord(record: ProfileRecord): ProfileForm;
 export function buildProfileUpdate(profile: ProfileForm, updatedAt: string): Record<string, string | boolean | null>;
+
+export type ResolvedProfileCountry = {
+  countryCode: string;
+  countryName: string;
+  persistFields: { country_code?: string; country_name?: string };
+};
+export function resolveProfileCountry(input: {
+  savedCountryCode?: string | null;
+  savedCountryName?: string | null;
+  deviceCountryCode?: string | null;
+  deviceCountryName?: string | null;
+  getDisplayName: (countryCode: string) => string;
+}): ResolvedProfileCountry;
