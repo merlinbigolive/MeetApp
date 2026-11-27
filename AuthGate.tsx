@@ -65,13 +65,13 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
       try {
         await ensureProfileExists({
           user: session.user,
-          findProfile: async userId => {
+          findProfile: async (userId: string) => {
             const { data, error } = await client
               .from('profiles').select('id').eq('id', userId).maybeSingle();
             if (error) throw new Error('Could not check your profile: ' + error.message);
             return !!data;
           },
-          insertProfile: async payload => {
+          insertProfile: async (payload: { id: string; username: string; display_name: string }) => {
             const { error } = await client.from('profiles').insert(payload);
             if (error) throw new Error(error.message);
           },
