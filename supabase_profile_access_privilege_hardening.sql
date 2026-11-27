@@ -18,7 +18,6 @@ grant insert (id, username, display_name)
 grant update (
   username,
   display_name,
-  display_name,
   bio,
   website_url,
   profession_category,
