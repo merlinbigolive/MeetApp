@@ -69,16 +69,27 @@ function FeedVideoMedia({ uri, onPress }: { uri: string; onPress: () => void }) 
   </Pressable>;
 }
 
-function SearchReelTile({ uri, caption, views, onPress }: { uri?: string; caption: string; views: number; onPress: () => void }) {
+function SearchReelTile({ uri, caption, views, onPress, gridTop, scrollY, viewportHeight }: {
+  uri?: string; caption: string; views: number; onPress: () => void;
+  gridTop: number; scrollY: number; viewportHeight: number;
+}) {
   const player = useVideoPlayer(uri || null, p => {
     p.loop = true;
     p.muted = true;
   });
+  const [tileLayout, setTileLayout] = useState({ y: 0, height: 0 });
+  const tileTop = gridTop + tileLayout.y - scrollY;
+  const isVisible = tileLayout.height > 0 && tileTop < viewportHeight && tileTop + tileLayout.height > 0;
   useEffect(() => {
-    if (uri) player.play();
+    if (!uri) return;
+    if (isVisible) player.play();
+    else player.pause();
     return () => player.pause();
-  }, [player, uri]);
-  return <Pressable onPress={onPress} style={s.reelTile}>
+  }, [isVisible, player, uri]);
+  return <Pressable onLayout={event => setTileLayout({
+    y: event.nativeEvent.layout.y,
+    height: event.nativeEvent.layout.height,
+  })} onPress={onPress} style={s.reelTile}>
     {uri ? <VideoView player={player} style={s.reelTileVideo} contentFit="cover" nativeControls={false}/> : <View style={s.reelTileFallback}><Ionicons name="play-circle" size={34} color="#FFFFFF"/></View>}
     <View style={s.reelTileShade}/>
     <View style={s.reelTilePlay}><Ionicons name="play" size={13} color="#FFFFFF"/></View>
@@ -2310,6 +2321,9 @@ export default function App() {
   );
 
   const DiscoverScreen = () => {
+    const { height: viewportHeight } = useWindowDimensions();
+    const [scrollY, setScrollY] = useState(0);
+    const [reelsGridTop, setReelsGridTop] = useState(0);
     const query = profileSearch.trim().replace(/^[@#]+/, '').toLowerCase();
     const filteredProfiles = publicProfiles.filter(profile =>
       (!query ||
@@ -2330,7 +2344,12 @@ export default function App() {
       setViewer({ uri, type: 'video', storagePath: video.media_path });
     };
     const peopleMode = searchCategory === 'People' || searchCategory === 'Creators';
-    return <ScrollView contentContainerStyle={s.discoverScroll} keyboardShouldPersistTaps="handled">
+    return <ScrollView
+      contentContainerStyle={s.discoverScroll}
+      keyboardShouldPersistTaps="handled"
+      scrollEventThrottle={16}
+      onScroll={event => setScrollY(event.nativeEvent.contentOffset.y)}
+    >
       <View style={s.searchHeader}>
         <View><Text style={s.pageTitle}>MEEi</Text><Text style={s.searchSubtitle}>Discover something new</Text></View>
         <View style={s.searchHeaderIcon}><Ionicons name="sparkles" size={20} color={C.cyan}/></View>
@@ -2365,7 +2384,18 @@ export default function App() {
         </View>
         {loadingVideos || (filteredVideos.length > 0 && Object.keys(videoUrls).length === 0) ? <View style={s.searchEmpty}><Text style={s.hint}>Finding videos for you…</Text></View> :
           filteredVideos.length === 0 ? <View style={s.searchEmpty}><Ionicons name="videocam-outline" size={34} color={C.cyan}/><Text style={s.sectionTitle}>Nothing here yet</Text><Text style={s.hint}>Public {searchCategory.toLowerCase()} will appear here as creators share them.</Text></View> :
-          <View style={s.reelsGrid}>{filteredVideos.slice(0, 12).map(video => <SearchReelTile key={video.id} uri={videoUrls[video.id]} caption={video.caption || 'MEEi video'} views={video.view_count || 0} onPress={() => openSearchVideo(video)}/>)}</View>}
+          <View style={s.reelsGrid} onLayout={event => setReelsGridTop(event.nativeEvent.layout.y)}>
+            {filteredVideos.slice(0, 12).map(video => <SearchReelTile
+              key={video.id}
+              uri={videoUrls[video.id]}
+              caption={video.caption || 'MEEi video'}
+              views={video.view_count || 0}
+              onPress={() => openSearchVideo(video)}
+              gridTop={reelsGridTop}
+              scrollY={scrollY}
+              viewportHeight={viewportHeight}
+            />)}
+          </View>}
       </>}
     </ScrollView>;
   };
