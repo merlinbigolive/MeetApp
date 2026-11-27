@@ -93,3 +93,26 @@ test('global block visibility hides blocked comment authors and comments on bloc
     assert.match(policy, /public\.is_blocked_for_current_user\(p\.user_id\)/i, 'comments on blocked users posts must be hidden');
   }
 });
+
+test('all follow/block RPCs derive the same order-independent account-pair lock key', () => {
+  const targets = {
+    request_profile_follow: 'target_user_id',
+    respond_to_follow_request: 'target_follower_id',
+    block_user: 'target_user_id',
+    unblock_user: 'target_user_id',
+  };
+
+  for (const [name, target] of Object.entries(targets)) {
+    const fn = getFunction(name);
+    const escapedTarget = target.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&');
+    const canonicalPairKey = new RegExp(
+      'pair_lock_key\\s*:=\\s*case\\s+when\\s+actor_id::text\\s*<\\s*' + escapedTarget +
+      '::text\\s+then\\s+actor_id::text\\s*\\|\\|\\s*\':\\'\\s*\\|\\|\\s*' + escapedTarget +
+      '::text\\s+else\\s+' + escapedTarget + '::text\\s*\\|\\|\\s*\':\\'\\s*\\|\\|\\s*actor_id::text\\s+end',
+      'i'
+    );
+    assert.match(fn, canonicalPairKey, name + ' must normalize account order before locking');
+    assert.match(fn, /actor_id\\s+uuid\\s*:=\\s*auth\\.uid\\(\\)/i);
+    assert.match(fn, /if\\s+actor_id\\s+is\\s+null\\s+then[\\s\\S]*?authentication required/i);
+  }
+});
