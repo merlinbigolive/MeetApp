@@ -62,7 +62,7 @@ test('accepts a profile created by a concurrent bootstrap after primary insert f
   const result = await ensureProfileExists({
     user,
     findProfile: async () => ++lookups > 1,
-    insertProfile: async () => { inserts += 1; throw new Error('duplicate key'); },
+    insertProfile: async () => { inserts += 1; throw Object.assign(new Error('duplicate key'), { code: '23505' }); },
   });
   assert.deepEqual(result, { created: false, username: null });
   assert.equal(inserts, 1);
@@ -75,7 +75,7 @@ test('retries with the deterministic fallback username after primary insert fail
     findProfile: async () => false,
     insertProfile: async payload => {
       inserted.push(payload);
-      if (inserted.length === 1) throw new Error('username already taken');
+      if (inserted.length === 1) throw Object.assign(new Error('username already taken'), { code: '23505' });
     },
   });
   assert.deepEqual(result, { created: true, username: 'user_1234567890abcdef' });
@@ -105,4 +105,20 @@ test('does not hide lookup errors during profile bootstrap', async () => {
     }),
     /permission denied/,
   );
+});
+
+test('does not retry a non-unique database failure with a fallback username', async () => {
+  let inserts = 0;
+  await assert.rejects(
+    ensureProfileExists({
+      user,
+      findProfile: async () => false,
+      insertProfile: async () => {
+        inserts += 1;
+        throw Object.assign(new Error('permission denied'), { code: '42501' });
+      },
+    }),
+    /permission denied/,
+  );
+  assert.equal(inserts, 1);
 });
