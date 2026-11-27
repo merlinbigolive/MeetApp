@@ -1,5 +1,6 @@
 {
   "expo": {
+    "owner": "meetappindias-team",
     "name": "MEEi",
     "slug": "meetapp",
     "scheme": "meetapp",
