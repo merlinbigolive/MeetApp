@@ -84,11 +84,11 @@ const commentVisibilityFixSql = readFileSync(
 
 test('global block visibility hides blocked comment authors and comments on blocked posts', () => {
   for (const source of [globalBlockSql, commentVisibilityFixSql]) {
-    const policy = source.match(/create policy "global_block_comments_select"[\\s\\S]*?\\);/i)?.[0];
+    const policy = source.match(/create policy "global_block_comments_select"[\s\S]*?\);/i)?.[0];
     assert.ok(policy, 'restrictive comment visibility policy must exist');
     assert.match(policy, /as restrictive/i);
-    assert.match(policy, /user_id = auth\\.uid\\(\\)/i, 'users can retain access to their own comments');
-    assert.match(policy, /not public\\.is_blocked_for_current_user\\(user_id\\)/i, 'blocked comment authors must be hidden');
-    assert.match(policy, /public\\.is_blocked_for_current_user\\(p\\.user_id\\)/i, 'comments on blocked users posts must be hidden');
+    assert.match(policy, /user_id = auth\.uid\(\)/i, 'users can retain access to their own comments');
+    assert.match(policy, /not public\.is_blocked_for_current_user\(user_id\)/i, 'blocked comment authors must be hidden');
+    assert.match(policy, /public\.is_blocked_for_current_user\(p\.user_id\)/i, 'comments on blocked users posts must be hidden');
   }
 });
