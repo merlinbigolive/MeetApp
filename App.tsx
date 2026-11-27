@@ -2056,6 +2056,13 @@ export default function App() {
       if (kind === 'cover') setCovers(next);
       else setPosts(next);
 
+      // Do not compact across an item whose preview failed: its database row
+      // still occupies a slot even though the media cannot currently be opened.
+      if (next.some(item => item.unavailable)) {
+        Alert.alert('Media removed', 'The selected item was removed. Other saved items were left in their existing slots because one or more previews are unavailable.');
+        return;
+      }
+
       // Compact positions from left to right so each destination slot is already free.
       for (let position = 0; position < next.length; position++) {
         const item = next[position];
