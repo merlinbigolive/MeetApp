@@ -193,7 +193,7 @@ test('follow/block RPCs enforce auth, RLS, symmetric blocks and transaction seri
     const approvalPromise = psql(asUser(B, `select public.respond_to_follow_request('${A}', true);`));
     const [blockResult, approvalResult] = await Promise.allSettled([blockPromise, approvalPromise]);
     assert.equal(blockResult.status, 'fulfilled', 'the blocking transaction should commit');
-    assert.equal(blockResult.value.stdout.trim().split(/\\r?\\n/).at(-1), 't');
+    assert.equal(blockResult.value.stdout.trim().split(/\r?\n/).at(-1), 't');
     assert.equal(approvalResult.status, 'rejected', 'approval must fail after the block transaction wins the pair lock');
     assert.match(String(approvalResult.reason?.stderr || approvalResult.reason), /Cannot accept a follow request/i);
     await psql('drop trigger if exists test_delay_follow_delete on public.follows; drop function if exists public.test_delay_follow_delete();');
