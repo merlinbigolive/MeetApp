@@ -154,8 +154,8 @@ function VoiceMessageBubble({ uri, transcript, mine }: { uri: string; transcript
 function CoverMediaSlide({ media }: { media: Media }) {
   const player = useVideoPlayer(media.type === 'video' && !media.unavailable ? media.uri : null, p => { p.loop = true; });
   useEffect(() => {
-    if (media.type === 'video') player.play();
-    return () => { if (media.type === 'video') player.pause(); };
+    if (media.type === 'video' && !media.unavailable) player.play();
+    return () => { if (media.type === 'video' && !media.unavailable) player.pause(); };
   }, [media.type, player]);
   if (media.unavailable) {
     return <View style={{ width: '100%', height: '85%', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
