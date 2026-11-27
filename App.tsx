@@ -3,7 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
 import * as Notifications from 'expo-notifications';
 import {
-  Alert, Image, Modal, Pressable, ScrollView, StatusBar, StyleSheet, Platform, Share,
+  ActivityIndicator, Alert, Image, Modal, Pressable, ScrollView, StatusBar, StyleSheet, Platform, Share,
   Text, TextInput, View, useWindowDimensions, useColorScheme, Animated, PanResponder
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -330,6 +330,7 @@ export default function App() {
   const [liveStudioVisible, setLiveStudioVisible] = useState(false);
   const [liveJoinSessionId, setLiveJoinSessionId] = useState<string | null>(null);
   const [savingProfile, setSavingProfile] = useState(false);
+  const [uploadingMediaKind, setUploadingMediaKind] = useState<'avatar' | 'cover' | 'post' | null>(null);
   const savingProfileLock = useRef(false);
   const mediaUploadLocks = useRef<Set<string>>(new Set());
   const [name, setName] = useState('MEEi User');
@@ -1825,6 +1826,7 @@ export default function App() {
         Alert.alert('File size limit', 'Please choose a photo or video that is 50 MB or smaller.');
         return;
       }
+      setUploadingMediaKind(kind);
       const client = supabase;
       if (!client) {
         Alert.alert('Cloud not configured', 'Connect Supabase before uploading profile media.');
@@ -1899,6 +1901,7 @@ export default function App() {
         }
       }
       mediaUploadLocks.current.delete(galleryLockKey);
+      setUploadingMediaKind(null);
     }
   };
 
@@ -1971,16 +1974,20 @@ export default function App() {
     import('react-native').then(({ Linking }) => Linking.openURL(url).catch(() => Alert.alert('Website', 'This website link could not be opened.')));
   };
 
-  const MediaTile = ({ media, onPress, onRemove, label }: {
-    media?: Media; onPress: () => void; onRemove?: () => void; label: string;
+  const MediaTile = ({ media, onPress, onRemove, label, uploading = false }: {
+    media?: Media; onPress: () => void; onRemove?: () => void; label: string; uploading?: boolean;
   }) => (
-    <Pressable onPress={media ? () => setViewer(media) : onPress} style={s.tile}>
+    <Pressable disabled={uploading} onPress={media ? () => setViewer(media) : onPress} style={s.tile}>
       {media?.type === 'image'
         ? <Image source={{ uri: media.uri }} style={s.tileImage} />
         : media?.type === 'video'
           ? <View style={s.videoTile}><Ionicons name="play-circle" size={30} color={C.cyan} /><Text style={s.videoText}>VIDEO</Text></View>
           : <><Ionicons name="add-circle-outline" size={25} color={C.cyan} /><Text style={s.tileLabel}>{label}</Text></>}
-      {media && onRemove ? <Pressable onPress={onRemove} style={s.remove}><Ionicons name="close" size={14} color="#fff" /></Pressable> : null}
+      {media && onRemove && !uploading ? <Pressable onPress={onRemove} style={s.remove}><Ionicons name="close" size={14} color="#fff" /></Pressable> : null}
+      {uploading && <View style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, borderRadius: 12, backgroundColor: 'rgba(8,18,30,0.72)', alignItems: 'center', justifyContent: 'center', gap: 7 }}>
+        <ActivityIndicator size="small" color="#FFFFFF" />
+        <Text style={{ color: '#FFFFFF', fontSize: 11, fontWeight: '700' }}>Uploading…</Text>
+      </View>}
     </Pressable>
   );
 
@@ -2018,13 +2025,15 @@ export default function App() {
             covers[0]?.type === 'video' ? <ProfileCoverVideo uri={covers[0].uri} /> :
             <View style={s.coverBackdropEmpty}/>}
           <View style={s.coverBackdropShade}/>
-          {isOwnProfile && <Pressable onPress={() => chooseMedia('cover')} style={s.coverEdit}><Ionicons name="camera" size={15} color="#FFFFFF"/></Pressable>}
+          {isOwnProfile && <Pressable disabled={uploadingMediaKind === 'cover'} onPress={() => chooseMedia('cover')} style={s.coverEdit}>{uploadingMediaKind === 'cover' ? <ActivityIndicator size="small" color="#FFFFFF"/> : <Ionicons name="camera" size={15} color="#FFFFFF"/>}</Pressable>}
+          {isOwnProfile && uploadingMediaKind === 'cover' && <View pointerEvents="none" style={{ position: 'absolute', left: 0, right: 0, bottom: 18, alignItems: 'center' }}><View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: 'rgba(8,18,30,0.76)', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20 }}><ActivityIndicator size="small" color="#FFFFFF"/><Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '700' }}>Uploading cover…</Text></View></View>}
           {!!covers.length && <Pressable onPress={() => setCoverExpanded(true)} style={s.coverViewTap}/>}
         </Animated.View>
         <Animated.View {...avatarPan.panHandlers}>
-        <Pressable onPress={() => isOwnProfile ? chooseMedia('avatar') : undefined} style={s.avatarWrap}>
+        <Pressable disabled={uploadingMediaKind === 'avatar'} onPress={() => isOwnProfile ? chooseMedia('avatar') : undefined} style={s.avatarWrap}>
           {avatar ? <Image source={{uri:avatar.uri}} style={s.avatar} /> : <View style={s.avatarFallback}><Ionicons name="person" size={38} color={C.cyan}/></View>}
-          {isOwnProfile && <View style={s.camera}><Ionicons name="camera" size={13} color="#fff"/></View>}
+          {isOwnProfile && <View style={s.camera}>{uploadingMediaKind === 'avatar' ? <ActivityIndicator size="small" color="#FFFFFF"/> : <Ionicons name="camera" size={13} color="#fff"/>}</View>}
+          {isOwnProfile && uploadingMediaKind === 'avatar' && <View pointerEvents="none" style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, borderRadius: 60, backgroundColor: 'rgba(8,18,30,0.58)', alignItems: 'center', justifyContent: 'center' }}><ActivityIndicator size="large" color="#FFFFFF"/><Text style={{ color: '#FFFFFF', fontSize: 10, fontWeight: '700', marginTop: 5 }}>Uploading</Text></View>}
         </Pressable>
         </Animated.View>
         <View style={s.nameLine}><Text style={s.name}>{name}</Text></View>
@@ -2080,7 +2089,7 @@ export default function App() {
         </View>
         {!!posts.length && <View style={s.section}>
           <View style={s.sectionHeading}><Text style={s.sectionTitle}>Featured media</Text><Text style={s.coverCount}>{posts.length}/3</Text></View>
-          <View style={s.mediaRow}>{[0,1,2].map(i => <MediaTile key={i} label="Add media" media={posts[i]} onPress={() => chooseMedia('post', i)} onRemove={posts[i] ? () => removeMedia('post', i) : undefined}/>)}</View>
+          <View style={s.mediaRow}>{[0,1,2].map(i => <MediaTile key={i} label="Add media" media={posts[i]} onPress={() => chooseMedia('post', i)} onRemove={posts[i] ? () => removeMedia('post', i) : undefined} uploading={uploadingMediaKind === 'post'}/>)}</View>
         </View>}
         <View style={s.section}>
           <Text style={s.sectionTitle}>About</Text>
