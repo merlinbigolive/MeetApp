@@ -333,10 +333,13 @@ export default function App() {
   const [uploadingMediaKinds, setUploadingMediaKinds] = useState<Record<'avatar' | 'cover' | 'post', boolean>>({ avatar: false, cover: false, post: false });
   const savingProfileLock = useRef(false);
   const mediaUploadLocks = useRef<Set<string>>(new Set());
-  const [name, setName] = useState('MEEi User');
-  const [username, setUsername] = useState('your_username');
-  const [bio, setBio] = useState('Creating connections, sharing ideas and meeting amazing people.');
-  const [website, setWebsite] = useState('https://example.com');
+  const [profileLoadStatus, setProfileLoadStatus] = useState<'loading' | 'ready' | 'error'>('loading');
+  const [profileLoadError, setProfileLoadError] = useState('');
+  const [profileLoadAttempt, setProfileLoadAttempt] = useState(0);
+  const [name, setName] = useState('');
+  const [username, setUsername] = useState('');
+  const [bio, setBio] = useState('');
+  const [website, setWebsite] = useState('');
   const [occupation, setOccupation] = useState('');
   const [accountType, setAccountType] = useState<'personal' | 'business'>('personal');
   const [businessName, setBusinessName] = useState('');
@@ -567,18 +570,29 @@ export default function App() {
 
   useEffect(() => {
     let active = true;
+    setProfileLoadStatus('loading');
+    setProfileLoadError('');
     const loadCloudProfile = async () => {
-      if (!supabase) return;
+      if (!supabase) {
+        setProfileLoadError('Cloud profile service is not configured. Please check the app setup.');
+        setProfileLoadStatus('error');
+        return;
+      }
       try {
         const { data: authData, error: authError } = await supabase.auth.getSession();
         if (!active) return;
         if (authError) {
           console.warn('Profile session could not be restored:', authError.message);
-          Alert.alert('Profile unavailable', 'Your session could not be checked. Please reopen the app and try again.');
+          setProfileLoadError('Your session could not be checked. Please sign in again.');
+          setProfileLoadStatus('error');
           return;
         }
         const userId = authData.session?.user.id;
-        if (!userId) return;
+        if (!userId) {
+          setProfileLoadError('No signed-in account was found. Please sign in again.');
+          setProfileLoadStatus('error');
+          return;
+        }
         setCurrentUserId(userId);
         const { data, error } = await supabase
           .from('profiles')
@@ -588,7 +602,8 @@ export default function App() {
         if (!active) return;
         if (error || !data) {
           console.warn('Profile details could not be loaded:', error?.message || 'No profile row found.');
-          Alert.alert('Profile unavailable', 'Your profile details could not be loaded. Please check your connection and try again.');
+          setProfileLoadError(error?.message || 'Your profile details could not be loaded. Please check your connection and retry.');
+          setProfileLoadStatus('error');
           return;
         }
         const profileForm = mapProfileRecord(data);
@@ -651,6 +666,7 @@ export default function App() {
           setAvatar(null);
           setCovers([]);
           setPosts([]);
+          setProfileLoadStatus('ready');
           Alert.alert('Profile media unavailable', 'Your profile details loaded, but photos and videos could not be loaded. Please check your connection and try again.');
           return;
         }
@@ -679,14 +695,18 @@ export default function App() {
         if (valid.length < (mediaRows || []).length) {
           Alert.alert('Some profile media unavailable', 'Your profile details loaded, but one or more photos or videos could not be opened. Please try again later.');
         }
-      } catch (error) {
+        if (active) setProfileLoadStatus('ready');
+      } catch (error: any) {
         console.warn('Unexpected profile loading error:', error);
-        if (active) Alert.alert('Profile unavailable', 'Something went wrong while loading your profile. Please check your connection and try again.');
+        if (active) {
+          setProfileLoadError(error?.message || 'Something went wrong while loading your profile. Please check your connection and retry.');
+          setProfileLoadStatus('error');
+        }
       }
     };
-    loadCloudProfile();
+    void loadCloudProfile();
     return () => { active = false; };
-  }, []);
+  }, [profileLoadAttempt]);
 
   useEffect(() => {
     if (!supabase) return;
@@ -2575,6 +2595,19 @@ export default function App() {
   const SimpleScreen = ({ title, subtitle }: {title:string;subtitle:string}) => (
     <View style={s.simple}><Text style={s.pageTitle}>{title}</Text><View style={s.card}><Text style={s.sectionTitle}>{subtitle}</Text><Text style={s.hint}>This section will be connected to MEEi accounts and services in the next build step.</Text></View></View>
   );
+
+  if (profileLoadStatus !== 'ready') {
+    return (
+      <View style={{ flex: 1, backgroundColor: C.bg, alignItems: 'center', justifyContent: 'center', padding: 28, gap: 14 }}>
+        <StatusBar barStyle={themeMode === 'dark' ? 'light-content' : 'dark-content'} backgroundColor={C.bg}/>
+        {profileLoadStatus === 'loading' ? (
+          <><ActivityIndicator size="large" color={C.cyan}/><Text style={{ color: C.text, fontSize: 15, fontWeight: '700' }}>Loading your MEEi profile…</Text></>
+        ) : (
+          <><Text style={{ color: C.text, fontSize: 19, fontWeight: '900', textAlign: 'center' }}>Profile unavailable</Text><Text style={{ color: C.muted, fontSize: 13, textAlign: 'center', lineHeight: 20 }}>{profileLoadError || 'Your profile could not be loaded.'}</Text><Pressable accessibilityRole="button" onPress={() => setProfileLoadAttempt(value => value + 1)} style={{ backgroundColor: C.pink, borderRadius: 12, paddingHorizontal: 28, paddingVertical: 13 }}><Text style={{ color: '#FFFFFF', fontWeight: '800' }}>Retry</Text></Pressable></>
+        )}
+      </View>
+    );
+  }
 
   return (
     <View style={s.root}>
