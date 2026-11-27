@@ -1,7 +1,16 @@
--- MEEi: keep the private rate-limit allowlist aligned with the public
--- authenticated action wrapper. Earlier Live PK/chat migrations extended the
--- wrapper but did not extend this private function's allowlist/constraint.
--- Without this migration, PK and chat-join requests are rejected as invalid.
+-- MEEi: final synchronization of the private rate-limit allowlist.
+-- Apply after these migrations, in this order:
+--   1. supabase_meei_live_chat_rate_limit_hardening.sql
+--   2. supabase_meei_livekit_action_rate_limits.sql
+--   3. supabase_meei_profile_video_search_rate_limits.sql
+--   4. supabase_meei_messaging_send_guard.sql
+--   5. supabase_meei_conversation_creation_guard.sql
+--   6. supabase_meei_live_pk_rate_limits.sql
+-- This MUST be the final migration that changes private.consume_user_rate_limit
+-- or private.meei_user_rate_limits_action_key_check. Several earlier setup
+-- scripts redefine the helper/constraint with smaller allowlists; re-running
+-- one after this migration can reject PK or messaging actions again.
+-- Without this final synchronization, PK/chat-join requests may be rejected.
 
 alter table private.meei_user_rate_limits
   drop constraint if exists meei_user_rate_limits_action_key_check;
