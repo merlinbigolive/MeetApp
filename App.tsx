@@ -15,7 +15,7 @@ import { useAudioPlayer, useAudioPlayerStatus } from 'expo-audio';
 import { ExpoSpeechRecognitionModule, useSpeechRecognitionEvent } from 'expo-speech-recognition';
 import { supabase } from './supabase';
 import { validateProfile } from './profileValidation';
-import { buildProfileUpdate, mapProfileRecord } from './profilePersistence';
+import { buildProfileUpdate, mapProfileRecord, resolveProfileCountry } from './profilePersistence';
 import LiveBroadcastModal from './LiveBroadcastModal';
 
 type Media = { uri: string; type: 'image' | 'video'; name?: string; size?: number; mimeType?: string; storagePath?: string };
@@ -606,24 +606,19 @@ export default function App() {
         const deviceLocale = Localization.getLocales()[0];
         const deviceCountryCode = (deviceLocale?.regionCode || 'IN').toUpperCase();
         const deviceCountryName = getCountryDisplayName(deviceCountryCode, deviceLocale?.languageTag);
-        const savedCountryCode = String(data.country_code || '').toUpperCase();
-        const savedCountryName = String(data.country_name || '');
-        // Preserve each saved country field independently. A missing display name
-        // can be derived from a saved code; a saved name must never be overwritten
-        // merely because the code is missing.
-        const resolvedCountryCode = savedCountryCode || deviceCountryCode;
-        const resolvedCountryName = savedCountryName || getCountryDisplayName(resolvedCountryCode, deviceLocale?.languageTag);
+        const resolvedCountry = resolveProfileCountry({
+          savedCountryCode: data.country_code,
+          savedCountryName: data.country_name,
+          deviceCountryCode,
+          deviceCountryName,
+          getDisplayName: code => getCountryDisplayName(code, deviceLocale?.languageTag),
+        });
+        const resolvedCountryCode = resolvedCountry.countryCode;
         setHomeCountryCode(resolvedCountryCode);
-        setHomeCountryName(resolvedCountryName);
+        setHomeCountryName(resolvedCountry.countryName);
         setLiveCountry(resolvedCountryCode);
 
-        const missingCountryFields: { country_code?: string; country_name?: string } = {};
-        if (!savedCountryCode && !savedCountryName) {
-          missingCountryFields.country_code = deviceCountryCode;
-          missingCountryFields.country_name = deviceCountryName;
-        } else if (savedCountryCode && !savedCountryName) {
-          missingCountryFields.country_name = getCountryDisplayName(savedCountryCode, deviceLocale?.languageTag);
-        }
+        const missingCountryFields = resolvedCountry.persistFields;
         if (Object.keys(missingCountryFields).length > 0) {
           const { error: countrySaveError } = await supabase.from('profiles').update({
             ...missingCountryFields,
