@@ -16,7 +16,7 @@ import { ExpoSpeechRecognitionModule, useSpeechRecognitionEvent } from 'expo-spe
 import { supabase } from './supabase';
 import { validateProfile } from './profileValidation';
 import { selectActiveVideo } from './videoPlayback';
-import { buildProfileUpdate, mapProfileRecord, resolveProfileCountry } from './profilePersistence';
+import { buildProfileMediaUpdate, buildProfileUpdate, mapProfileRecord, resolveProfileCountry } from './profilePersistence';
 import LiveBroadcastModal from './LiveBroadcastModal';
 
 type Media = { uri: string; type: 'image' | 'video'; name?: string; size?: number; mimeType?: string; storagePath?: string };
@@ -1976,7 +1976,7 @@ export default function App() {
         // Compare-and-swap the exact row we inspected. If another device changed
         // this slot meanwhile, do not overwrite its newer media.
         const { data: replacedRow, error: replaceError } = await client.from('profile_media')
-          .update(mediaRecord).eq('user_id', userId).eq('kind', kind)
+          .update(buildProfileMediaUpdate(mediaRecord)).eq('user_id', userId).eq('kind', kind)
           .eq('position', targetPosition).eq('storage_path', previous.storage_path)
           .select('id').maybeSingle();
         if (replaceError) throw replaceError;
