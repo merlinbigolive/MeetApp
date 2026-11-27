@@ -6,6 +6,7 @@ import {
 import type { Session } from '@supabase/supabase-js';
 import { supabase } from './supabase';
 import { isValidEmail, isValidOtp, normalizeEmail, normalizeOtp } from './authValidation';
+import { ensureProfileExists } from './profileBootstrap';
 
 export default function AuthGate({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
@@ -62,53 +63,25 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
     setProfileError('');
     const createProfileIfMissing = async () => {
       try {
-        const { data, error } = await client
-          .from('profiles').select('id').eq('id', session.user.id).maybeSingle();
-        if (error) throw new Error('Could not check your profile: ' + error.message);
-        if (!data) {
-          const emailName = (session.user.email || 'meeiuser').split('@')[0]
-            .toLowerCase().replace(/[^a-z0-9_]/g, '').slice(0, 18) || 'meeiuser';
-          const username = emailName + '_' + session.user.id.slice(0, 6);
-          const metadataDisplayName = session.user.user_metadata?.display_name;
-          const displayName = (typeof metadataDisplayName === 'string' ? metadataDisplayName.trim().slice(0, 40) : '') || emailName;
-          const { error: insertError } = await client.from('profiles').insert({
-            id: session.user.id,
-            username,
-            display_name: displayName,
-          });
-          if (insertError) {
-            // A parallel session/bootstrap may have created this profile after the initial lookup.
-            const { data: existingProfile, error: retryError } = await client
-              .from('profiles').select('id').eq('id', session.user.id).maybeSingle();
-            if (existingProfile) {
-              // Another request successfully created this user's profile.
-            } else if (retryError) {
-              throw new Error('Could not verify profile creation: ' + retryError.message);
-            } else {
-              // The email-based username may already be taken. Retry once with a
-              // deterministic UUID-derived name that satisfies MEEi's 25-char limit.
-              const fallbackUsername = 'user_' + session.user.id.replace(/-/g, '').slice(0, 16);
-              const { error: fallbackError } = await client.from('profiles').insert({
-                id: session.user.id,
-                username: fallbackUsername,
-                display_name: displayName,
-              });
-              if (fallbackError) {
-                const { data: createdProfile, error: finalCheckError } = await client
-                  .from('profiles').select('id').eq('id', session.user.id).maybeSingle();
-                if (finalCheckError || !createdProfile) {
-                  throw new Error('Could not create your profile: ' + fallbackError.message);
-                }
-              }
-            }
-          }
-        }
+        await ensureProfileExists({
+          user: session.user,
+          findProfile: async userId => {
+            const { data, error } = await client
+              .from('profiles').select('id').eq('id', userId).maybeSingle();
+            if (error) throw new Error('Could not check your profile: ' + error.message);
+            return !!data;
+          },
+          insertProfile: async payload => {
+            const { error } = await client.from('profiles').insert(payload);
+            if (error) throw new Error(error.message);
+          },
+        });
         if (active) setProfileReady(true);
       } catch (error: any) {
         if (active) setProfileError(error?.message || 'Profile setup failed. Please try again.');
       }
     };
-    createProfileIfMissing();
+
     return () => { active = false; };
   }, [session, profileAttempt]);
 
