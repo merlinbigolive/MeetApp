@@ -16,7 +16,7 @@ import { ExpoSpeechRecognitionModule, useSpeechRecognitionEvent } from 'expo-spe
 import { supabase } from './supabase';
 import { validateProfile } from './profileValidation';
 import { selectActiveVideo } from './videoPlayback';
-import { buildProfileMediaUpdate, buildProfileUpdate, mapProfileMediaRecord, mapProfileRecord, resolveProfileCountry } from './profilePersistence';
+import { buildProfileMediaUpdate, buildProfileUpdate, mapProfileMediaRecord, mapProfileRecord, resolveProfileCountry, resolveProfileMediaPreview } from './profilePersistence';
 import LiveBroadcastModal from './LiveBroadcastModal';
 
 type Media = { uri: string; type: 'image' | 'video'; name?: string; size?: number; mimeType?: string; storagePath?: string; unavailable?: boolean };
@@ -155,8 +155,9 @@ function CoverMediaSlide({ media }: { media: Media }) {
   const player = useVideoPlayer(media.type === 'video' && !media.unavailable ? media.uri : null, p => { p.loop = true; });
   useEffect(() => {
     if (media.type === 'video' && !media.unavailable) player.play();
-    return () => { if (media.type === 'video' && !media.unavailable) player.pause(); };
-  }, [media.type, player]);
+    else player.pause();
+    return () => player.pause();
+  }, [media.type, media.uri, media.unavailable, player]);
   if (media.unavailable) {
     return <View style={{ width: '100%', height: '85%', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
       <Ionicons name="alert-circle-outline" size={34} color="#FFFFFF" />
@@ -717,9 +718,8 @@ export default function App() {
           return;
         }
         const hydrated = await Promise.all(((mediaRows || []) as CloudMediaRow[]).map(async row => {
-          const { data: signed, error: signedError } = await supabase!.storage
-            .from('usay-media').createSignedUrl(row.storage_path, 60 * 60);
-          const media = mapProfileMediaRecord(row, signedError ? null : signed?.signedUrl);
+          const { media, error: signedError } = await resolveProfileMediaPreview(row, storagePath =>
+            supabase!.storage.from('usay-media').createSignedUrl(storagePath, 60 * 60));
           if (media.unavailable) {
             console.warn('Profile media URL could not be created:', row.storage_path, signedError?.message || 'Missing signed URL');
           }
@@ -1843,9 +1843,11 @@ export default function App() {
       .eq('user_id', userId).eq('kind', kind).order('position', { ascending: true });
     if (error) throw error;
     const hydrated = await Promise.all(((rows || []) as CloudMediaRow[]).map(async row => {
-      const { data, error: signedError } = await client.storage.from('usay-media')
-        .createSignedUrl(row.storage_path, 60 * 60);
-      const media = mapProfileMediaRecord(row, signedError ? null : data?.signedUrl);
+      const { media, error: signedError } = await resolveProfileMediaPreview(row, storagePath =>
+        client.storage.from('usay-media').createSignedUrl(storagePath, 60 * 60));
+      if (media.unavailable) {
+        console.warn('Profile media preview could not be refreshed:', row.storage_path, signedError?.message || 'Missing signed URL');
+      }
       return { position: row.position, media: media as Media };
     }));
     if (kind === 'avatar') setAvatar(hydrated[0]?.media || null);
