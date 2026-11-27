@@ -101,8 +101,11 @@ jobs:
         with:
           packages: platform-tools platforms;android-35 platforms;android-36 build-tools;35.0.0 build-tools;36.0.0
 
-      - name: Install dependencies
-        run: npm install --no-package-lock
+      - name: Generate dependency lockfile
+        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+
+      - name: Install dependencies from lockfile
+        run: npm ci --no-audit --no-fund
 
       - name: Generate Android native project
         run: npx expo prebuild --platform android --no-install --clean
