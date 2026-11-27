@@ -721,7 +721,7 @@ export default function App() {
           const { media, error: signedError } = await resolveProfileMediaPreview(row, storagePath =>
             supabase!.storage.from('usay-media').createSignedUrl(storagePath, 60 * 60));
           if (media.unavailable) {
-            console.warn('Profile media URL could not be created:', row.storage_path, signedError?.message || 'Missing signed URL');
+            console.warn('Profile media URL could not be created:', row.storage_path, signedError || 'Missing signed URL');
           }
           return { row, media: media as Media };
         }));
