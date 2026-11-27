@@ -134,7 +134,7 @@ test('follow/block RPCs enforce auth, RLS, symmetric blocks and transaction seri
     const [followResult, blockResult] = await Promise.allSettled([followPromise, blockPromise]);
     assert.equal(followResult.status, 'fulfilled', 'the serialized follow RPC should complete before the competing block');
     assert.equal(blockResult.status, 'fulfilled', 'the competing block RPC should complete after acquiring the pair lock');
-    assert.equal(blockResult.value.stdout.trim().split(/\\r?\\n/).at(-1), 't');
+    assert.equal(blockResult.value.stdout.trim().split(/\r?\n/).at(-1), 't');
 
     await psql('drop trigger if exists test_delay_follow_insert on public.follows; drop function if exists public.test_delay_follow_insert();');
     const state = await psql(`
