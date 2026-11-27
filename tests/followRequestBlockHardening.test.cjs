@@ -44,6 +44,18 @@ test('follow request RPC checks symmetric global blocks before inserting a follo
   assertAuthenticatedOnly('request_profile_follow');
 });
 
+test('follow approval serializes with blocking and rechecks the symmetric block state', () => {
+  const fn = getFunction('respond_to_follow_request');
+  assert.match(fn, /pg_advisory_xact_lock\(pg_catalog\.hashtextextended\(pair_lock_key, 0\)\)/i);
+  assert.match(fn, /if approve and public\.is_blocked_for_current_user\(target_follower_id\) then/i);
+  assert.ok(
+    fn.indexOf('is_blocked_for_current_user') < fn.indexOf('update public.follows'),
+    'approval must check blocking after taking the pair lock and before accepting'
+  );
+  assert.match(sql, /revoke all on function public\.respond_to_follow_request\(uuid, boolean\) from public, anon/i);
+  assert.match(sql, /grant execute on function public\.respond_to_follow_request\(uuid, boolean\) to authenticated/i);
+});
+
 test('block and unblock RPCs share the same transaction lock as follow requests', () => {
   for (const name of ['block_user', 'unblock_user']) {
     const fn = getFunction(name);
@@ -52,5 +64,5 @@ test('block and unblock RPCs share the same transaction lock as follow requests'
     assertAuthenticatedOnly(name);
   }
   const lockCount = (sql.match(/pg_advisory_xact_lock\(pg_catalog\.hashtextextended\(pair_lock_key, 0\)\)/gi) || []).length;
-  assert.equal(lockCount, 3, 'follow, block, and unblock must all use the same pair lock');
+  assert.equal(lockCount, 4, 'follow, approval, block, and unblock must all use the same pair lock');
 });
