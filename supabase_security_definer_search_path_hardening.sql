@@ -21,9 +21,18 @@ begin
     if current_path is null then
       current_path := 'public';
     end if;
-    if not ('pg_temp' = any(string_to_array(replace(current_path, ' ', ''), ','))) then
-      current_path := current_path || ', pg_temp';
+    -- Remove every existing pg_temp entry, then append it exactly once.
+    -- Merely checking presence is insufficient: pg_temp must be last.
+    select string_agg(trim(schema_name), ', ' order by ordinality)
+      into current_path
+      from unnest(string_to_array(current_path, ',')) with ordinality
+           as path_item(schema_name, ordinality)
+      where lower(trim(schema_name)) <> 'pg_temp'
+        and trim(schema_name) <> '';
+    if current_path is null then
+      current_path := 'public';
     end if;
+    current_path := current_path || ', pg_temp';
     execute format('alter function %I.%I(%s) set search_path = %s',
                    f.nspname, f.proname, f.args, current_path);
   end loop;
