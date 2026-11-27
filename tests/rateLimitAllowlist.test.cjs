@@ -56,3 +56,24 @@ test('private rate-limit RPC fails closed and is not directly callable by client
     /revoke all on function private\.consume_user_rate_limit\(text, integer, integer\)\s+from public, anon, authenticated/i
   );
 });
+
+
+test('rate-limit allowlist synchronization documents its required final migration order', () => {
+  const prerequisites = [
+    'supabase_meei_live_chat_rate_limit_hardening.sql',
+    'supabase_meei_livekit_action_rate_limits.sql',
+    'supabase_meei_profile_video_search_rate_limits.sql',
+    'supabase_meei_messaging_send_guard.sql',
+    'supabase_meei_conversation_creation_guard.sql',
+    'supabase_meei_live_pk_rate_limits.sql'
+  ];
+  let previousIndex = -1;
+  for (const file of prerequisites) {
+    const index = migration.indexOf('--   ', migration.indexOf('-- Apply after these migrations'));
+    const occurrence = migration.indexOf(file);
+    assert.ok(occurrence > previousIndex, file + ' must appear in the documented prerequisite order');
+    previousIndex = occurrence;
+  }
+  assert.match(migration, /MUST be the final migration that changes private\.consume_user_rate_limit/i);
+  assert.match(migration, /or private\.meei_user_rate_limits_action_key_check/i);
+});
