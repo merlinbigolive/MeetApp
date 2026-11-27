@@ -95,8 +95,8 @@ $function$;
 
 -- Keep the wrapper and private implementation allowlists in sync. A new
 -- public action must also be added to both this function and the table CHECK.
--- The SQL regression check in tests/sql/rate_limit_allowlist_consistency.sql
--- guards this three-way contract.
+-- The Node regression checks in tests/rateLimitAllowlist.test.cjs
+-- guard this three-way contract.
 
 revoke all on function private.consume_user_rate_limit(text, integer, integer)
   from public, anon, authenticated;
