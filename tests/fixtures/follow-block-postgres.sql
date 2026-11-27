@@ -60,6 +60,24 @@ create policy profiles_read_visible on public.profiles
 create policy follows_read_related on public.follows
   for select to authenticated using (follower_id = auth.uid() or followed_id = auth.uid());
 
+-- Mirror the deployed restrictive global-block policies on follows.
+create policy global_block_follows_select on public.follows
+  as restrictive for select to authenticated
+  using (not public.is_blocked_for_current_user(follower_id)
+    and not public.is_blocked_for_current_user(followed_id));
+create policy global_block_follows_insert on public.follows
+  as restrictive for insert to authenticated
+  with check (not public.is_blocked_for_current_user(followed_id));
+create policy global_block_follows_update on public.follows
+  as restrictive for update to authenticated
+  using (not public.is_blocked_for_current_user(follower_id)
+    and not public.is_blocked_for_current_user(followed_id))
+  with check (not public.is_blocked_for_current_user(follower_id)
+    and not public.is_blocked_for_current_user(followed_id));
+
+-- Production currently has two equivalent own-follower DELETE policies.
+create policy follows_delete_own on public.follows
+  for delete to authenticated using (auth.uid() = follower_id);
 create policy follows_delete_self on public.follows
   for delete to authenticated using (follower_id = auth.uid());
 create policy user_blocks_read_own on public.user_blocks
