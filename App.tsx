@@ -767,17 +767,20 @@ export default function App() {
         if (error) throw error;
         const rows = (data || []).filter((row: any) => !!row.media_path);
         const hydrated = await Promise.all(rows.map(async (row: any) => {
-          const { data: signed, error: signedError } = await client.storage.from('usay-media').createSignedUrl(row.media_path, 60 * 60);
-          if (signedError || !signed?.signedUrl) {
-            console.warn('Published profile post media URL could not be created:', row.media_path, signedError?.message || 'Missing signed URL');
-            return null;
+          const preview = await resolveProfileMediaPreview({
+            media_type: row.post_type === 'video' ? 'video' : 'image',
+            original_name: null,
+            storage_path: row.media_path,
+          }, storagePath => client.storage.from('usay-media').createSignedUrl(storagePath, 60 * 60));
+          if (preview.media.unavailable) {
+            console.warn('Published profile post media URL could not be created:', row.media_path, preview.errorMessage || 'Missing signed URL');
           }
-          return { ...row, media: { uri: signed.signedUrl, type: row.post_type === 'video' ? 'video' : 'image', storagePath: row.media_path } as Media } as PublishedPost;
+          return { ...row, media: preview.media as Media } as PublishedPost;
         }));
         if (!active) return;
-        const validPosts = hydrated.filter((post): post is PublishedPost => post !== null);
-        if (hydrated.some(post => post === null)) {
-          Alert.alert('Some posts unavailable', 'One or more of your post photos or videos could not be opened. Please try again later.');
+        const validPosts = hydrated;
+        if (validPosts.some(post => post.media.unavailable)) {
+          Alert.alert('Some posts unavailable', 'One or more post previews could not be opened. Your published posts remain listed; try refreshing later.');
         }
         if (!validPosts.length) {
           setOwnPublishedPosts([]);
@@ -1058,12 +1061,18 @@ export default function App() {
       if (mediaResult.error) Alert.alert('Could not load profile media', mediaResult.error.message);
       const rows = (mediaResult.data || []) as CloudMediaRow[];
       const hydrated = await Promise.all(rows.map(async row => {
-        const { data, error } = await supabase!.storage.from('usay-media').createSignedUrl(row.storage_path, 60 * 60);
-        if (error || !data?.signedUrl) return null;
-        return { kind: row.kind, position: row.position, media: { uri: data.signedUrl, type: row.media_type, name: row.original_name || undefined, storagePath: row.storage_path } as Media };
+        const { media, errorMessage } = await resolveProfileMediaPreview(row, storagePath =>
+          supabase!.storage.from('usay-media').createSignedUrl(storagePath, 60 * 60));
+        if (media.unavailable) {
+          console.warn('Other profile media preview could not be created:', row.storage_path, errorMessage || 'Missing signed URL');
+        }
+        return { kind: row.kind, position: row.position, media: media as Media };
       }));
       if (!active) return;
-      const valid = hydrated.filter((item): item is NonNullable<typeof item> => item !== null);
+      if (hydrated.some(item => item.media.unavailable)) {
+        Alert.alert('Some profile media unavailable', 'Some saved photos or videos could not be previewed. Their gallery positions are preserved; try refreshing later.');
+      }
+      const valid = hydrated;
       setOtherProfileMedia({
         avatar: valid.find(item => item.kind === 'avatar')?.media || null,
         covers: valid.filter(item => item.kind === 'cover').sort((a,b) => a.position-b.position).map(item => item.media).slice(0,3),
@@ -1072,12 +1081,21 @@ export default function App() {
       if (postsResult.error) Alert.alert('Could not load published posts', postsResult.error.message);
       const publishedRows = (postsResult.data || []).filter((row: any) => !!row.media_path);
       const publishedHydrated = await Promise.all(publishedRows.map(async (row: any) => {
-        const { data: signed, error: signedError } = await supabase!.storage.from('usay-media').createSignedUrl(row.media_path, 60 * 60);
-        if (signedError || !signed?.signedUrl) return null;
-        return { ...row, media: { uri: signed.signedUrl, type: row.post_type === 'video' ? 'video' : 'image', storagePath: row.media_path } as Media } as PublishedPost;
+        const preview = await resolveProfileMediaPreview({
+          media_type: row.post_type === 'video' ? 'video' : 'image',
+          original_name: null,
+          storage_path: row.media_path,
+        }, storagePath => supabase!.storage.from('usay-media').createSignedUrl(storagePath, 60 * 60));
+        if (preview.media.unavailable) {
+          console.warn('Other published post media URL could not be created:', row.media_path, preview.errorMessage || 'Missing signed URL');
+        }
+        return { ...row, media: preview.media as Media } as PublishedPost;
       }));
       if (!active) return;
-      const validPublishedPosts = publishedHydrated.filter((post): post is PublishedPost => post !== null);
+      const validPublishedPosts = publishedHydrated;
+      if (validPublishedPosts.some(post => post.media.unavailable)) {
+        Alert.alert('Some posts unavailable', 'Some published post previews could not be opened. The posts remain listed; try refreshing later.');
+      }
       if (validPublishedPosts.length) {
         const engagementResult = await supabase!.rpc('get_profile_post_engagement', { target_post_ids: validPublishedPosts.map(post => post.id) });
         if (!active) return;
