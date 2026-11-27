@@ -9,7 +9,7 @@ const sql = readFileSync(join(__dirname, '..', 'supabase_profile_access_privileg
 
 function grantedColumns(privilege, tableName) {
   const escaped = tableName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const match = sql.match(new RegExp('grant ' + privilege + ' \\(([\\s\\S]*?)\\) on table public\\.' + escaped, 'i'));
+  const match = sql.match(new RegExp('grant ' + privilege + ' \\(([^)]*)\\) on table public\\.' + escaped, 'i'));
   assert.ok(match, privilege.toUpperCase() + ' column grant exists for ' + tableName);
   const columns = match[1].split(',').map(column => column.trim()).filter(Boolean);
   assert.equal(new Set(columns).size, columns.length, 'column grants must not contain duplicates for ' + tableName);
