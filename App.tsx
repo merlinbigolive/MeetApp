@@ -2151,7 +2151,7 @@ export default function App() {
     <View style={s.publishedTile}>
       <Pressable disabled={!!post.media.unavailable} onPress={onPress}>
         {post.media.unavailable
-          ? <View style={[s.publishedVideo, { backgroundColor: C.card, alignItems: 'center', justifyContent: 'center' }]}>
+          ? <View style={[s.publishedVideo, { backgroundColor: C.panel, alignItems: 'center', justifyContent: 'center' }]}>
               <Ionicons name="alert-circle-outline" size={28} color={C.muted}/>
               <Text style={[s.videoText, { color: C.muted }]}>PREVIEW UNAVAILABLE</Text>
             </View>
@@ -2394,7 +2394,7 @@ export default function App() {
           </View>
           {!!post.caption && <Text style={s.feedCaption}>{post.caption}</Text>}
           {post.media.unavailable
-            ? <View style={[s.feedMedia, { minHeight: 180, backgroundColor: C.card, alignItems: 'center', justifyContent: 'center' }]}>
+            ? <View style={[s.feedMedia, { minHeight: 180, backgroundColor: C.panel, alignItems: 'center', justifyContent: 'center' }]}>
                 <Ionicons name="alert-circle-outline" size={30} color={C.muted}/>
                 <Text style={[s.videoText, { color: C.muted }]}>PREVIEW UNAVAILABLE</Text>
               </View>
