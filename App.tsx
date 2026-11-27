@@ -1935,7 +1935,11 @@ export default function App() {
       await refreshOwnMediaGallery(client, userId, kind);
       Alert.alert('Uploaded', 'Your media is now saved to your MEEi account.');
     } catch (error: any) {
-      Alert.alert('Upload failed', error?.message || 'Please try again.');
+      if (mediaMetadataSaved) {
+        Alert.alert('Media saved', 'Your media was saved, but the gallery could not refresh. Reopen your profile to see the latest version.');
+      } else {
+        Alert.alert('Upload failed', error?.message || 'Please try again.');
+      }
     } finally {
       if (uploadedStoragePath && !mediaMetadataSaved) {
         try {
