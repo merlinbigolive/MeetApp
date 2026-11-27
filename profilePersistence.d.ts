@@ -41,3 +41,17 @@ export function resolveProfileCountry(input: {
   deviceCountryName?: string | null;
   getDisplayName: (countryCode: string) => string;
 }): ResolvedProfileCountry;
+
+export type ProfileMediaRecord = {
+  media_type: 'image' | 'video';
+  original_name?: string | null;
+  storage_path: string;
+};
+export type MappedProfileMedia = {
+  uri: string;
+  type: 'image' | 'video';
+  name?: string;
+  storagePath: string;
+  unavailable: boolean;
+};
+export function mapProfileMediaRecord(record: ProfileMediaRecord, signedUrl?: string | null): MappedProfileMedia;
