@@ -80,4 +80,24 @@ $$;
 
 grant usage on schema public to anon, authenticated;
 grant select on public.profiles, public.follows, public.user_blocks to authenticated;
-revoke insert, update, delete on public.follows, public.user_blocks from anon, authenticated;
+-- Mirror the deployed table privileges before the hardening migration runs.
+grant insert, update, delete on public.follows to authenticated;
+revoke insert, update, delete on public.user_blocks from anon, authenticated;
+
+-- Mirror the legacy permissive insert policies found in the live schema.
+create policy follows_insert_public_only on public.follows
+  for insert to authenticated
+  with check (
+    follower_id = auth.uid()
+    and followed_id <> auth.uid()
+    and status = 'accepted'
+    and exists (select 1 from public.profiles p where p.id = follows.followed_id and p.is_private = false)
+  );
+create policy follows_insert_enforce_public_only on public.follows
+  for insert to authenticated
+  with check (
+    follower_id = auth.uid()
+    and followed_id <> auth.uid()
+    and status = 'accepted'
+    and exists (select 1 from public.profiles p where p.id = follows.followed_id and p.is_private = false)
+  );
