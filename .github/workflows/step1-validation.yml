@@ -4,8 +4,6 @@ on:
   push:
     branches:
       - main
-      - 'test/**'
-      - 'fix/**'
   pull_request:
     branches:
       - main
@@ -15,8 +13,9 @@ permissions:
   contents: read
 
 concurrency:
-  # Push and pull_request events for the same source branch share one run slot.
-  group: step1-validation-${{ github.head_ref || github.ref_name }}
+  # PR validation is keyed by PR number; pushes to main use their ref.
+  # Feature-branch pushes are validated by the open PR event, avoiding duplicate cancellation races.
+  group: step1-validation-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
