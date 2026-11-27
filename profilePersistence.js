@@ -64,6 +64,17 @@ function resolveProfileCountry({ savedCountryCode, savedCountryName, deviceCount
   return { countryCode, countryName, persistFields };
 }
 
+function mapProfileMediaRecord(record, signedUrl) {
+  const uri = typeof signedUrl === 'string' && signedUrl.trim() ? signedUrl : '';
+  return {
+    uri,
+    type: record.media_type,
+    name: record.original_name || undefined,
+    storagePath: record.storage_path,
+    unavailable: !uri,
+  };
+}
+
 function buildProfileMediaUpdate(record) {
   // These are the only fields an existing gallery row needs to change.
   // Keep ownership and media kind immutable during a replacement update.
@@ -76,4 +87,4 @@ function buildProfileMediaUpdate(record) {
   };
 }
 
-module.exports = { mapProfileRecord, buildProfileUpdate, buildProfileMediaUpdate, resolveProfileCountry };
+module.exports = { mapProfileRecord, buildProfileUpdate, buildProfileMediaUpdate, mapProfileMediaRecord, resolveProfileCountry };
