@@ -68,7 +68,7 @@ test('profile hardening revokes broad client grants and preserves only intended 
 });
 
 test('profile media insert and update grants exclude immutable ownership fields on update', () => {
-  const mediaInsertMatch = sql.match(/grant insert\s*\(([\s\S]*?)\)\s*on\s+table\s+public\.profile_media/i);
+  const mediaInsertMatch = sql.match(/grant insert\s*\(([^)]*)\)\s*on\s+table\s+public\.profile_media/i);
   assert.ok(mediaInsertMatch, 'INSERT column grant exists for profile_media');
   const insert = new Set(mediaInsertMatch[1].split(',').map(column => column.trim()).filter(Boolean));
   assert.equal(insert.size, mediaInsertMatch[1].split(',').map(column => column.trim()).filter(Boolean).length, 'profile_media INSERT grant must not contain duplicate columns');
