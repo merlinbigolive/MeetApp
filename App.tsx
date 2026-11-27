@@ -16,10 +16,10 @@ import { ExpoSpeechRecognitionModule, useSpeechRecognitionEvent } from 'expo-spe
 import { supabase } from './supabase';
 import { validateProfile } from './profileValidation';
 import { selectActiveVideo } from './videoPlayback';
-import { buildProfileMediaUpdate, buildProfileUpdate, mapProfileRecord, resolveProfileCountry } from './profilePersistence';
+import { buildProfileMediaUpdate, buildProfileUpdate, mapProfileMediaRecord, mapProfileRecord, resolveProfileCountry } from './profilePersistence';
 import LiveBroadcastModal from './LiveBroadcastModal';
 
-type Media = { uri: string; type: 'image' | 'video'; name?: string; size?: number; mimeType?: string; storagePath?: string };
+type Media = { uri: string; type: 'image' | 'video'; name?: string; size?: number; mimeType?: string; storagePath?: string; unavailable?: boolean };
 type CloudMediaRow = { id: string; kind: 'avatar' | 'cover' | 'post'; position: number; storage_path: string; media_type: 'image' | 'video'; original_name: string | null; };
 type Tab = 'Home' | 'Public' | 'Search' | 'Videos' | 'Live' | 'Create' | 'Inbox' | 'Profile';
 type SearchCategory = 'People' | 'Videos' | 'Reels' | 'Trending' | 'Funny' | 'Vlogs' | 'Cinema' | 'Creators';
