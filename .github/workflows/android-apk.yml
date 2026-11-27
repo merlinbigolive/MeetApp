@@ -39,6 +39,7 @@ jobs:
         run: |
           node -e "const p=require('./eas.json').build.preview; if (p.developmentClient || p.android?.buildType !== 'apk') process.exit(1); console.log('Standalone APK profile confirmed (developmentClient is not enabled).')"
 
+      # This project has no committed EAS project ID yet; link by owner and slug.
       - name: Initialize or link MEEi EAS project
         run: eas init --account meetappindias-team --json --non-interactive
 
