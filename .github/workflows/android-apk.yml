@@ -1,9 +1,6 @@
 name: Build MeetApp Standalone Preview APK
 
 on:
-  push:
-    branches:
-      - test/profile-load-save
   workflow_dispatch:
 
 permissions:
