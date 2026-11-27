@@ -1,3 +1,5 @@
+const { isReservedUsername } = require('./profileValidation');
+
 function buildProfileBootstrapPayloads(user) {
   const userId = String(user && user.id || '');
   if (!userId) throw new Error('A signed-in user ID is required to create a profile.');
@@ -10,10 +12,14 @@ function buildProfileBootstrapPayloads(user) {
     ? metadataDisplayName.trim().slice(0, 40)
     : '') || emailName;
 
+  const primaryUsername = isReservedUsername(emailName)
+    ? 'member_' + userId.replace(/-/g, '').slice(0, 6)
+    : emailName + '_' + userId.slice(0, 6);
+
   return {
     primary: {
       id: userId,
-      username: emailName + '_' + userId.slice(0, 6),
+      username: primaryUsername,
       display_name: displayName,
     },
     fallback: {
