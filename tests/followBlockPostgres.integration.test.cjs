@@ -43,6 +43,14 @@ test('follow/block RPCs enforce auth, RLS, symmetric blocks and transaction seri
   skip: !databaseUrl ? 'DATABASE_URL is not configured; isolated PostgreSQL integration suite runs in CI.' : false,
 }, async (t) => {
   await psql('', { file: fixturePath });
+
+  // Prove the disposable fixture reproduces the deployed legacy direct-insert
+  // path before applying hardening; the migration must close this exact route.
+  await seed();
+  await psql(asUser(A, `insert into public.follows(follower_id, followed_id, status) values ('${A}', '${C}', 'accepted');`));
+  const legacyDirectInsert = await psql(`select count(*) from public.follows where follower_id='${A}' and followed_id='${C}';`);
+  assert.equal(legacyDirectInsert.stdout.trim(), '1', 'legacy permissive policy should allow the pre-hardening fixture insert');
+
   await psql('', { file: migrationPath });
 
   await t.test('rejects unauthenticated follow and block RPC calls', async () => {
