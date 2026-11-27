@@ -2089,7 +2089,13 @@ export default function App() {
       // Do not compact across an item whose preview failed: its database row
       // still occupies a slot even though the media cannot currently be opened.
       if (next.some(item => item.unavailable)) {
-        Alert.alert('Media removed', 'The selected item was removed. Other saved items were left in their existing slots because one or more previews are unavailable.');
+        const cleanupNote = storageCleanupFailed
+          ? ' Its old storage file could not be cleaned up.'
+          : '';
+        Alert.alert(
+          'Media removed',
+          'The selected item was removed. Other saved items were left in their existing slots because one or more previews are unavailable.' + cleanupNote
+        );
         return;
       }
 
