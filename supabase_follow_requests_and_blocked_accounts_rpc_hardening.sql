@@ -15,6 +15,13 @@
 -- serialized SECURITY DEFINER RPCs below, never a direct client table insert.
 drop policy if exists "follows_insert_self" on public.follows;
 drop policy if exists "follows_insert_public_only" on public.follows;
+-- A second legacy permissive policy exists in deployed schema snapshots. Drop
+-- every known direct-insert path; permissive policies combine with OR.
+drop policy if exists "follows_insert_enforce_public_only" on public.follows;
+
+-- Clients must use request_profile_follow; keep direct unfollow DELETE
+-- available under the existing own-row RLS policy.
+revoke insert, update on public.follows from anon, authenticated;
 
 -- Serialize follow/block changes for the same account pair. SECURITY DEFINER
 -- functions bypass table RLS, so the block check must live inside this RPC too.
