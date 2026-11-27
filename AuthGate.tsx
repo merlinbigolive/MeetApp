@@ -5,6 +5,7 @@ import {
 } from 'react-native';
 import type { Session } from '@supabase/supabase-js';
 import { supabase } from './supabase';
+import { isValidEmail, isValidOtp, normalizeEmail, normalizeOtp } from './authValidation';
 
 export default function AuthGate({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
@@ -114,8 +115,8 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
   const sendCode = async () => {
     const client = supabase;
     if (!client || busy) return;
-    const cleanEmail = email.trim().toLowerCase();
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+    const cleanEmail = normalizeEmail(email);
+    if (!isValidEmail(cleanEmail)) {
       setMessage('Please enter a valid email address.');
       return;
     }
@@ -143,8 +144,8 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
   const verifyCode = async () => {
     const client = supabase;
     if (!client || busy) return;
-    const token = code.trim();
-    if (!/^\d{6}$/.test(token)) {
+    const token = normalizeOtp(code);
+    if (!isValidOtp(token)) {
       setMessage('Enter the 6-digit code from your email.');
       return;
     }
@@ -152,7 +153,7 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
     setMessage('');
     try {
       const { error } = await client.auth.verifyOtp({
-        email: email.trim().toLowerCase(),
+        email: normalizeEmail(email),
         token,
         type: 'email',
       });
