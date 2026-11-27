@@ -3,7 +3,9 @@ name: Step 1 validation
 on:
   push:
     branches:
-      - fix/step1-meei-app-branding
+      - main
+      - 'test/**'
+      - 'fix/**'
   pull_request:
     branches:
       - main
