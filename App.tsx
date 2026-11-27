@@ -608,17 +608,25 @@ export default function App() {
         const deviceCountryName = getCountryDisplayName(deviceCountryCode, deviceLocale?.languageTag);
         const savedCountryCode = String(data.country_code || '').toUpperCase();
         const savedCountryName = String(data.country_name || '');
-        if (savedCountryCode && savedCountryName) {
-          setHomeCountryCode(savedCountryCode);
-          setHomeCountryName(savedCountryName);
-          setLiveCountry(savedCountryCode);
-        } else {
-          setHomeCountryCode(deviceCountryCode);
-          setHomeCountryName(deviceCountryName);
-          setLiveCountry(deviceCountryCode);
+        // Preserve each saved country field independently. A missing display name
+        // can be derived from a saved code; a saved name must never be overwritten
+        // merely because the code is missing.
+        const resolvedCountryCode = savedCountryCode || deviceCountryCode;
+        const resolvedCountryName = savedCountryName || getCountryDisplayName(resolvedCountryCode, deviceLocale?.languageTag);
+        setHomeCountryCode(resolvedCountryCode);
+        setHomeCountryName(resolvedCountryName);
+        setLiveCountry(resolvedCountryCode);
+
+        const missingCountryFields: { country_code?: string; country_name?: string } = {};
+        if (!savedCountryCode && !savedCountryName) {
+          missingCountryFields.country_code = deviceCountryCode;
+          missingCountryFields.country_name = deviceCountryName;
+        } else if (savedCountryCode && !savedCountryName) {
+          missingCountryFields.country_name = getCountryDisplayName(savedCountryCode, deviceLocale?.languageTag);
+        }
+        if (Object.keys(missingCountryFields).length > 0) {
           const { error: countrySaveError } = await supabase.from('profiles').update({
-            country_code: deviceCountryCode,
-            country_name: deviceCountryName,
+            ...missingCountryFields,
             updated_at: new Date().toISOString(),
           }).eq('id', userId);
           if (countrySaveError) console.warn('Home country could not be saved:', countrySaveError.message);
