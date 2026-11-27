@@ -1777,6 +1777,27 @@ export default function App() {
     }
   };
 
+  const refreshOwnMediaGallery = async (client: NonNullable<typeof supabase>, userId: string, kind: 'avatar' | 'cover' | 'post') => {
+    const { data: rows, error } = await client.from('profile_media')
+      .select('id, kind, position, storage_path, media_type, original_name')
+      .eq('user_id', userId).eq('kind', kind).order('position', { ascending: true });
+    if (error) throw error;
+    const hydrated = await Promise.all(((rows || []) as CloudMediaRow[]).map(async row => {
+      const { data, error: signedError } = await client.storage.from('usay-media')
+        .createSignedUrl(row.storage_path, 60 * 60);
+      if (signedError || !data?.signedUrl) return null;
+      return { position: row.position, media: {
+        uri: data.signedUrl, type: row.media_type, name: row.original_name || undefined,
+        storagePath: row.storage_path,
+      } as Media };
+    }));
+    const valid = hydrated.filter((item): item is NonNullable<typeof item> => item !== null);
+    if (kind === 'avatar') setAvatar(valid[0]?.media || null);
+    if (kind === 'cover') setCovers(valid.map(item => item.media).slice(0, 3));
+    if (kind === 'post') setPosts(valid.map(item => item.media).slice(0, 3));
+    return (rows || []) as CloudMediaRow[];
+  };
+
   const chooseMedia = async (kind: 'avatar' | 'cover' | 'post', index?: number) => {
     if (kind === 'cover' && covers.length >= 3 && index === undefined) {
       Alert.alert('Cover gallery full', 'You can add up to 3 cover photos/videos.');
@@ -1800,7 +1821,7 @@ export default function App() {
     let uploadedStoragePath: string | null = null;
     let mediaMetadataSaved = false;
     try {
-      const targetPosition = kind === 'avatar' ? 0 : (index ?? (kind === 'cover' ? covers.length : posts.length));
+      let targetPosition = 0;
       let result: Awaited<ReturnType<typeof ImagePicker.launchImageLibraryAsync>>;
       try {
         const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -1838,6 +1859,18 @@ export default function App() {
       if (!userId) {
         Alert.alert('Sign in required', 'Please sign in before uploading profile media.');
         return;
+      }
+      const existingRows = kind === 'avatar' ? [] : await refreshOwnMediaGallery(client, userId, kind);
+      if (kind === 'avatar') {
+        targetPosition = 0;
+      } else {
+        const orderedPositions = existingRows.map(row => row.position);
+        const visibleRow = index === undefined ? undefined : existingRows[index];
+        targetPosition = visibleRow?.position ?? [0, 1, 2].find(position => !orderedPositions.includes(position)) ?? -1;
+        if (targetPosition < 0) {
+          Alert.alert('Gallery full', 'Remove an existing item before adding another.');
+          return;
+        }
       }
 
       const mimeType = a.mimeType || (type === 'video' ? 'video/mp4' : 'image/jpeg');
@@ -1877,14 +1910,7 @@ export default function App() {
         const { error: cleanupError } = await client.storage.from('usay-media').remove([previous.storage_path]);
         if (cleanupError) console.warn('Previous profile media cleanup failed:', cleanupError.message);
       }
-      const media: Media = { uri: signed.signedUrl, type, name: a.fileName ?? undefined, size: a.fileSize ?? undefined, storagePath };
-      if (kind === 'avatar') setAvatar(media);
-      if (kind === 'cover') setCovers(old => targetPosition >= old.length
-        ? [...old, media].slice(0, 3)
-        : old.map((m, i) => i === targetPosition ? media : m));
-      if (kind === 'post') setPosts(old => targetPosition >= old.length
-        ? [...old, media].slice(0, 3)
-        : old.map((m, i) => i === targetPosition ? media : m));
+      await refreshOwnMediaGallery(client, userId, kind);
       Alert.alert('Uploaded', 'Your media is now saved to your MEEi account.');
     } catch (error: any) {
       Alert.alert('Upload failed', error?.message || 'Please try again.');
@@ -1954,7 +1980,13 @@ export default function App() {
           .eq('user_id', userId).eq('kind', kind).eq('storage_path', item.storagePath);
         if (reorderError) {
           console.warn('Profile media position update failed:', reorderError.message);
-          Alert.alert('Gallery update warning', 'The media was removed, but the gallery order may need a refresh.');
+          try {
+            await refreshOwnMediaGallery(client, userId, kind);
+          } catch (refreshError: any) {
+            console.warn('Profile media gallery refresh failed:', refreshError?.message || refreshError);
+            Alert.alert('Gallery needs refresh', 'The media was removed, but the latest gallery could not be loaded. Please reopen your profile before making another change.');
+          }
+          Alert.alert('Gallery update warning', 'The media was removed, but some positions could not be compacted. The gallery has been reloaded; please retry after checking it.');
           break;
         }
       }
