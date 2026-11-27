@@ -15,7 +15,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: step1-validation-${{ github.ref }}
+  # Push and pull_request events for the same source branch share one run slot.
+  group: step1-validation-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true
 
 jobs:
