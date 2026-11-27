@@ -59,6 +59,9 @@ create policy profiles_read_visible on public.profiles
   for select to authenticated using (id = auth.uid() or not is_private);
 create policy follows_read_related on public.follows
   for select to authenticated using (follower_id = auth.uid() or followed_id = auth.uid());
+
+create policy follows_delete_self on public.follows
+  for delete to authenticated using (follower_id = auth.uid());
 create policy user_blocks_read_own on public.user_blocks
   for select to authenticated using (blocker_id = auth.uid());
 
