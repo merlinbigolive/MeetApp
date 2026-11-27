@@ -56,3 +56,24 @@ test('profile media replacement payload only uses columns granted by profile har
     assert.ok(granted.has(column), 'profile_media.' + column + ' must be granted for replacement');
   }
 });
+
+
+test('profile hardening revokes broad client grants and preserves only intended operations', () => {
+  assert.match(sql, /revoke all privileges on table public\\.profiles from anon, authenticated;/i);
+  assert.match(sql, /revoke all privileges on table public\\.profile_media from anon, authenticated;/i);
+  assert.match(sql, /grant select on table public\\.profiles to authenticated;/i);
+  assert.match(sql, /grant select on table public\\.profile_media to authenticated;/i);
+  assert.doesNotMatch(sql, /grant delete on table public\\.profiles\\b/i);
+  assert.match(sql, /grant delete on table public\\.profile_media to authenticated;/i);
+});
+
+test('profile media insert and update grants exclude immutable ownership fields on update', () => {
+  const insert = grantedInsertColumns('profile_media');
+  for (const column of ['user_id', 'kind', 'position', 'storage_path', 'media_type', 'original_name', 'updated_at']) {
+    assert.ok(insert.has(column), 'profile_media.' + column + ' must be allowed for media creation');
+  }
+  const update = grantedUpdateColumns('profile_media');
+  for (const immutable of ['id', 'user_id', 'kind', 'created_at']) {
+    assert.ok(!update.has(immutable), 'profile_media.' + immutable + ' must remain immutable');
+  }
+});
