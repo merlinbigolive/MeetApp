@@ -2290,14 +2290,19 @@ export default function App() {
       </View>
       <View style={s.identity}>
 <Animated.View style={[s.coverBackdrop, { height: coverRevealProgress.interpolate({ inputRange: [0, 1], outputRange: [190, 420] }) }]}>
-          {otherProfileMedia.covers[0]?.type === 'image' ? <Image source={{uri:otherProfileMedia.covers[0].uri}} style={s.coverBackdropImage}/> :
-            otherProfileMedia.covers[0]?.type === 'video' ? <ProfileCoverVideo uri={otherProfileMedia.covers[0].uri} /> : <View style={s.coverBackdropEmpty}/>}
+          {otherProfileMedia.covers[0] && !otherProfileMedia.covers[0].unavailable && !!otherProfileMedia.covers[0].uri
+            ? otherProfileMedia.covers[0].type === 'image'
+              ? <Image source={{uri:otherProfileMedia.covers[0].uri}} style={s.coverBackdropImage}/>
+              : <ProfileCoverVideo uri={otherProfileMedia.covers[0].uri} />
+            : <View style={s.coverBackdropEmpty}/>}
           <View style={s.coverBackdropShade}/>
           {!!otherProfileMedia.covers.length && <Pressable onPress={() => setOtherCoverExpanded(true)} style={s.coverViewTap}/>}
         </Animated.View>
         <Animated.View {...avatarPan.panHandlers} style={{ transform: [{ translateY: avatarDrag }] }}>
-        <Pressable onPress={() => otherProfileMedia.avatar && setViewer(otherProfileMedia.avatar)} style={s.avatarWrap}>
-          {otherProfileMedia.avatar ? <Image source={{uri:otherProfileMedia.avatar.uri}} style={s.avatar}/> : <View style={s.avatarFallback}><Ionicons name="person" size={38} color={C.cyan}/></View>}
+        <Pressable onPress={() => otherProfileMedia.avatar && !otherProfileMedia.avatar.unavailable && !!otherProfileMedia.avatar.uri && setViewer(otherProfileMedia.avatar)} style={s.avatarWrap}>
+          {otherProfileMedia.avatar && !otherProfileMedia.avatar.unavailable && !!otherProfileMedia.avatar.uri
+            ? <Image source={{uri:otherProfileMedia.avatar.uri}} style={s.avatar}/>
+            : <View style={s.avatarFallback}><Ionicons name="person" size={38} color={C.cyan}/></View>}
         </Pressable>
         </Animated.View>
         <View style={s.nameLine}><Text style={s.name}>{selectedProfile.display_name}</Text></View>
@@ -3036,8 +3041,9 @@ export default function App() {
       <PostReactionPicker visible={!!reactionPostId} onClose={() => setReactionPostId(null)} onSelect={emoji => { if (reactionPostId) void togglePostReaction(reactionPostId, emoji); }}/>
       <Modal visible={!!viewer} transparent animationType="fade" onRequestClose={()=>setViewer(null)}>
         <View style={s.viewer}><Pressable style={s.viewerClose} onPress={()=>setViewer(null)}><Ionicons name="close" size={26} color="#fff"/></Pressable>
-          {viewer?.type === 'image' ? <Image source={{uri:viewer.uri}} resizeMode="contain" style={{width:'100%',height:'82%'}}/> :
-            <CoverMediaSlide media={viewer!}/>}
+          {viewer?.type === 'image' && !viewer.unavailable && !!viewer.uri
+            ? <Image source={{uri:viewer.uri}} resizeMode="contain" style={{width:'100%',height:'82%'}}/>
+            : viewer ? <CoverMediaSlide media={viewer}/> : null}
         </View>
       </Modal>
     </View>
