@@ -16,7 +16,7 @@ import { ExpoSpeechRecognitionModule, useSpeechRecognitionEvent } from 'expo-spe
 import { supabase } from './supabase';
 import { validateProfile } from './profileValidation';
 import { selectActiveVideo } from './videoPlayback';
-import { buildProfileMediaUpdate, buildProfileUpdate, mapProfileRecord, resolveProfileCountry, resolveProfileMediaPreview } from './profilePersistence';
+import { buildProfileMediaUpdate, buildProfileUpdate, isProfileSessionOwner, mapProfileRecord, resolveProfileCountry, resolveProfileMediaPreview } from './profilePersistence';
 import LiveBroadcastModal from './LiveBroadcastModal';
 
 type Media = { uri: string; type: 'image' | 'video'; name?: string; size?: number; mimeType?: string; storagePath?: string; unavailable?: boolean };
@@ -1856,6 +1856,10 @@ export default function App() {
       if (sessionError) throw sessionError;
       const userId = authData.session?.user.id;
       if (!userId) throw new Error('Please sign in again before saving your profile.');
+      if (!isProfileSessionOwner(userId, currentUserId) || profileLoadStatus !== 'ready') {
+        if (userId !== currentUserId) setProfileLoadAttempt(value => value + 1);
+        throw new Error('Your signed-in account or profile changed. We are refreshing your profile; please review it before saving again.');
+      }
       const updatePayload = buildProfileUpdate({
         name: cleanName,
         username: cleanUsername,
@@ -1905,6 +1909,11 @@ export default function App() {
       }
       return { position: row.position, media: media as Media };
     }));
+    // Re-check the authenticated owner after the asynchronous media lookups.
+    // A session switch must never apply one account's gallery to another account.
+    const { data: sessionData, error: sessionError } = await client.auth.getSession();
+    if (sessionError) throw sessionError;
+    if (sessionData.session?.user.id !== userId) return (rows || []) as CloudMediaRow[];
     // A refresh may finish after the account or visible tab changes. Callers
     // can invalidate the result so stale signed URLs never overwrite new state.
     if (shouldApply()) {
@@ -2017,6 +2026,10 @@ export default function App() {
       if (!userId) {
         Alert.alert('Sign in required', 'Please sign in before uploading profile media.');
         return;
+      }
+      if (!isProfileSessionOwner(userId, currentUserId) || profileLoadStatus !== 'ready') {
+        if (userId !== currentUserId) setProfileLoadAttempt(value => value + 1);
+        throw new Error('Your signed-in account or profile changed. Please wait for your profile to refresh before uploading media.');
       }
       const existingRows = kind === 'avatar' ? [] : await refreshOwnMediaGallery(client, userId, kind);
       if (kind === 'avatar') {
@@ -2134,6 +2147,10 @@ export default function App() {
       if (!userId) {
         Alert.alert('Session expired', 'Please sign in again before removing media.');
         return;
+      }
+      if (!isProfileSessionOwner(userId, currentUserId) || profileLoadStatus !== 'ready') {
+        if (userId !== currentUserId) setProfileLoadAttempt(value => value + 1);
+        throw new Error('Your signed-in account or profile changed. Please wait for your profile to refresh before removing media.');
       }
 
       // Remove the owned metadata row first; storage cleanup must never run before this succeeds.
