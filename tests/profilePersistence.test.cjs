@@ -210,7 +210,7 @@ test('keeps profile media metadata when signed URL creation throws', async () =>
     uri: '', type: 'video', name: 'cover.mp4',
     storagePath: row.storage_path, unavailable: true,
   });
-  assert.equal(result.error, expectedError);
+  assert.equal(result.errorMessage, expectedError.message);
 });
 
 test('returns a usable preview when signed URL creation succeeds', async () => {
@@ -220,5 +220,5 @@ test('returns a usable preview when signed URL creation succeeds', async () => {
   }));
   assert.equal(result.media.uri, 'https://signed.example/owner/post.jpg');
   assert.equal(result.media.unavailable, false);
-  assert.equal(result.error, null);
+  assert.equal(result.errorMessage, null);
 });
