@@ -1887,7 +1887,12 @@ export default function App() {
     }
   };
 
-  const refreshOwnMediaGallery = async (client: NonNullable<typeof supabase>, userId: string, kind: 'avatar' | 'cover' | 'post') => {
+  const refreshOwnMediaGallery = async (
+    client: NonNullable<typeof supabase>,
+    userId: string,
+    kind: 'avatar' | 'cover' | 'post',
+    shouldApply: () => boolean = () => true
+  ) => {
     const { data: rows, error } = await client.from('profile_media')
       .select('id, kind, position, storage_path, media_type, original_name')
       .eq('user_id', userId).eq('kind', kind).order('position', { ascending: true });
@@ -1900,17 +1905,25 @@ export default function App() {
       }
       return { position: row.position, media: media as Media };
     }));
-    if (kind === 'avatar') setAvatar(hydrated[0]?.media || null);
-    if (kind === 'cover') setCovers(hydrated.map(item => item.media).slice(0, 3));
-    if (kind === 'post') setPosts(hydrated.map(item => item.media).slice(0, 3));
+    // A refresh may finish after the account or visible tab changes. Callers
+    // can invalidate the result so stale signed URLs never overwrite new state.
+    if (shouldApply()) {
+      if (kind === 'avatar') setAvatar(hydrated[0]?.media || null);
+      if (kind === 'cover') setCovers(hydrated.map(item => item.media).slice(0, 3));
+      if (kind === 'post') setPosts(hydrated.map(item => item.media).slice(0, 3));
+    }
     return (rows || []) as CloudMediaRow[];
   };
 
   useEffect(() => {
     if (!supabase || !currentUserId || tab !== 'Profile' || mediaRefreshKey === 0) return;
+    let active = true;
+    const userId = currentUserId;
+    const client = supabase;
+    const shouldApply = () => active && currentUserId === userId && tab === 'Profile';
     const refreshOwnGalleries = async () => {
       const results = await Promise.allSettled((['avatar', 'cover', 'post'] as const).map(kind =>
-        refreshOwnMediaGallery(supabase!, currentUserId, kind)
+        refreshOwnMediaGallery(client, userId, kind, shouldApply)
       ));
       results.forEach((result, index) => {
         if (result.status === 'rejected') {
@@ -1919,6 +1932,7 @@ export default function App() {
       });
     };
     void refreshOwnGalleries();
+    return () => { active = false; };
   }, [currentUserId, tab, mediaRefreshKey]);
 
   const chooseMedia = async (kind: 'avatar' | 'cover' | 'post', index?: number) => {
