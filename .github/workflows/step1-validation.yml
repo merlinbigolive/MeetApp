@@ -42,6 +42,7 @@ jobs:
           node -e "const a=require('./npm-audit.json'); console.log(JSON.stringify({summary:a.metadata?.vulnerabilities, high:Object.entries(a.vulnerabilities||{}).filter(([,v])=>v.severity==='high'||v.severity==='critical').map(([name,v])=>({name,severity:v.severity,isDirect:v.isDirect,range:v.range,via:v.via,effects:v.effects,nodes:v.nodes,fixAvailable:v.fixAvailable}))}, null, 2))"
           npm audit --omit=dev --json > npm-audit-production.json || true
           node -e "const a=require('./npm-audit-production.json'); console.log(JSON.stringify({productionSummary:a.metadata?.vulnerabilities, productionVulnerabilities:Object.entries(a.vulnerabilities||{}).map(([name,v])=>({name,severity:v.severity,isDirect:v.isDirect,via:v.via,effects:v.effects,nodes:v.nodes,fixAvailable:v.fixAvailable}))}, null, 2))"
+          node -e "for (const file of ['npm-audit.json','npm-audit-production.json']) { const audit=require('./'+file); const blocking=Object.entries(audit.vulnerabilities||{}).filter(([,v])=>v.severity==='high'||v.severity==='critical'); if (blocking.length) { console.error(file+' contains high/critical vulnerabilities:', blocking.map(([name,v])=>name+' ('+v.severity+')').join(', ')); process.exitCode=1; } else { console.log(file+': no high/critical vulnerabilities'); } }"
 
       - name: Expo Doctor
         run: npx expo-doctor
