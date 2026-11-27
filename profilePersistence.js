@@ -2,6 +2,12 @@ const PROFILE_ACTIVITY_STATUSES = new Set([
   'available', 'busy', 'work', 'drive', 'gym', 'school', 'college',
 ]);
 
+function isProfileSessionOwner(sessionUserId, loadedProfileUserId) {
+  return typeof sessionUserId === 'string' && sessionUserId.length > 0
+    && typeof loadedProfileUserId === 'string' && loadedProfileUserId.length > 0
+    && sessionUserId === loadedProfileUserId;
+}
+
 function mapProfileRecord(record) {
   const rawStatus = typeof record.activity_status === 'string' ? record.activity_status.toLowerCase() : '';
   const status = PROFILE_ACTIVITY_STATUSES.has(rawStatus) ? rawStatus : '';
@@ -102,4 +108,4 @@ async function resolveProfileMediaPreview(record, createSignedUrl) {
   }
 }
 
-module.exports = { mapProfileRecord, buildProfileUpdate, buildProfileMediaUpdate, mapProfileMediaRecord, resolveProfileMediaPreview, resolveProfileCountry };
+module.exports = { isProfileSessionOwner, mapProfileRecord, buildProfileUpdate, buildProfileMediaUpdate, mapProfileMediaRecord, resolveProfileMediaPreview, resolveProfileCountry };
