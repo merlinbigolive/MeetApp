@@ -22,6 +22,22 @@ jobs:
     name: TypeScript and Expo exports
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/meei_test
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: meei_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d meei_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -59,7 +75,12 @@ jobs:
       - name: TypeScript strict check
         run: npm run typecheck
 
-      - name: Unit tests
+      - name: Install PostgreSQL client
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes postgresql-client
+
+      - name: Unit and PostgreSQL integration tests
         run: npm run test:unit
 
       - name: Validate Expo configuration
