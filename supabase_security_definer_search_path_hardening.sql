@@ -15,7 +15,7 @@ begin
   loop
     select split_part(setting, '=', 2)
       into current_path
-      from unnest(coalesce(f.proconfig, array[]::text[])) as setting
+      from unnest(coalesce(f.proconfig, array[]::text[])) as config(setting)
       where setting like 'search_path=%'
       limit 1;
     if current_path is null then
