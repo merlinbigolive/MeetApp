@@ -20,7 +20,7 @@ create or replace function public.activate_first_creator_global_live_boost(
 returns jsonb
 language plpgsql
 security definer
-set search_path = pg_catalog, public, private
+set search_path = pg_catalog, public, private, pg_temp
 as $function$
 declare
   v_role text;
