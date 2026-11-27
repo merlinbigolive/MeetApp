@@ -18,6 +18,18 @@ function getFunction(name) {
   return match[0];
 }
 
+function assertAuthenticatedOnly(name) {
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  assert.match(sql, new RegExp(
+    'revoke all on function public\\.' + escaped + '\\(uuid\\) from public, anon',
+    'i'
+  ));
+  assert.match(sql, new RegExp(
+    'grant execute on function public\\.' + escaped + '\\(uuid\\) to authenticated',
+    'i'
+  ));
+}
+
 test('follow request RPC checks symmetric global blocks before inserting a follow', () => {
   const fn = getFunction('request_profile_follow');
   assert.match(fn, /security definer/i);
@@ -29,8 +41,7 @@ test('follow request RPC checks symmetric global blocks before inserting a follo
     'the block check must happen before the follow row is written'
   );
   assert.match(fn, /pg_advisory_xact_lock\(pg_catalog\.hashtextextended\(pair_lock_key, 0\)\)/i);
-  assert.match(sql, /revoke all on function public\\.request_profile_follow\\(uuid\\) from public, anon/i);
-  assert.match(sql, /grant execute on function public\\.request_profile_follow\\(uuid\\) to authenticated/i);
+  assertAuthenticatedOnly('request_profile_follow');
 });
 
 test('block and unblock RPCs share the same transaction lock as follow requests', () => {
@@ -38,8 +49,7 @@ test('block and unblock RPCs share the same transaction lock as follow requests'
     const fn = getFunction(name);
     assert.match(fn, /pg_advisory_xact_lock\(pg_catalog\.hashtextextended\(pair_lock_key, 0\)\)/i);
     assert.match(fn, /set search_path = public, pg_temp/i);
-  assert.match(sql, /revoke all on function public\\.request_profile_follow\\(uuid\\) from public, anon/i);
-  assert.match(sql, /grant execute on function public\\.request_profile_follow\\(uuid\\) to authenticated/i);
+    assertAuthenticatedOnly(name);
   }
   const lockCount = (sql.match(/pg_advisory_xact_lock\(pg_catalog\.hashtextextended\(pair_lock_key, 0\)\)/gi) || []).length;
   assert.equal(lockCount, 3, 'follow, block, and unblock must all use the same pair lock');
