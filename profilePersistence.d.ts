@@ -55,3 +55,9 @@ export type MappedProfileMedia = {
   unavailable: boolean;
 };
 export function mapProfileMediaRecord(record: ProfileMediaRecord, signedUrl?: string | null): MappedProfileMedia;
+
+export type ProfileMediaPreviewResult = { media: MappedProfileMedia; error: unknown | null };
+export function resolveProfileMediaPreview(
+  record: ProfileMediaRecord,
+  createSignedUrl: (storagePath: string) => Promise<{ data?: { signedUrl?: string | null } | null; error?: unknown | null }>,
+): Promise<ProfileMediaPreviewResult>;
