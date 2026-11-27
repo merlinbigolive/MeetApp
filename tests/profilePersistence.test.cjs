@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { mapProfileRecord, buildProfileUpdate, buildProfileMediaUpdate, resolveProfileCountry } = require('../profilePersistence');
+const { mapProfileRecord, buildProfileUpdate, buildProfileMediaUpdate, mapProfileMediaRecord, resolveProfileCountry } = require('../profilePersistence');
 
 test('maps a complete personal profile record to editable fields', () => {
   const result = mapProfileRecord({
@@ -155,4 +155,35 @@ test('builds a least-privilege update payload for an existing profile media row'
   });
   assert.equal(Object.hasOwn(payload, 'user_id'), false);
   assert.equal(Object.hasOwn(payload, 'kind'), false);
+});
+
+
+test('preserves a saved media row when its signed preview URL cannot be created', () => {
+  const row = {
+    media_type: 'video',
+    original_name: 'cover.mp4',
+    storage_path: 'owner-id/cover/cover.mp4',
+  };
+  assert.deepEqual(mapProfileMediaRecord(row, null), {
+    uri: '',
+    type: 'video',
+    name: 'cover.mp4',
+    storagePath: 'owner-id/cover/cover.mp4',
+    unavailable: true,
+  });
+});
+
+test('marks profile media as available when a signed preview URL exists', () => {
+  const row = {
+    media_type: 'image',
+    original_name: null,
+    storage_path: 'owner-id/avatar/avatar.jpg',
+  };
+  assert.deepEqual(mapProfileMediaRecord(row, 'https://signed.example/media'), {
+    uri: 'https://signed.example/media',
+    type: 'image',
+    name: undefined,
+    storagePath: 'owner-id/avatar/avatar.jpg',
+    unavailable: false,
+  });
 });
