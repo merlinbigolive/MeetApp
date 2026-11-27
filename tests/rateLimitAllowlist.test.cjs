@@ -69,7 +69,6 @@ test('rate-limit allowlist synchronization documents its required final migratio
   ];
   let previousIndex = -1;
   for (const file of prerequisites) {
-    const index = migration.indexOf('--   ', migration.indexOf('-- Apply after these migrations'));
     const occurrence = migration.indexOf(file);
     assert.ok(occurrence > previousIndex, file + ' must appear in the documented prerequisite order');
     previousIndex = occurrence;
