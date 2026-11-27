@@ -197,7 +197,7 @@ test('keeps profile media metadata when signed URL creation returns an error', a
   }));
   assert.equal(result.media.unavailable, true);
   assert.equal(result.media.storagePath, row.storage_path);
-  assert.equal(result.error, expectedError);
+  assert.equal(result.errorMessage, expectedError.message);
 });
 
 test('keeps profile media metadata when signed URL creation throws', async () => {
