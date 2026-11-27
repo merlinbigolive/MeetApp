@@ -13,7 +13,7 @@ create or replace function private.enqueue_live_room_popup_event(
 returns uuid
 language plpgsql
 security definer
-set search_path = pg_catalog, public, private
+set search_path = pg_catalog, public, private, pg_temp
 as $function$
 declare
   v_id uuid;
@@ -83,7 +83,7 @@ create or replace function public.get_my_live_room_popup_event(target_session_id
 returns table(event_id uuid, event_type text, title text, message text, expires_at timestamptz)
 language plpgsql
 security definer
-set search_path = pg_catalog, public, private
+set search_path = pg_catalog, public, private, pg_temp
 as $function$
 declare
   v_uid uuid := auth.uid();
