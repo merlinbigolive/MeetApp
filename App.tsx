@@ -62,10 +62,23 @@ function LongVideoPreview({ uri }: { uri: string }) {
   return <VideoView player={player} style={s.longVideoThumb} contentFit="cover" nativeControls={false}/>;
 }
 
-function FeedVideoMedia({ uri, onPress }: { uri: string; onPress: () => void }) {
-  const player = useVideoPlayer(uri, p => { p.loop = false; p.muted = false; });
-  return <Pressable onPress={onPress} style={s.feedMedia}>
-    <VideoView player={player} style={{width:'100%',height:'100%'}} contentFit="cover" nativeControls/>
+function FeedVideoMedia({ uri, onPress, postTop, scrollY, viewportHeight }: {
+  uri: string; onPress: () => void; postTop: number; scrollY: number; viewportHeight: number;
+}) {
+  const player = useVideoPlayer(uri, p => { p.loop = true; p.muted = true; });
+  const [mediaLayout, setMediaLayout] = useState({ y: 0, height: 0 });
+  const mediaTop = postTop + mediaLayout.y - scrollY;
+  const isVisible = postTop >= 0 && mediaLayout.height > 0 && mediaTop < viewportHeight && mediaTop + mediaLayout.height > 0;
+  useEffect(() => {
+    if (isVisible) player.play();
+    else player.pause();
+    return () => player.pause();
+  }, [isVisible, player]);
+  return <Pressable onLayout={event => setMediaLayout({
+    y: event.nativeEvent.layout.y,
+    height: event.nativeEvent.layout.height,
+  })} onPress={onPress} style={s.feedMedia}>
+    <VideoView player={player} style={{width:'100%',height:'100%'}} contentFit="cover" nativeControls={false}/>
   </Pressable>;
 }
 
@@ -2273,8 +2286,16 @@ export default function App() {
   };
 
 
-  const PublicFeedScreen = () => (
-    <ScrollView contentContainerStyle={s.feedScroll} showsVerticalScrollIndicator={false}>
+  const PublicFeedScreen = () => {
+    const { height: viewportHeight } = useWindowDimensions();
+    const [feedScrollY, setFeedScrollY] = useState(0);
+    const [feedPostTops, setFeedPostTops] = useState<Record<string, number>>({});
+    return <ScrollView
+      contentContainerStyle={s.feedScroll}
+      showsVerticalScrollIndicator={false}
+      scrollEventThrottle={16}
+      onScroll={event => setFeedScrollY(event.nativeEvent.contentOffset.y)}
+    >
       <View style={s.feedHeader}>
         <View><Text style={s.pageTitle}>MEEi</Text><Text style={s.searchSubtitle}>Your community, your feed</Text></View>
         <Pressable style={s.searchHeaderIcon} onPress={() => setTab('Search')}><Ionicons name="search" size={20} color={C.cyan}/></Pressable>
@@ -2286,7 +2307,11 @@ export default function App() {
       </View>
       {loadingFeed ? <View style={s.searchEmpty}><Text style={s.hint}>Loading your feed…</Text></View> :
         feedPosts.length === 0 ? <View style={s.searchEmpty}><Ionicons name="newspaper-outline" size={38} color={C.cyan}/><Text style={s.sectionTitle}>Your feed is ready</Text><Text style={s.hint}>Public posts from creators will appear here.</Text><Pressable onPress={() => setTab('Search')} style={[s.primary,{paddingHorizontal:22,flex:0}]}><Text style={s.primaryText}>Discover creators</Text></Pressable></View> :
-        feedPosts.map(post => <View key={post.id} style={s.feedPost}>
+        feedPosts.map(post => <View
+          key={post.id}
+          style={s.feedPost}
+          onLayout={event => setFeedPostTops(old => ({ ...old, [post.id]: event.nativeEvent.layout.y }))}
+        >
           <View style={s.feedPostHeader}>
             <Pressable style={{flexDirection:'row',alignItems:'center',gap:10,flex:1}} onPress={() => setSelectedProfile(post.author)}>
               <View style={s.personAvatar}>{post.authorAvatar?.type === 'image' ? <Image source={{uri:post.authorAvatar.uri}} style={{width:'100%',height:'100%',borderRadius:24}}/> : <Ionicons name="person" size={21} color={C.cyan}/>}</View>
@@ -2300,7 +2325,13 @@ export default function App() {
             ])} style={{padding:8}}><Ionicons name="ellipsis-horizontal" size={21} color={C.text}/></Pressable>
           </View>
           {!!post.caption && <Text style={s.feedCaption}>{post.caption}</Text>}
-          {post.post_type === 'video' ? <FeedVideoMedia uri={post.media.uri} onPress={() => setViewer(post.media)}/> :
+          {post.post_type === 'video' ? <FeedVideoMedia
+            uri={post.media.uri}
+            onPress={() => setViewer(post.media)}
+            postTop={feedPostTops[post.id] ?? -1}
+            scrollY={feedScrollY}
+            viewportHeight={viewportHeight}
+          /> :
             <Pressable onPress={() => setViewer(post.media)}><Image source={{uri:post.media.uri}} style={s.feedMedia} resizeMode="cover"/></Pressable>}
           <View style={s.feedActions}>
             <Pressable onPress={() => void togglePublishedPostLike(post,false)} style={s.feedAction}><Ionicons name={post.viewer_liked?'heart':'heart-outline'} size={23} color={post.viewer_liked?'#E64D72':C.text}/><Text style={s.feedActionText}>{post.like_count}</Text></Pressable>
@@ -2317,8 +2348,8 @@ export default function App() {
             {Object.entries(postReactionSummaries[post.id]?.counts || {}).sort((a,b) => b[1]-a[1]).slice(0,4).map(([emoji,count]) => <Pressable key={emoji} onPress={() => setReactionPostId(post.id)} style={{ flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 7, paddingVertical: 4, borderRadius: 13, backgroundColor: postReactionSummaries[post.id]?.mine === emoji ? '#E7F4FF' : '#F7F9FB', borderWidth: postReactionSummaries[post.id]?.mine === emoji ? 1 : 0, borderColor: '#9DD6F4' }}><Text style={{ fontSize: 14 }}>{emoji}</Text><Text style={{ color: C.muted, fontSize: 10, fontWeight: '700' }}>{count}</Text></Pressable>)}
           </View>
         </View>)}
-    </ScrollView>
-  );
+    </ScrollView>;
+  };
 
   const DiscoverScreen = () => {
     const { height: viewportHeight } = useWindowDimensions();
