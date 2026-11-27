@@ -14,6 +14,20 @@ export type ProfileForm = {
 };
 export function mapProfileRecord(record: ProfileRecord): ProfileForm;
 export function buildProfileUpdate(profile: ProfileForm, updatedAt: string): Record<string, string | boolean | null>;
+export type ProfileMediaUpdateInput = {
+  position: number;
+  storage_path: string;
+  media_type: 'image' | 'video';
+  original_name?: string | null;
+  updated_at: string;
+};
+export function buildProfileMediaUpdate(record: ProfileMediaUpdateInput): {
+  position: number;
+  storage_path: string;
+  media_type: 'image' | 'video';
+  original_name: string | null;
+  updated_at: string;
+};
 
 export type ResolvedProfileCountry = {
   countryCode: string;
