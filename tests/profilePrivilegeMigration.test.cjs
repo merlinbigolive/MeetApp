@@ -8,12 +8,7 @@ const { buildProfileBootstrapPayloads } = require('../profileBootstrap');
 const sql = readFileSync(join(__dirname, '..', 'supabase_profile_access_privilege_hardening.sql'), 'utf8');
 
 function grantedColumns(privilege, tableName) {
-  const escaped = tableName.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\function grantedUpdateColumns(tableName) {
   const escaped = tableName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const match = sql.match(new RegExp('grant update \\(([\\s\\S]*?)\\) on table public\\.' + escaped, 'i'));
-  assert.ok(match, 'UPDATE column grant exists for ' + tableName);
-  return new Set(match[1].split(',').map(column => column.trim()).filter(Boolean));
-}');
   const match = sql.match(new RegExp('grant ' + privilege + ' \\(([\\s\\S]*?)\\) on table public\\.' + escaped, 'i'));
   assert.ok(match, privilege.toUpperCase() + ' column grant exists for ' + tableName);
   const columns = match[1].split(',').map(column => column.trim()).filter(Boolean);
@@ -23,6 +18,20 @@ function grantedColumns(privilege, tableName) {
 
 function grantedUpdateColumns(tableName) { return grantedColumns('update', tableName); }
 function grantedInsertColumns(tableName) { return grantedColumns('insert', tableName); }
+
+test('profile bootstrap insert payload only uses columns granted by profile hardening migration', () => {
+  const payloads = buildProfileBootstrapPayloads({
+    id: '12345678-90ab-cdef-1234-567890abcdef',
+    email: 'creator@example.com',
+    user_metadata: { display_name: 'Creator' },
+  });
+  const granted = grantedInsertColumns('profiles');
+  for (const payload of [payloads.primary, payloads.fallback]) {
+    for (const column of Object.keys(payload)) {
+      assert.ok(granted.has(column), 'profiles.' + column + ' must be granted for profile bootstrap');
+    }
+  }
+});
 
 test('profile update payload only uses columns granted by profile hardening migration', () => {
   const payload = buildProfileUpdate({
