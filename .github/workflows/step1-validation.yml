@@ -13,9 +13,8 @@ permissions:
   contents: read
 
 concurrency:
-  # PR validation is keyed by PR number; pushes to main use their ref.
-  # Feature-branch pushes are validated by the open PR event, avoiding duplicate cancellation races.
-  group: step1-validation-${{ github.event.pull_request.number || github.ref }}
+  # Isolate each source commit so a stale runner from an older commit cannot block newer PR validation.
+  group: step1-validation-${{ github.event.pull_request.number || github.ref }}-${{ github.sha }}
   cancel-in-progress: true
 
 jobs:
