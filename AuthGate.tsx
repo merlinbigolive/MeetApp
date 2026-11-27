@@ -82,6 +82,8 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
       }
     };
 
+    void createProfileIfMissing();
+
     return () => { active = false; };
   }, [session, profileAttempt]);
 
