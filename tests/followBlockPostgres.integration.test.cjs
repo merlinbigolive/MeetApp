@@ -102,6 +102,22 @@ test('follow/block RPCs enforce auth, RLS, symmetric blocks and transaction seri
     assert.equal(blocks.stdout.trim().split(/\r?\n/).at(-1), '0');
   });
 
+  await t.test('a follower can unfollow only their own relationship; the followed account cannot delete it', async () => {
+    await seed();
+    await psql(`
+      insert into public.follows(follower_id, followed_id, status)
+      values ('${A}', '${C}', 'accepted'), ('${D}', '${A}', 'accepted');
+    `);
+    // Being the followed account grants SELECT visibility, not DELETE ownership.
+    await psql(asUser(A, `delete from public.follows where follower_id='${D}' and followed_id='${A}';`));
+    const protectedRow = await psql(`select count(*) from public.follows where follower_id='${D}' and followed_id='${A}';`);
+    assert.equal(protectedRow.stdout.trim(), '1', 'the followed account must not remove another account\'s follow');
+    // The follower retains the intended unfollow path after INSERT/UPDATE hardening.
+    await psql(asUser(A, `delete from public.follows where follower_id='${A}' and followed_id='${C}';`));
+    const ownRow = await psql(`select count(*) from public.follows where follower_id='${A}' and followed_id='${C}';`);
+    assert.equal(ownRow.stdout.trim(), '0', 'the follower must still be able to unfollow');
+  });
+
   await t.test('concurrent follow and block cannot leave a follow relationship after the block commits', async () => {
     await seed();
     await psql(`
