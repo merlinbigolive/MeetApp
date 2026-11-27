@@ -157,6 +157,12 @@ function CoverMediaSlide({ media }: { media: Media }) {
     if (media.type === 'video') player.play();
     return () => { if (media.type === 'video') player.pause(); };
   }, [media.type, player]);
+  if (media.unavailable) {
+    return <View style={{ width: '100%', height: '85%', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+      <Ionicons name="alert-circle-outline" size={34} color="#FFFFFF" />
+      <Text style={{ color: '#FFFFFF', fontSize: 13, fontWeight: '700' }}>Preview unavailable</Text>
+    </View>;
+  }
   return media.type === 'image'
     ? <Image source={{ uri: media.uri }} resizeMode="contain" style={{ width: '100%', height: '85%' }} />
     : <VideoView player={player} style={{ width: '100%', height: '85%' }} contentFit="contain" nativeControls />;
@@ -713,27 +719,18 @@ export default function App() {
         const hydrated = await Promise.all(((mediaRows || []) as CloudMediaRow[]).map(async row => {
           const { data: signed, error: signedError } = await supabase!.storage
             .from('usay-media').createSignedUrl(row.storage_path, 60 * 60);
-          if (signedError || !signed?.signedUrl) {
+          const media = mapProfileMediaRecord(row, signedError ? null : signed?.signedUrl);
+          if (media.unavailable) {
             console.warn('Profile media URL could not be created:', row.storage_path, signedError?.message || 'Missing signed URL');
-            return null;
           }
-          return {
-            row,
-            media: {
-              uri: signed.signedUrl,
-              type: row.media_type,
-              name: row.original_name || undefined,
-              storagePath: row.storage_path,
-            } as Media,
-          };
+          return { row, media: media as Media };
         }));
         if (!active) return;
-        const valid = hydrated.filter((item): item is NonNullable<typeof item> => item !== null);
-        setAvatar(valid.find(item => item.row.kind === 'avatar')?.media || null);
-        setCovers(valid.filter(item => item.row.kind === 'cover').map(item => item.media).slice(0, 3));
-        setPosts(valid.filter(item => item.row.kind === 'post').map(item => item.media).slice(0, 3));
-        if (valid.length < (mediaRows || []).length) {
-          Alert.alert('Some profile media unavailable', 'Your profile details loaded, but one or more photos or videos could not be opened. Please try again later.');
+        setAvatar(hydrated.find(item => item.row.kind === 'avatar')?.media || null);
+        setCovers(hydrated.filter(item => item.row.kind === 'cover').map(item => item.media).slice(0, 3));
+        setPosts(hydrated.filter(item => item.row.kind === 'post').map(item => item.media).slice(0, 3));
+        if (hydrated.some(item => item.media.unavailable)) {
+          Alert.alert('Some profile media unavailable', 'Your profile details loaded, but one or more photos or videos could not be opened. Your saved items are still listed so you can manage them or try again later.');
         }
         if (active) setProfileLoadStatus('ready');
       } catch (error: any) {
@@ -1848,16 +1845,12 @@ export default function App() {
     const hydrated = await Promise.all(((rows || []) as CloudMediaRow[]).map(async row => {
       const { data, error: signedError } = await client.storage.from('usay-media')
         .createSignedUrl(row.storage_path, 60 * 60);
-      if (signedError || !data?.signedUrl) return null;
-      return { position: row.position, media: {
-        uri: data.signedUrl, type: row.media_type, name: row.original_name || undefined,
-        storagePath: row.storage_path,
-      } as Media };
+      const media = mapProfileMediaRecord(row, signedError ? null : data?.signedUrl);
+      return { position: row.position, media: media as Media };
     }));
-    const valid = hydrated.filter((item): item is NonNullable<typeof item> => item !== null);
-    if (kind === 'avatar') setAvatar(valid[0]?.media || null);
-    if (kind === 'cover') setCovers(valid.map(item => item.media).slice(0, 3));
-    if (kind === 'post') setPosts(valid.map(item => item.media).slice(0, 3));
+    if (kind === 'avatar') setAvatar(hydrated[0]?.media || null);
+    if (kind === 'cover') setCovers(hydrated.map(item => item.media).slice(0, 3));
+    if (kind === 'post') setPosts(hydrated.map(item => item.media).slice(0, 3));
     return (rows || []) as CloudMediaRow[];
   };
 
@@ -2101,12 +2094,14 @@ export default function App() {
   const MediaTile = ({ media, onPress, onRemove, label, uploading = false }: {
     media?: Media; onPress: () => void; onRemove?: () => void; label: string; uploading?: boolean;
   }) => (
-    <Pressable disabled={uploading} onPress={media ? () => setViewer(media) : onPress} style={s.tile}>
-      {media?.type === 'image'
-        ? <Image source={{ uri: media.uri }} style={s.tileImage} />
-        : media?.type === 'video'
-          ? <View style={s.videoTile}><Ionicons name="play-circle" size={30} color={C.cyan} /><Text style={s.videoText}>VIDEO</Text></View>
-          : <><Ionicons name="add-circle-outline" size={25} color={C.cyan} /><Text style={s.tileLabel}>{label}</Text></>}
+    <Pressable disabled={uploading} onPress={media && !media.unavailable ? () => setViewer(media) : onPress} style={s.tile}>
+      {media?.unavailable
+        ? <View style={s.videoTile}><Ionicons name="alert-circle-outline" size={26} color={C.cyan} /><Text style={s.videoText}>PREVIEW UNAVAILABLE</Text></View>
+        : media?.type === 'image'
+          ? <Image source={{ uri: media.uri }} style={s.tileImage} />
+          : media?.type === 'video'
+            ? <View style={s.videoTile}><Ionicons name="play-circle" size={30} color={C.cyan} /><Text style={s.videoText}>VIDEO</Text></View>
+            : <><Ionicons name="add-circle-outline" size={25} color={C.cyan} /><Text style={s.tileLabel}>{label}</Text></>}
       {media && onRemove && !uploading ? <Pressable onPress={onRemove} style={s.remove}><Ionicons name="close" size={14} color="#fff" /></Pressable> : null}
       {uploading && <View style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, borderRadius: 12, backgroundColor: 'rgba(8,18,30,0.72)', alignItems: 'center', justifyContent: 'center', gap: 7 }}>
         <ActivityIndicator size="small" color="#FFFFFF" />
@@ -2155,7 +2150,7 @@ export default function App() {
         </Animated.View>
         <Animated.View {...avatarPan.panHandlers}>
         <Pressable disabled={uploadingMediaKinds.avatar} onPress={() => isOwnProfile ? chooseMedia('avatar') : undefined} style={s.avatarWrap}>
-          {avatar ? <Image source={{uri:avatar.uri}} style={s.avatar} /> : <View style={s.avatarFallback}><Ionicons name="person" size={38} color={C.cyan}/></View>}
+          {avatar && !avatar.unavailable ? <Image source={{uri:avatar.uri}} style={s.avatar} /> : <View style={s.avatarFallback}><Ionicons name="person" size={38} color={C.cyan}/></View>}
           {isOwnProfile && <View style={s.camera}>{uploadingMediaKinds.avatar ? <ActivityIndicator size="small" color="#FFFFFF"/> : <Ionicons name="camera" size={13} color="#fff"/>}</View>}
           {isOwnProfile && uploadingMediaKinds.avatar && <View pointerEvents="none" style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, borderRadius: 60, backgroundColor: 'rgba(8,18,30,0.58)', alignItems: 'center', justifyContent: 'center' }}><ActivityIndicator size="large" color="#FFFFFF"/><Text style={{ color: '#FFFFFF', fontSize: 10, fontWeight: '700', marginTop: 5 }}>Uploading</Text></View>}
         </Pressable>
