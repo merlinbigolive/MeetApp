@@ -167,9 +167,9 @@ test('follow/block RPCs enforce auth, RLS, symmetric blocks and transaction seri
     // Hold the blocking RPC inside its DELETE after it has acquired the shared pair lock.
     await psql(`
       create or replace function public.test_delay_follow_delete()
-      returns trigger language plpgsql as $
+      returns trigger language plpgsql as $$
       begin perform pg_sleep(1.2); return old; end;
-      $;
+      $$;
       create trigger test_delay_follow_delete before delete on public.follows
       for each row execute function public.test_delay_follow_delete();
     `);
