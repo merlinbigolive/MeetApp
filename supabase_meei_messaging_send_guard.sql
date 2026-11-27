@@ -1,4 +1,14 @@
 -- MEEi messaging server-side send guard.
+-- Prerequisites (run before this file):
+--   1. schema.sql and supabase_messaging_setup.sql (messages/conversations tables)
+--   2. supabase_voice_messages_setup.sql (message_type/audio_path/transcript columns
+--      and the private usay-chat-audio bucket used by the voice ownership check)
+--   3. supabase_global_account_blocking_setup.sql (is_blocked_for_current_user)
+--   4. supabase_meei_live_chat_rate_limit_hardening.sql (private rate-limit table/helper)
+--   5. supabase_meei_livekit_action_rate_limits.sql (the next rate-limit helper version)
+-- This file also redefines the shared private rate-limit helper/constraint.
+-- Keep it before supabase_meei_conversation_creation_guard.sql and the final
+-- supabase_meei_rate_limit_action_allowlist_fix.sql.
 -- Enforces authenticated sender identity, conversation membership, block status,
 -- message shape, voice-object ownership and per-user send rate limits.
 
