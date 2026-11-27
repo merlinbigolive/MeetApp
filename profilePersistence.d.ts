@@ -12,6 +12,7 @@ export type ProfileForm = {
   businessName: string; businessCategory: string; businessDescription: string;
   isPrivateAccount: boolean; activity: string; countryCode: string; countryName: string;
 };
+export function isProfileSessionOwner(sessionUserId: string | null | undefined, loadedProfileUserId: string | null | undefined): boolean;
 export function mapProfileRecord(record: ProfileRecord): ProfileForm;
 export function buildProfileUpdate(profile: ProfileForm, updatedAt: string): Record<string, string | boolean | null>;
 export type ProfileMediaUpdateInput = {
