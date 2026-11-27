@@ -38,6 +38,9 @@ async function ensureProfileExists({ user, findProfile, insertProfile }) {
     await insertProfile(payloads.primary);
     return { created: true, username: payloads.primary.username };
   } catch (primaryError) {
+    // Only a uniqueness collision is recoverable with another username.
+    // Permission, connectivity, and schema errors must surface immediately.
+    if (!primaryError || primaryError.code !== '23505') throw primaryError;
     // Another concurrent bootstrap may have created the profile while this
     // request was attempting its insert. Prefer that row over a second insert.
     if (await findProfile(payloads.primary.id)) {
