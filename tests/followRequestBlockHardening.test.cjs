@@ -105,7 +105,9 @@ test('all follow/block RPCs derive the same order-independent account-pair lock 
   for (const [name, target] of Object.entries(targets)) {
     const fn = getFunction(name);
     const canonicalPairKey = new RegExp(
-      String.raw\`pair_lock_key\\s*:=\\s*case\\s+when\\s+actor_id::text\\s*<\\s*\${target}::text\\s+then\\s+actor_id::text\\s*\\|\\|\\s*':'\\s*\\|\\|\\s*\${target}::text\\s+else\\s+\${target}::text\\s*\\|\\|\\s*':'\\s*\\|\\|\\s*actor_id::text\\s+end\`,
+      'pair_lock_key\\s*:=\\s*case\\s+when\\s+actor_id::text\\s*<\\s*' + target +
+      '::text\\s+then\\s+actor_id::text\\s*\\|\\|\\s*\\x27:\\x27\\s*\\|\\|\\s*' + target +
+      '::text\\s+else\\s*' + target + '::text\\s*\\|\\|\\s*\\x27:\\x27\\s*\\|\\|\\s*actor_id::text\\s+end',
       'i'
     );
     assert.match(fn, canonicalPairKey, name + ' must normalize account order before locking');
