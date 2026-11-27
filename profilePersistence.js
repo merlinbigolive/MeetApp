@@ -64,4 +64,16 @@ function resolveProfileCountry({ savedCountryCode, savedCountryName, deviceCount
   return { countryCode, countryName, persistFields };
 }
 
-module.exports = { mapProfileRecord, buildProfileUpdate, resolveProfileCountry };
+function buildProfileMediaUpdate(record) {
+  // These are the only fields an existing gallery row needs to change.
+  // Keep ownership and media kind immutable during a replacement update.
+  return {
+    position: record.position,
+    storage_path: record.storage_path,
+    media_type: record.media_type,
+    original_name: record.original_name ?? null,
+    updated_at: record.updated_at,
+  };
+}
+
+module.exports = { mapProfileRecord, buildProfileUpdate, buildProfileMediaUpdate, resolveProfileCountry };
