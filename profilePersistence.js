@@ -92,10 +92,13 @@ async function resolveProfileMediaPreview(record, createSignedUrl) {
     const { data, error } = await createSignedUrl(record.storage_path);
     return {
       media: mapProfileMediaRecord(record, error ? null : data?.signedUrl),
-      error: error || null,
+      errorMessage: error ? (typeof error.message === 'string' ? error.message : String(error)) : null,
     };
   } catch (error) {
-    return { media: mapProfileMediaRecord(record, null), error };
+    return {
+      media: mapProfileMediaRecord(record, null),
+      errorMessage: error instanceof Error ? error.message : String(error),
+    };
   }
 }
 
