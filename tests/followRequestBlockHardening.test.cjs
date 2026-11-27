@@ -33,6 +33,8 @@ function assertAuthenticatedOnly(name) {
 test('follow creation cannot bypass the guarded RPC through direct table inserts', () => {
   assert.match(sql, /drop policy if exists "follows_insert_self" on public\.follows/i);
   assert.match(sql, /drop policy if exists "follows_insert_public_only" on public\.follows/i);
+  assert.match(sql, /drop policy if exists "follows_insert_enforce_public_only" on public\.follows/i);
+  assert.match(sql, /revoke insert, update on public\.follows from anon, authenticated/i);
 });
 
 test('follow request RPC checks symmetric global blocks before inserting a follow', () => {
