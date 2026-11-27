@@ -718,7 +718,7 @@ export default function App() {
           return;
         }
         const hydrated = await Promise.all(((mediaRows || []) as CloudMediaRow[]).map(async row => {
-          const { media, error: signedError } = await resolveProfileMediaPreview(row, storagePath =>
+          const { media, errorMessage: signedError } = await resolveProfileMediaPreview(row, storagePath =>
             supabase!.storage.from('usay-media').createSignedUrl(storagePath, 60 * 60));
           if (media.unavailable) {
             console.warn('Profile media URL could not be created:', row.storage_path, signedError || 'Missing signed URL');
@@ -1843,7 +1843,7 @@ export default function App() {
       .eq('user_id', userId).eq('kind', kind).order('position', { ascending: true });
     if (error) throw error;
     const hydrated = await Promise.all(((rows || []) as CloudMediaRow[]).map(async row => {
-      const { media, error: signedError } = await resolveProfileMediaPreview(row, storagePath =>
+      const { media, errorMessage: signedError } = await resolveProfileMediaPreview(row, storagePath =>
         client.storage.from('usay-media').createSignedUrl(storagePath, 60 * 60));
       if (media.unavailable) {
         console.warn('Profile media preview could not be refreshed:', row.storage_path, signedError?.message || 'Missing signed URL');
