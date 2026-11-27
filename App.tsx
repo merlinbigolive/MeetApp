@@ -381,6 +381,7 @@ export default function App() {
   const savingProfileLock = useRef(false);
   const mediaUploadLocks = useRef<Set<string>>(new Set());
   const [profileLoadStatus, setProfileLoadStatus] = useState<'loading' | 'ready' | 'error'>('loading');
+  const [loadedProfileUserId, setLoadedProfileUserId] = useState('');
   const [profileLoadError, setProfileLoadError] = useState('');
   const [profileLoadAttempt, setProfileLoadAttempt] = useState(0);
   const [name, setName] = useState('');
@@ -641,6 +642,7 @@ export default function App() {
     let active = true;
     setProfileLoadStatus('loading');
     setProfileLoadError('');
+    setLoadedProfileUserId('');
     const loadCloudProfile = async () => {
       if (!supabase) {
         setProfileLoadError('Cloud profile service is not configured. Please check the app setup.');
@@ -675,6 +677,7 @@ export default function App() {
           setProfileLoadStatus('error');
           return;
         }
+        setLoadedProfileUserId(userId);
         const profileForm = mapProfileRecord(data);
         setName(profileForm.name);
         setUsername(profileForm.username);
@@ -1856,8 +1859,8 @@ export default function App() {
       if (sessionError) throw sessionError;
       const userId = authData.session?.user.id;
       if (!userId) throw new Error('Please sign in again before saving your profile.');
-      if (!isProfileSessionOwner(userId, currentUserId) || profileLoadStatus !== 'ready') {
-        if (userId !== currentUserId) setProfileLoadAttempt(value => value + 1);
+      if (!isProfileSessionOwner(userId, loadedProfileUserId) || profileLoadStatus !== 'ready') {
+        if (userId !== loadedProfileUserId) setProfileLoadAttempt(value => value + 1);
         throw new Error('Your signed-in account or profile changed. We are refreshing your profile; please review it before saving again.');
       }
       const updatePayload = buildProfileUpdate({
@@ -1913,8 +1916,8 @@ export default function App() {
     // A session switch must never apply one account's gallery to another account.
     const { data: sessionData, error: sessionError } = await client.auth.getSession();
     if (sessionError) throw sessionError;
-    if (sessionData.session?.user.id !== userId) {
-      throw new Error('The signed-in account changed while profile media was refreshing. Please reload your profile and try again.');
+    if (sessionData.session?.user.id !== userId || !isProfileSessionOwner(userId, loadedProfileUserId)) {
+      throw new Error('The signed-in account or loaded profile changed while media was refreshing. Please reload your profile and try again.');
     }
     // A refresh may finish after the account or visible tab changes. Callers
     // can invalidate the result so stale signed URLs never overwrite new state.
