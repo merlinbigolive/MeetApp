@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
 import * as Notifications from 'expo-notifications';
@@ -15,6 +15,7 @@ import { useAudioPlayer, useAudioPlayerStatus } from 'expo-audio';
 import { ExpoSpeechRecognitionModule, useSpeechRecognitionEvent } from 'expo-speech-recognition';
 import { supabase } from './supabase';
 import { validateProfile } from './profileValidation';
+import { selectActiveVideo } from './videoPlayback';
 import { buildProfileUpdate, mapProfileRecord, resolveProfileCountry } from './profilePersistence';
 import LiveBroadcastModal from './LiveBroadcastModal';
 
@@ -62,18 +63,26 @@ function LongVideoPreview({ uri }: { uri: string }) {
   return <VideoView player={player} style={s.longVideoThumb} contentFit="cover" nativeControls={false}/>;
 }
 
-function FeedVideoMedia({ uri, onPress, postTop, scrollY, viewportHeight }: {
-  uri: string; onPress: () => void; postTop: number; scrollY: number; viewportHeight: number;
+function FeedVideoMedia({ id, uri, onPress, postTop, scrollY, viewportHeight, active, onVisibilityChange }: {
+  id: string; uri: string; onPress: () => void; postTop: number; scrollY: number;
+  viewportHeight: number; active: boolean; onVisibilityChange: (id: string, ratio: number) => void;
 }) {
   const player = useVideoPlayer(uri, p => { p.loop = true; p.muted = true; });
   const [mediaLayout, setMediaLayout] = useState({ y: 0, height: 0 });
   const mediaTop = postTop + mediaLayout.y - scrollY;
-  const isVisible = postTop >= 0 && mediaLayout.height > 0 && mediaTop < viewportHeight && mediaTop + mediaLayout.height > 0;
+  const visibleHeight = viewportHeight > 0 && postTop >= 0 && mediaLayout.height > 0
+    ? Math.max(0, Math.min(mediaTop + mediaLayout.height, viewportHeight) - Math.max(mediaTop, 0))
+    : 0;
+  const visibilityRatio = mediaLayout.height > 0 ? visibleHeight / mediaLayout.height : 0;
   useEffect(() => {
-    if (isVisible) player.play();
+    onVisibilityChange(id, visibilityRatio);
+    return () => onVisibilityChange(id, 0);
+  }, [id, onVisibilityChange, visibilityRatio]);
+  useEffect(() => {
+    if (active && visibilityRatio >= 0.25) player.play();
     else player.pause();
     return () => player.pause();
-  }, [isVisible, player]);
+  }, [active, player, visibilityRatio]);
   return <Pressable onLayout={event => setMediaLayout({
     y: event.nativeEvent.layout.y,
     height: event.nativeEvent.layout.height,
@@ -82,9 +91,10 @@ function FeedVideoMedia({ uri, onPress, postTop, scrollY, viewportHeight }: {
   </Pressable>;
 }
 
-function SearchReelTile({ uri, caption, views, onPress, gridTop, scrollY, viewportHeight }: {
-  uri?: string; caption: string; views: number; onPress: () => void;
+function SearchReelTile({ id, uri, caption, views, onPress, gridTop, scrollY, viewportHeight, active, onVisibilityChange }: {
+  id: string; uri?: string; caption: string; views: number; onPress: () => void;
   gridTop: number; scrollY: number; viewportHeight: number;
+  active: boolean; onVisibilityChange: (id: string, ratio: number) => void;
 }) {
   const player = useVideoPlayer(uri || null, p => {
     p.loop = true;
@@ -92,13 +102,19 @@ function SearchReelTile({ uri, caption, views, onPress, gridTop, scrollY, viewpo
   });
   const [tileLayout, setTileLayout] = useState({ y: 0, height: 0 });
   const tileTop = gridTop + tileLayout.y - scrollY;
-  const isVisible = tileLayout.height > 0 && tileTop < viewportHeight && tileTop + tileLayout.height > 0;
+  const visibleHeight = viewportHeight > 0 && tileLayout.height > 0
+    ? Math.max(0, Math.min(tileTop + tileLayout.height, viewportHeight) - Math.max(tileTop, 0))
+    : 0;
+  const visibilityRatio = uri && tileLayout.height > 0 ? visibleHeight / tileLayout.height : 0;
   useEffect(() => {
-    if (!uri) return;
-    if (isVisible) player.play();
+    onVisibilityChange(id, visibilityRatio);
+    return () => onVisibilityChange(id, 0);
+  }, [id, onVisibilityChange, visibilityRatio]);
+  useEffect(() => {
+    if (uri && active && visibilityRatio >= 0.25) player.play();
     else player.pause();
     return () => player.pause();
-  }, [isVisible, player, uri]);
+  }, [active, player, uri, visibilityRatio]);
   return <Pressable onLayout={event => setTileLayout({
     y: event.nativeEvent.layout.y,
     height: event.nativeEvent.layout.height,
@@ -2290,6 +2306,20 @@ export default function App() {
     const [viewportHeight, setViewportHeight] = useState(0);
     const [feedScrollY, setFeedScrollY] = useState(0);
     const [feedPostTops, setFeedPostTops] = useState<Record<string, number>>({});
+    const [videoVisibility, setVideoVisibility] = useState<Record<string, number>>({});
+    const reportVideoVisibility = useCallback((id: string, ratio: number) => {
+      setVideoVisibility(previous => {
+        if (previous[id] === ratio) return previous;
+        if (ratio <= 0) {
+          if (!(id in previous)) return previous;
+          const next = { ...previous };
+          delete next[id];
+          return next;
+        }
+        return { ...previous, [id]: ratio };
+      });
+    }, []);
+    const activeVideoId = selectActiveVideo(videoVisibility);
     return <ScrollView
       contentContainerStyle={s.feedScroll}
       showsVerticalScrollIndicator={false}
@@ -2327,11 +2357,14 @@ export default function App() {
           </View>
           {!!post.caption && <Text style={s.feedCaption}>{post.caption}</Text>}
           {post.post_type === 'video' ? <FeedVideoMedia
+            id={post.id}
             uri={post.media.uri}
             onPress={() => setViewer(post.media)}
             postTop={feedPostTops[post.id] ?? -1}
             scrollY={feedScrollY}
             viewportHeight={viewportHeight}
+            active={activeVideoId === post.id}
+            onVisibilityChange={reportVideoVisibility}
           /> :
             <Pressable onPress={() => setViewer(post.media)}><Image source={{uri:post.media.uri}} style={s.feedMedia} resizeMode="cover"/></Pressable>}
           <View style={s.feedActions}>
@@ -2356,6 +2389,20 @@ export default function App() {
     const [viewportHeight, setViewportHeight] = useState(0);
     const [scrollY, setScrollY] = useState(0);
     const [reelsGridTop, setReelsGridTop] = useState(0);
+    const [videoVisibility, setVideoVisibility] = useState<Record<string, number>>({});
+    const reportVideoVisibility = useCallback((id: string, ratio: number) => {
+      setVideoVisibility(previous => {
+        if (previous[id] === ratio) return previous;
+        if (ratio <= 0) {
+          if (!(id in previous)) return previous;
+          const next = { ...previous };
+          delete next[id];
+          return next;
+        }
+        return { ...previous, [id]: ratio };
+      });
+    }, []);
+    const activeVideoId = selectActiveVideo(videoVisibility);
     const query = profileSearch.trim().replace(/^[@#]+/, '').toLowerCase();
     const filteredProfiles = publicProfiles.filter(profile =>
       (!query ||
@@ -2420,6 +2467,7 @@ export default function App() {
           <View style={s.reelsGrid} onLayout={event => setReelsGridTop(event.nativeEvent.layout.y)}>
             {filteredVideos.slice(0, 12).map(video => <SearchReelTile
               key={video.id}
+              id={video.id}
               uri={videoUrls[video.id]}
               caption={video.caption || 'MEEi video'}
               views={video.view_count || 0}
@@ -2427,6 +2475,8 @@ export default function App() {
               gridTop={reelsGridTop}
               scrollY={scrollY}
               viewportHeight={viewportHeight}
+              active={activeVideoId === video.id}
+              onVisibilityChange={reportVideoVisibility}
             />)}
           </View>}
       </>}
