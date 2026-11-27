@@ -44,4 +44,24 @@ function buildProfileUpdate(profile, updatedAt) {
   };
 }
 
-module.exports = { mapProfileRecord, buildProfileUpdate };
+
+function resolveProfileCountry({ savedCountryCode, savedCountryName, deviceCountryCode, deviceCountryName, getDisplayName }) {
+  const savedCode = String(savedCountryCode || '').toUpperCase();
+  const savedName = String(savedCountryName || '');
+  const deviceCode = String(deviceCountryCode || 'IN').toUpperCase();
+  const deviceName = String(deviceCountryName || deviceCode);
+  const countryCode = savedCode || deviceCode;
+  const countryName = savedName || (savedCode ? getDisplayName(savedCode) : deviceName);
+  const persistFields = {};
+
+  if (!savedCode && !savedName) {
+    persistFields.country_code = deviceCode;
+    persistFields.country_name = deviceName;
+  } else if (savedCode && !savedName) {
+    persistFields.country_name = getDisplayName(savedCode);
+  }
+
+  return { countryCode, countryName, persistFields };
+}
+
+module.exports = { mapProfileRecord, buildProfileUpdate, resolveProfileCountry };
