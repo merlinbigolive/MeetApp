@@ -1,0 +1,47 @@
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const { readFileSync } = require('node:fs');
+const { join } = require('node:path');
+
+const root = join(__dirname, '..');
+const migration = readFileSync(join(root, 'supabase_meei_rate_limit_action_allowlist_fix.sql'), 'utf8');
+const wrapper = readFileSync(join(root, 'supabase_meei_live_pk_rate_limits.sql'), 'utf8');
+
+function extractKeys(source, pattern, label) {
+  const match = source.match(pattern);
+  assert.ok(match, label + ' allowlist must exist');
+  return new Set([...match[1].matchAll(/'([a-z][a-z0-9_]*)'/g)].map(item => item[1]));
+}
+
+test('private rate-limit table constraint and function accept every wrapped action', () => {
+  const constraintKeys = extractKeys(
+    migration,
+    /add constraint meei_user_rate_limits_action_key_check\s+check\s*\(action_key in\s*\(([\s\S]*?)\)\)/i,
+    'Table constraint'
+  );
+  const functionKeys = extractKeys(
+    migration,
+    /if p_action_key not in\s*\(([\s\S]*?)\)\s*or p_limit/i,
+    'Private function'
+  );
+  const wrapperKeys = new Set([...wrapper.matchAll(/when '([a-z][a-z0-9_]*)'/g)].map(item => item[1]));
+
+  for (const key of wrapperKeys) {
+    assert.ok(constraintKeys.has(key), 'Table constraint is missing ' + key);
+    assert.ok(functionKeys.has(key), 'Private function is missing ' + key);
+  }
+});
+
+test('private rate-limit function keeps the complete supported action set aligned', () => {
+  const constraintKeys = extractKeys(
+    migration,
+    /add constraint meei_user_rate_limits_action_key_check\s+check\s*\(action_key in\s*\(([\s\S]*?)\)\)/i,
+    'Table constraint'
+  );
+  const functionKeys = extractKeys(
+    migration,
+    /if p_action_key not in\s*\(([\s\S]*?)\)\s*or p_limit/i,
+    'Private function'
+  );
+  assert.deepEqual([...functionKeys].sort(), [...constraintKeys].sort());
+});
