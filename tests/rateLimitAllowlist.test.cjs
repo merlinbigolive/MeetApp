@@ -63,6 +63,7 @@ test('rate-limit allowlist synchronization documents its required final migratio
     'supabase_meei_profile_video_search_rate_limits.sql',
     'supabase_meei_messaging_send_guard.sql',
     'supabase_meei_conversation_creation_guard.sql',
+    'supabase_meei_live_pk_battle_core.sql',
     'supabase_meei_live_pk_rate_limits.sql'
   ];
   let previousIndex = -1;
