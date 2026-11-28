@@ -32,11 +32,13 @@ test('rate-limit runbook keeps the allowlist synchronization migration last', ()
     'supabase_meei_profile_video_search_rate_limits.sql',
     'supabase_meei_messaging_send_guard.sql',
     'supabase_meei_conversation_creation_guard.sql',
+    'supabase_meei_live_pk_battle_core.sql',
     'supabase_meei_live_pk_rate_limits.sql',
     'supabase_meei_rate_limit_action_allowlist_fix.sql'
   ], 'Rate-limit order');
   assert.match(runbook, /\*\*must be last\*\*/i);
-  assert.match(runbook, /Never apply one of those older definitions after step 7/i);
+  assert.match(runbook, /Never apply one of those older definitions after step 8/i);
+  assert.match(runbook, /do not apply it twice unnecessarily/i);
 });
 
 test('runbook requires staging validation and explicit owner approval before production', () => {
