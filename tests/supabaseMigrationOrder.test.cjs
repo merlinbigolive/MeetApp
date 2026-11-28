@@ -26,7 +26,11 @@ test('follow/block hardening runbook preserves the final shared-lock RPC migrati
 });
 
 test('rate-limit runbook keeps the allowlist synchronization migration last', () => {
-  assertOrdered(runbook, [
+  const sequenceHeading = 'After those foundations, apply the shared rate-limit scripts in this exact order:';
+  const sequenceStart = runbook.indexOf(sequenceHeading);
+  assert.ok(sequenceStart >= 0, 'Rate-limit order: numbered migration sequence heading must exist');
+  const rateLimitSequence = runbook.slice(sequenceStart);
+  assertOrdered(rateLimitSequence, [
     'supabase_meei_live_chat_rate_limit_hardening.sql',
     'supabase_meei_livekit_action_rate_limits.sql',
     'supabase_meei_profile_video_search_rate_limits.sql',
