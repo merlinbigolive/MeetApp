@@ -26,7 +26,7 @@ test('follow/block hardening runbook preserves the final shared-lock RPC migrati
 });
 
 test('rate-limit runbook keeps the allowlist synchronization migration last', () => {
-  const sequenceHeading = 'After those foundations, apply the shared rate-limit scripts in this exact order:';
+  const sequenceHeading = 'After those base and feature foundations, apply the shared rate-limit scripts in this exact order:';
   const sequenceStart = runbook.indexOf(sequenceHeading);
   assert.ok(sequenceStart >= 0, 'Rate-limit order: numbered migration sequence heading must exist');
   const rateLimitSequence = runbook.slice(sequenceStart);
