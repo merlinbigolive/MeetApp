@@ -3,7 +3,7 @@ function normalizeEmail(email) {
 }
 
 function isValidEmail(email) {
-  return /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email);
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
 function normalizeOtp(code) {
@@ -11,16 +11,16 @@ function normalizeOtp(code) {
 }
 
 function isValidOtp(token) {
-  return /^\\d{6}$/.test(token);
+  return /^\d{6}$/.test(token);
 }
 
 function normalizePhone(phone) {
-  return phone.replace(/[\\s().-]/g, '');
+  return phone.replace(/[\s().-]/g, '');
 }
 
 function isValidPhone(phone) {
   // E.164: international format, leading +, 8–15 digits, non-zero country code.
-  return /^\\+[1-9]\\d{7,14}$/.test(phone);
+  return /^\+[1-9]\d{7,14}$/.test(phone);
 }
 
 module.exports = {
