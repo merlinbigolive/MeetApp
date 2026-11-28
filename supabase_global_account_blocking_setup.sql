@@ -129,14 +129,18 @@ as restrictive for insert to authenticated
 with check (not public.is_blocked_for_current_user(user_id));
 
 drop policy if exists "global_block_comments_select" on public.post_comments;
+drop policy if exists "global_block_comments_select_v2" on public.post_comments;
 create policy "global_block_comments_select" on public.post_comments
 as restrictive for select to authenticated
 using (
   user_id = auth.uid()
-  or not exists (
-    select 1 from public.posts p
-    where p.id = post_comments.post_id
-      and public.is_blocked_for_current_user(p.user_id)
+  or (
+    not public.is_blocked_for_current_user(user_id)
+    and not exists (
+      select 1 from public.posts p
+      where p.id = post_comments.post_id
+        and public.is_blocked_for_current_user(p.user_id)
+    )
   )
 );
 

@@ -1,0 +1,144 @@
+name: Step 1 validation
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  # One active validation per PR (or branch for push runs); newer commits cancel stale runs.
+  group: step1-validation-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  typecheck-and-export:
+    name: TypeScript and Expo exports
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/meei_test
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: meei_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d meei_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Generate dependency lockfile
+        run: npm install --package-lock-only --ignore-scripts
+
+      - name: Upload generated dependency lockfile
+        uses: actions/upload-artifact@v4
+        with:
+          name: meei-npm-lockfile
+          path: package-lock.json
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Audit dependencies
+        run: |
+          npm audit --json > npm-audit.json || true
+          node -e "const a=require('./npm-audit.json'); console.log(JSON.stringify({summary:a.metadata?.vulnerabilities, high:Object.entries(a.vulnerabilities||{}).filter(([,v])=>v.severity==='high'||v.severity==='critical').map(([name,v])=>({name,severity:v.severity,isDirect:v.isDirect,range:v.range,via:v.via,effects:v.effects,nodes:v.nodes,fixAvailable:v.fixAvailable}))}, null, 2))"
+          npm audit --omit=dev --json > npm-audit-production.json || true
+          node -e "const a=require('./npm-audit-production.json'); console.log(JSON.stringify({productionSummary:a.metadata?.vulnerabilities, productionVulnerabilities:Object.entries(a.vulnerabilities||{}).map(([name,v])=>({name,severity:v.severity,isDirect:v.isDirect,via:v.via,effects:v.effects,nodes:v.nodes,fixAvailable:v.fixAvailable}))}, null, 2))"
+          node -e "for (const file of ['npm-audit.json','npm-audit-production.json']) { const audit=require('./'+file); const blocking=Object.entries(audit.vulnerabilities||{}).filter(([,v])=>v.severity==='high'||v.severity==='critical'); if (blocking.length) { console.error(file+' contains high/critical vulnerabilities:', blocking.map(([name,v])=>name+' ('+v.severity+')').join(', ')); process.exitCode=1; } else { console.log(file+': no high/critical vulnerabilities'); } }"
+
+      - name: Expo Doctor
+        run: npx expo-doctor
+
+      - name: TypeScript strict check
+        run: npm run typecheck
+
+      - name: Install PostgreSQL client
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes postgresql-client
+
+      - name: Unit and PostgreSQL integration tests
+        run: npm run test:unit
+
+      - name: Validate Expo configuration
+        run: npx expo config --type public
+
+      - name: Diagnose Expo SDK dependency versions
+        run: |
+          npm ls expo expo-asset expo-modules-core expo-audio --all || true
+          npx expo install --check
+
+      - name: Export Android bundle
+        run: npx expo export --platform android --output-dir dist/android
+
+      - name: Export iOS bundle
+        run: npx expo export --platform ios --output-dir dist/ios
+
+  android-native-build:
+    name: Android native debug build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools platforms;android-35 platforms;android-36 build-tools;35.0.0 build-tools;36.0.0
+
+      - name: Generate dependency lockfile
+        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+
+      - name: Install dependencies from lockfile
+        run: npm ci --no-audit --no-fund
+
+      - name: Generate Android native project
+        run: npx expo prebuild --platform android --no-install --clean
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+          cache: gradle
+
+      - name: Compile Android debug APK
+        timeout-minutes: 20
+        run: cd android && ./gradlew assembleDebug --no-daemon --stacktrace --console=plain --max-workers=2
+
+      - name: Upload Android debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: meei-android-debug
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 7

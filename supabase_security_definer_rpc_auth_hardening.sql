@@ -5,7 +5,7 @@
 revoke all on function public.block_user(uuid) from public, anon;
 revoke all on function public.check_live_entry(uuid) from public, anon;
 revoke all on function public.get_discover_profiles() from public, anon;
-revoke all on function public.get_live_chat_messages(uuid, integer) from public, anon;
+revoke all on function public.get_live_chat_messages(uuid, integer, uuid) from public, anon;
 revoke all on function public.get_live_creators(text) from public, anon;
 revoke all on function public.get_live_moderation_role(uuid) from public, anon;
 revoke all on function public.get_live_viewer_profile(uuid, uuid) from public, anon;
@@ -30,7 +30,7 @@ revoke all on function public.unblock_user(uuid) from public, anon;
 grant execute on function public.block_user(uuid) to authenticated;
 grant execute on function public.check_live_entry(uuid) to authenticated;
 grant execute on function public.get_discover_profiles() to authenticated;
-grant execute on function public.get_live_chat_messages(uuid, integer) to authenticated;
+grant execute on function public.get_live_chat_messages(uuid, integer, uuid) to authenticated;
 grant execute on function public.get_live_creators(text) to authenticated;
 grant execute on function public.get_live_moderation_role(uuid) to authenticated;
 grant execute on function public.get_live_viewer_profile(uuid, uuid) to authenticated;

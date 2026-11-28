@@ -1,11 +1,19 @@
-name: Build MeetApp Android APK
+name: Build MeetApp Standalone Preview APK
 
 on:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: meei-standalone-preview-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 90
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -21,11 +29,43 @@ jobs:
           eas-version: latest
           token: ${{ secrets.EXPO_TOKEN }}
 
-      - name: Install dependencies
-        run: npm install
+      - name: Generate dependency lockfile
+        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
 
-      - name: Link Expo project
-        run: eas init --force --non-interactive
+      - name: Install dependencies from lockfile
+        run: npm ci --no-audit --no-fund
 
-      - name: Build Android APK
-        run: eas build --platform android --profile preview --non-interactive --no-wait
+      - name: Validate standalone preview profile
+        run: |
+          node -e "const p=require('./eas.json').build.preview; if (p.developmentClient || p.android?.buildType !== 'apk') process.exit(1); console.log('Standalone APK profile confirmed (developmentClient is not enabled).')"
+
+      - name: Initialize or link MEEi EAS project
+        run: eas init --account meetappindias-team --json --non-interactive
+
+      - name: Verify EAS project link
+        run: |
+          node -e "const p=require('./app.json').expo; if (p.owner !== 'meetappindias-team' || !p.extra?.eas?.projectId) { console.error('EAS project ID was not written to app.json'); process.exit(1); } console.log('EAS project linked:', p.extra.eas.projectId);"
+
+      - name: Build standalone Android APK on EAS
+        run: eas build --platform android --profile preview --non-interactive --wait --json > eas-build-result.json
+
+      - name: Download and validate completed APK
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          BUILD_URL="$(node -e "const fs=require('node:fs'); const raw=JSON.parse(fs.readFileSync('eas-build-result.json','utf8')); const builds=Array.isArray(raw)?raw:[raw]; const build=builds.find(item=>item?.artifacts?.buildUrl); if(!build) { console.error('EAS build result did not include artifacts.buildUrl'); process.exit(1); } console.log(build.artifacts.buildUrl);")"
+          test -n "$BUILD_URL"
+          curl --fail --location --retry 3 --silent --show-error "$BUILD_URL" --output artifacts/meei-standalone-preview.apk
+          test -s artifacts/meei-standalone-preview.apk
+          file artifacts/meei-standalone-preview.apk
+          unzip -t artifacts/meei-standalone-preview.apk
+
+      - name: Upload standalone APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: meei-standalone-preview
+          path: artifacts/meei-standalone-preview.apk
+          if-no-files-found: error
+          retention-days: 7

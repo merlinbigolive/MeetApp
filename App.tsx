@@ -1,9 +1,9 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
 import * as Notifications from 'expo-notifications';
 import {
-  Alert, Image, Modal, Pressable, ScrollView, StatusBar, StyleSheet, Platform, Share,
+  ActivityIndicator, Alert, AppState, Image, Modal, Pressable, ScrollView, StatusBar, StyleSheet, Platform, Share,
   Text, TextInput, View, useWindowDimensions, useColorScheme, Animated, PanResponder
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -14,9 +14,13 @@ import { useVideoPlayer, VideoView } from 'expo-video';
 import { useAudioPlayer, useAudioPlayerStatus } from 'expo-audio';
 import { ExpoSpeechRecognitionModule, useSpeechRecognitionEvent } from 'expo-speech-recognition';
 import { supabase } from './supabase';
+import { validateProfile } from './profileValidation';
+import { selectActiveVideo } from './videoPlayback';
+import { buildProfileMediaUpdate, buildProfileUpdate, isProfileSessionOwner, mapProfileRecord, resolveProfileCountry, resolveProfileMediaPreview } from './profilePersistence';
 import LiveBroadcastModal from './LiveBroadcastModal';
+import { DARK_C, LIGHT_C, isAppearanceMode, resolveBasePalette } from './meeiTheme';
 
-type Media = { uri: string; type: 'image' | 'video'; name?: string; size?: number; mimeType?: string; storagePath?: string };
+type Media = { uri: string; type: 'image' | 'video'; name?: string; size?: number; mimeType?: string; storagePath?: string; unavailable?: boolean };
 type CloudMediaRow = { id: string; kind: 'avatar' | 'cover' | 'post'; position: number; storage_path: string; media_type: 'image' | 'video'; original_name: string | null; };
 type Tab = 'Home' | 'Public' | 'Search' | 'Videos' | 'Live' | 'Create' | 'Inbox' | 'Profile';
 type SearchCategory = 'People' | 'Videos' | 'Reels' | 'Trending' | 'Funny' | 'Vlogs' | 'Cinema' | 'Creators';
@@ -43,16 +47,6 @@ Notifications.setNotificationHandler({
   handleNotification: async () => ({ shouldShowBanner: true, shouldShowList: true, shouldPlaySound: true, shouldSetBadge: false }),
 });
 
-const LIGHT_C = {
-  bg: '#FFFFFF', panel: '#FFFFFF', panel2: '#F4F9FD', text: '#172B3A',
-  muted: '#718096', pink: '#258FEA', cyan: '#43B8E8', border: '#E5EDF4',
-  success: '#22A06B', danger: '#D64545'
-};
-const DARK_C = {
-  bg: '#0B1420', panel: '#121F2D', panel2: '#1A2A3A', text: '#EAF3FA',
-  muted: '#9AAFC0', pink: '#49A9F5', cyan: '#65C7EF', border: '#2A3D50',
-  success: '#4BC58C', danger: '#FF7373'
-};
 let C = LIGHT_C;
 
 function LongVideoPreview({ uri }: { uri: string }) {
@@ -60,23 +54,62 @@ function LongVideoPreview({ uri }: { uri: string }) {
   return <VideoView player={player} style={s.longVideoThumb} contentFit="cover" nativeControls={false}/>;
 }
 
-function FeedVideoMedia({ uri, onPress }: { uri: string; onPress: () => void }) {
-  const player = useVideoPlayer(uri, p => { p.loop = false; p.muted = false; });
-  return <Pressable onPress={onPress} style={s.feedMedia}>
-    <VideoView player={player} style={{width:'100%',height:'100%'}} contentFit="cover" nativeControls/>
+function FeedVideoMedia({ id, uri, onPress, postTop, scrollY, viewportHeight, active, onVisibilityChange }: {
+  id: string; uri: string; onPress: () => void; postTop: number; scrollY: number;
+  viewportHeight: number; active: boolean; onVisibilityChange: (id: string, ratio: number) => void;
+}) {
+  const player = useVideoPlayer(uri, p => { p.loop = true; p.muted = true; });
+  const [mediaLayout, setMediaLayout] = useState({ y: 0, height: 0 });
+  const mediaTop = postTop + mediaLayout.y - scrollY;
+  const visibleHeight = viewportHeight > 0 && postTop >= 0 && mediaLayout.height > 0
+    ? Math.max(0, Math.min(mediaTop + mediaLayout.height, viewportHeight) - Math.max(mediaTop, 0))
+    : 0;
+  const visibilityRatio = mediaLayout.height > 0 ? visibleHeight / mediaLayout.height : 0;
+  useEffect(() => {
+    onVisibilityChange(id, visibilityRatio);
+    return () => onVisibilityChange(id, 0);
+  }, [id, onVisibilityChange, visibilityRatio]);
+  useEffect(() => {
+    if (active && visibilityRatio >= 0.25) player.play();
+    else player.pause();
+    return () => player.pause();
+  }, [active, player, visibilityRatio]);
+  return <Pressable onLayout={event => setMediaLayout({
+    y: event.nativeEvent.layout.y,
+    height: event.nativeEvent.layout.height,
+  })} onPress={onPress} style={s.feedMedia}>
+    <VideoView player={player} style={{width:'100%',height:'100%'}} contentFit="cover" nativeControls={false}/>
   </Pressable>;
 }
 
-function SearchReelTile({ uri, caption, views, onPress }: { uri?: string; caption: string; views: number; onPress: () => void }) {
+function SearchReelTile({ id, uri, caption, views, onPress, gridTop, scrollY, viewportHeight, active, onVisibilityChange }: {
+  id: string; uri?: string; caption: string; views: number; onPress: () => void;
+  gridTop: number; scrollY: number; viewportHeight: number;
+  active: boolean; onVisibilityChange: (id: string, ratio: number) => void;
+}) {
   const player = useVideoPlayer(uri || null, p => {
     p.loop = true;
     p.muted = true;
   });
+  const [tileLayout, setTileLayout] = useState({ y: 0, height: 0 });
+  const tileTop = gridTop + tileLayout.y - scrollY;
+  const visibleHeight = viewportHeight > 0 && tileLayout.height > 0
+    ? Math.max(0, Math.min(tileTop + tileLayout.height, viewportHeight) - Math.max(tileTop, 0))
+    : 0;
+  const visibilityRatio = uri && tileLayout.height > 0 ? visibleHeight / tileLayout.height : 0;
   useEffect(() => {
-    if (uri) player.play();
+    onVisibilityChange(id, visibilityRatio);
+    return () => onVisibilityChange(id, 0);
+  }, [id, onVisibilityChange, visibilityRatio]);
+  useEffect(() => {
+    if (uri && active && visibilityRatio >= 0.25) player.play();
+    else player.pause();
     return () => player.pause();
-  }, [player, uri]);
-  return <Pressable onPress={onPress} style={s.reelTile}>
+  }, [active, player, uri, visibilityRatio]);
+  return <Pressable onLayout={event => setTileLayout({
+    y: event.nativeEvent.layout.y,
+    height: event.nativeEvent.layout.height,
+  })} onPress={onPress} style={s.reelTile}>
     {uri ? <VideoView player={player} style={s.reelTileVideo} contentFit="cover" nativeControls={false}/> : <View style={s.reelTileFallback}><Ionicons name="play-circle" size={34} color="#FFFFFF"/></View>}
     <View style={s.reelTileShade}/>
     <View style={s.reelTilePlay}><Ionicons name="play" size={13} color="#FFFFFF"/></View>
@@ -110,11 +143,18 @@ function VoiceMessageBubble({ uri, transcript, mine }: { uri: string; transcript
 }
 
 function CoverMediaSlide({ media }: { media: Media }) {
-  const player = useVideoPlayer(media.type === 'video' ? media.uri : null, p => { p.loop = true; });
+  const player = useVideoPlayer(media.type === 'video' && !media.unavailable ? media.uri : null, p => { p.loop = true; });
   useEffect(() => {
-    if (media.type === 'video') player.play();
-    return () => { if (media.type === 'video') player.pause(); };
-  }, [media.type, player]);
+    if (media.type === 'video' && !media.unavailable) player.play();
+    else player.pause();
+    return () => player.pause();
+  }, [media.type, media.uri, media.unavailable, player]);
+  if (media.unavailable) {
+    return <View style={{ width: '100%', height: '85%', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+      <Ionicons name="alert-circle-outline" size={34} color="#FFFFFF" />
+      <Text style={{ color: '#FFFFFF', fontSize: 13, fontWeight: '700' }}>Preview unavailable</Text>
+    </View>;
+  }
   return media.type === 'image'
     ? <Image source={{ uri: media.uri }} resizeMode="contain" style={{ width: '100%', height: '85%' }} />
     : <VideoView player={player} style={{ width: '100%', height: '85%' }} contentFit="contain" nativeControls />;
@@ -311,7 +351,7 @@ const getCountryDisplayName = (countryCode: string, localeTag?: string) => {
 export default function App() {
   const systemColorScheme = useColorScheme();
   const [themeMode, setThemeMode] = useState<'system' | 'light' | 'dark'>('system');
-  const activePalette = themeMode === 'system' ? (systemColorScheme === 'dark' ? DARK_C : LIGHT_C) : themeMode === 'dark' ? DARK_C : LIGHT_C;
+  const activePalette = resolveBasePalette(themeMode, systemColorScheme);
   C = activePalette;
   s = createStyles(activePalette);
   const setAppearanceMode = (mode: 'system' | 'light' | 'dark') => {
@@ -327,10 +367,18 @@ export default function App() {
   const [unblockingUserId, setUnblockingUserId] = useState<string | null>(null);
   const [liveStudioVisible, setLiveStudioVisible] = useState(false);
   const [liveJoinSessionId, setLiveJoinSessionId] = useState<string | null>(null);
-  const [name, setName] = useState('MEEi User');
-  const [username, setUsername] = useState('your_username');
-  const [bio, setBio] = useState('Creating connections, sharing ideas and meeting amazing people.');
-  const [website, setWebsite] = useState('https://example.com');
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [uploadingMediaKinds, setUploadingMediaKinds] = useState<Record<'avatar' | 'cover' | 'post', boolean>>({ avatar: false, cover: false, post: false });
+  const savingProfileLock = useRef(false);
+  const mediaUploadLocks = useRef<Set<string>>(new Set());
+  const [profileLoadStatus, setProfileLoadStatus] = useState<'loading' | 'ready' | 'error'>('loading');
+  const [loadedProfileUserId, setLoadedProfileUserId] = useState('');
+  const [profileLoadError, setProfileLoadError] = useState('');
+  const [profileLoadAttempt, setProfileLoadAttempt] = useState(0);
+  const [name, setName] = useState('');
+  const [username, setUsername] = useState('');
+  const [bio, setBio] = useState('');
+  const [website, setWebsite] = useState('');
   const [occupation, setOccupation] = useState('');
   const [accountType, setAccountType] = useState<'personal' | 'business'>('personal');
   const [businessName, setBusinessName] = useState('');
@@ -370,6 +418,7 @@ export default function App() {
   const [commentsLoading, setCommentsLoading] = useState(false);
   const [commentSending, setCommentSending] = useState(false);
   const [postsRefreshKey, setPostsRefreshKey] = useState(0);
+  const [mediaRefreshKey, setMediaRefreshKey] = useState(0);
   const [likedVideoIds, setLikedVideoIds] = useState<string[]>([]);
   const [likeBusyIds, setLikeBusyIds] = useState<string[]>([]);
   const [videoUrls, setVideoUrls] = useState<Record<string, string>>({});
@@ -409,10 +458,31 @@ export default function App() {
   const [translatingMessageIds, setTranslatingMessageIds] = useState<string[]>([]);
   const [currentUserId, setCurrentUserId] = useState('');
   const [messageSoundEnabled, setMessageSoundEnabled] = useState(true);
+
+  useEffect(() => {
+    let previousState = AppState.currentState;
+    const refreshSignedMedia = () => {
+      setMediaRefreshKey(value => value + 1);
+      setPostsRefreshKey(value => value + 1);
+    };
+    const subscription = AppState.addEventListener('change', nextState => {
+      const returnedToForeground = previousState !== 'active' && nextState === 'active';
+      previousState = nextState;
+      if (returnedToForeground) refreshSignedMedia();
+    });
+    const interval = setInterval(() => {
+      if (AppState.currentState === 'active') refreshSignedMedia();
+    }, 50 * 60 * 1000);
+    return () => {
+      subscription.remove();
+      clearInterval(interval);
+    };
+  }, []);
+
   useEffect(() => {
     let active = true;
     AsyncStorage.getItem('@meei/appearance_mode').then(saved => {
-      if (active && (saved === 'system' || saved === 'light' || saved === 'dark')) setThemeMode(saved);
+      if (active && isAppearanceMode(saved)) setThemeMode(saved);
     }).catch(error => console.warn('Appearance preference could not be loaded:', error));
     return () => { active = false; };
   }, []);
@@ -561,134 +631,194 @@ export default function App() {
 
   useEffect(() => {
     let active = true;
+    setProfileLoadStatus('loading');
+    setProfileLoadError('');
+    setLoadedProfileUserId('');
     const loadCloudProfile = async () => {
-      if (!supabase) return;
-      const { data: authData } = await supabase.auth.getSession();
-      const userId = authData.session?.user.id;
-      if (!userId) return;
-      setCurrentUserId(userId);
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('username, display_name, bio, website_url, profession_category, activity_status, is_private, account_type, business_name, business_category, business_description, country_code, country_name')
-        .eq('id', userId)
-        .maybeSingle();
-      if (!active || error || !data) return;
-      setName(data.display_name || 'MEEi User');
-      setUsername(data.username || 'your_username');
-      setBio(data.bio || '');
-      setWebsite(data.website_url || '');
-      setOccupation(data.profession_category || '');
-      setAccountType(data.account_type === 'business' ? 'business' : 'personal');
-      setBusinessName(data.business_name || '');
-      setBusinessCategory(data.business_category || '');
-      setBusinessDescription(data.business_description || '');
-      setIsPrivateAccount(!!data.is_private);
-
-      const deviceLocale = Localization.getLocales()[0];
-      const deviceCountryCode = (deviceLocale?.regionCode || 'IN').toUpperCase();
-      const deviceCountryName = getCountryDisplayName(deviceCountryCode, deviceLocale?.languageTag);
-      const savedCountryCode = String(data.country_code || '').toUpperCase();
-      const savedCountryName = String(data.country_name || '');
-      if (savedCountryCode && savedCountryName) {
-        setHomeCountryCode(savedCountryCode);
-        setHomeCountryName(savedCountryName);
-        setLiveCountry(savedCountryCode);
-      } else {
-        setHomeCountryCode(deviceCountryCode);
-        setHomeCountryName(deviceCountryName);
-        setLiveCountry(deviceCountryCode);
-        const { error: countrySaveError } = await supabase.from('profiles').update({
-          country_code: deviceCountryCode,
-          country_name: deviceCountryName,
-          updated_at: new Date().toISOString(),
-        }).eq('id', userId);
-        if (countrySaveError) console.warn('Home country could not be saved:', countrySaveError.message);
+      if (!supabase) {
+        setProfileLoadError('Cloud profile service is not configured. Please check the app setup.');
+        setProfileLoadStatus('error');
+        return;
       }
+      try {
+        const { data: authData, error: authError } = await supabase.auth.getSession();
+        if (!active) return;
+        if (authError) {
+          console.warn('Profile session could not be restored:', authError.message);
+          setProfileLoadError('Your session could not be checked. Please sign in again.');
+          setProfileLoadStatus('error');
+          return;
+        }
+        const userId = authData.session?.user.id;
+        if (!userId) {
+          setProfileLoadError('No signed-in account was found. Please sign in again.');
+          setProfileLoadStatus('error');
+          return;
+        }
+        setCurrentUserId(userId);
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('username, display_name, bio, website_url, profession_category, activity_status, is_private, account_type, business_name, business_category, business_description, country_code, country_name')
+          .eq('id', userId)
+          .maybeSingle();
+        if (!active) return;
+        if (error || !data) {
+          console.warn('Profile details could not be loaded:', error?.message || 'No profile row found.');
+          setProfileLoadError(error?.message || 'Your profile details could not be loaded. Please check your connection and retry.');
+          setProfileLoadStatus('error');
+          return;
+        }
+        setLoadedProfileUserId(userId);
+        const profileForm = mapProfileRecord(data);
+        setName(profileForm.name);
+        setUsername(profileForm.username);
+        setBio(profileForm.bio);
+        setWebsite(profileForm.website);
+        setOccupation(profileForm.occupation);
+        setAccountType(profileForm.accountType);
+        setBusinessName(profileForm.businessName);
+        setBusinessCategory(profileForm.businessCategory);
+        setBusinessDescription(profileForm.businessDescription);
+        setIsPrivateAccount(profileForm.isPrivateAccount);
 
-      const [followingResult, followerResult, likesResult] = await Promise.all([
-        supabase.from('follows').select('*', { count: 'exact', head: true }).eq('follower_id', userId).eq('status', 'accepted'),
-        supabase.from('follows').select('*', { count: 'exact', head: true }).eq('followed_id', userId).eq('status', 'accepted'),
-        supabase.rpc('get_profile_likes_count', { target_user_id: userId }),
-      ]);
-      if (!active) return;
-      if (!followingResult.error) setFollowingCount(followingResult.count ?? 0);
-      if (!followerResult.error) setFollowerCount(followerResult.count ?? 0);
-      if (!likesResult.error) setLikesCount(Number(likesResult.data || 0));
+        const deviceLocale = Localization.getLocales()[0];
+        const deviceCountryCode = (deviceLocale?.regionCode || 'IN').toUpperCase();
+        const deviceCountryName = getCountryDisplayName(deviceCountryCode, deviceLocale?.languageTag);
+        const resolvedCountry = resolveProfileCountry({
+          savedCountryCode: data.country_code,
+          savedCountryName: data.country_name,
+          deviceCountryCode,
+          deviceCountryName,
+          getDisplayName: code => getCountryDisplayName(code, deviceLocale?.languageTag),
+        });
+        const resolvedCountryCode = resolvedCountry.countryCode;
+        setHomeCountryCode(resolvedCountryCode);
+        setHomeCountryName(resolvedCountry.countryName);
+        setLiveCountry(resolvedCountryCode);
 
-      if (data.activity_status) {
-        const status = data.activity_status.toLowerCase();
-        setActivity(status.charAt(0).toUpperCase() + status.slice(1));
+        const missingCountryFields = resolvedCountry.persistFields;
+        if (Object.keys(missingCountryFields).length > 0) {
+          const { error: countrySaveError } = await supabase.from('profiles').update({
+            ...missingCountryFields,
+            updated_at: new Date().toISOString(),
+          }).eq('id', userId);
+          if (countrySaveError) console.warn('Home country could not be saved:', countrySaveError.message);
+          if (!active) return;
+        }
+
+        const [followingResult, followerResult, likesResult] = await Promise.all([
+          supabase.from('follows').select('*', { count: 'exact', head: true }).eq('follower_id', userId).eq('status', 'accepted'),
+          supabase.from('follows').select('*', { count: 'exact', head: true }).eq('followed_id', userId).eq('status', 'accepted'),
+          supabase.rpc('get_profile_likes_count', { target_user_id: userId }),
+        ]);
+        if (!active) return;
+        if (!followingResult.error) setFollowingCount(followingResult.count ?? 0);
+        if (!followerResult.error) setFollowerCount(followerResult.count ?? 0);
+        if (!likesResult.error) setLikesCount(Number(likesResult.data || 0));
+
+        if (profileForm.activity) setActivity(profileForm.activity);
+
+        const { data: mediaRows, error: mediaError } = await supabase
+          .from('profile_media')
+          .select('id, kind, position, storage_path, media_type, original_name')
+          .eq('user_id', userId)
+          .order('position', { ascending: true });
+        if (!active) return;
+        if (mediaError) {
+          console.warn('Profile media could not be loaded:', mediaError.message);
+          setAvatar(null);
+          setCovers([]);
+          setPosts([]);
+          setProfileLoadStatus('ready');
+          Alert.alert('Profile media unavailable', 'Your profile details loaded, but photos and videos could not be loaded. Please check your connection and try again.');
+          return;
+        }
+        const hydrated = await Promise.all(((mediaRows || []) as CloudMediaRow[]).map(async row => {
+          const { media, errorMessage: signedError } = await resolveProfileMediaPreview(row, storagePath =>
+            supabase!.storage.from('usay-media').createSignedUrl(storagePath, 60 * 60));
+          if (media.unavailable) {
+            console.warn('Profile media URL could not be created:', row.storage_path, signedError || 'Missing signed URL');
+          }
+          return { row, media: media as Media };
+        }));
+        if (!active) return;
+        setAvatar(hydrated.find(item => item.row.kind === 'avatar')?.media || null);
+        setCovers(hydrated.filter(item => item.row.kind === 'cover').map(item => item.media).slice(0, 3));
+        setPosts(hydrated.filter(item => item.row.kind === 'post').map(item => item.media).slice(0, 3));
+        if (hydrated.some(item => item.media.unavailable)) {
+          Alert.alert('Some profile media unavailable', 'Your profile details loaded, but one or more photos or videos could not be opened. Your saved items are still listed so you can manage them or try again later.');
+        }
+        if (active) setProfileLoadStatus('ready');
+      } catch (error: any) {
+        console.warn('Unexpected profile loading error:', error);
+        if (active) {
+          setProfileLoadError(error?.message || 'Something went wrong while loading your profile. Please check your connection and retry.');
+          setProfileLoadStatus('error');
+        }
       }
-
-      const { data: mediaRows, error: mediaError } = await supabase
-        .from('profile_media')
-        .select('id, kind, position, storage_path, media_type, original_name')
-        .eq('user_id', userId)
-        .order('position', { ascending: true });
-      if (!active || mediaError || !mediaRows) return;
-      const hydrated = await Promise.all((mediaRows as CloudMediaRow[]).map(async row => {
-        const { data: signed, error: signedError } = await supabase!.storage
-          .from('usay-media').createSignedUrl(row.storage_path, 60 * 60);
-        if (signedError || !signed?.signedUrl) return null;
-        return {
-          row,
-          media: {
-            uri: signed.signedUrl,
-            type: row.media_type,
-            name: row.original_name || undefined,
-            storagePath: row.storage_path,
-          } as Media,
-        };
-      }));
-      if (!active) return;
-      const valid = hydrated.filter((item): item is NonNullable<typeof item> => item !== null);
-      setAvatar(valid.find(item => item.row.kind === 'avatar')?.media || null);
-      setCovers(valid.filter(item => item.row.kind === 'cover').map(item => item.media).slice(0, 3));
-      setPosts(valid.filter(item => item.row.kind === 'post').map(item => item.media).slice(0, 3));
     };
-    loadCloudProfile();
+    void loadCloudProfile();
     return () => { active = false; };
-  }, []);
+  }, [profileLoadAttempt]);
 
   useEffect(() => {
     if (!supabase) return;
     let active = true;
     const loadOwnPublishedPosts = async () => {
-      const { data: authData, error: authError } = await supabase!.auth.getSession();
-      const userId = authData.session?.user.id;
-      if (authError || !userId) return;
-      const { data, error } = await supabase!.from('posts')
-        .select('id, post_type, caption, media_path, created_at, visibility, content_category')
-        .eq('user_id', userId).order('created_at', { ascending: false }).limit(50);
-      if (!active) return;
-      if (error) {
-        Alert.alert('Could not load your posts', error.message);
-        return;
-      }
-      const rows = (data || []).filter((row: any) => !!row.media_path);
-      const hydrated = await Promise.all(rows.map(async (row: any) => {
-        const { data: signed, error: signedError } = await supabase!.storage.from('usay-media').createSignedUrl(row.media_path, 60 * 60);
-        if (signedError || !signed?.signedUrl) return null;
-        return { ...row, media: { uri: signed.signedUrl, type: row.post_type === 'video' ? 'video' : 'image', storagePath: row.media_path } as Media } as PublishedPost;
-      }));
-      const validPosts = hydrated.filter((post): post is PublishedPost => post !== null);
-      if (!validPosts.length) {
-        if (active) setOwnPublishedPosts([]);
-        return;
-      }
-      const engagementResult = await supabase!.rpc('get_profile_post_engagement', { target_post_ids: validPosts.map(post => post.id) });
-      if (!active) return;
-      const commentCounts = await fetchPostCommentCounts(validPosts.map(post => post.id));
-      if (!active) return;
-      if (engagementResult.error) {
-        Alert.alert('Could not load post likes', engagementResult.error.message);
-        setOwnPublishedPosts(validPosts.map(post => ({ ...post, like_count: 0, viewer_liked: false, comment_count: commentCounts[post.id] || 0 })));
-      } else {
-        const engagementById = new Map<string, any>((engagementResult.data || []).map((item: any) => [item.post_id, item] as [string, any]));
-        setOwnPublishedPosts(validPosts.map(post => {
-          const engagement = engagementById.get(post.id) as any;
-          return { ...post, like_count: Number(engagement?.like_count || 0), viewer_liked: !!engagement?.viewer_liked, comment_count: commentCounts[post.id] || 0 };
+      try {
+        const client = supabase;
+        if (!client) return;
+        const { data: authData, error: authError } = await client.auth.getSession();
+        if (!active) return;
+        if (authError) throw authError;
+        const userId = authData.session?.user.id;
+        if (!userId) {
+          setOwnPublishedPosts([]);
+          return;
+        }
+        const { data, error } = await client.from('posts')
+          .select('id, post_type, caption, media_path, created_at, visibility, content_category')
+          .eq('user_id', userId).order('created_at', { ascending: false }).limit(50);
+        if (!active) return;
+        if (error) throw error;
+        const rows = (data || []).filter((row: any) => !!row.media_path);
+        const hydrated = await Promise.all(rows.map(async (row: any) => {
+          const preview = await resolveProfileMediaPreview({
+            media_type: row.post_type === 'video' ? 'video' : 'image',
+            original_name: null,
+            storage_path: row.media_path,
+          }, storagePath => client.storage.from('usay-media').createSignedUrl(storagePath, 60 * 60));
+          if (preview.media.unavailable) {
+            console.warn('Published profile post media URL could not be created:', row.media_path, preview.errorMessage || 'Missing signed URL');
+          }
+          return { ...row, media: preview.media as Media } as PublishedPost;
         }));
+        if (!active) return;
+        const validPosts = hydrated;
+        if (validPosts.some(post => post.media.unavailable)) {
+          Alert.alert('Some posts unavailable', 'One or more post previews could not be opened. Your published posts remain listed; try refreshing later.');
+        }
+        if (!validPosts.length) {
+          setOwnPublishedPosts([]);
+          return;
+        }
+        const engagementResult = await client.rpc('get_profile_post_engagement', { target_post_ids: validPosts.map(post => post.id) });
+        if (!active) return;
+        const commentCounts = await fetchPostCommentCounts(validPosts.map(post => post.id));
+        if (!active) return;
+        if (engagementResult.error) {
+          Alert.alert('Could not load post likes', 'Your posts loaded, but likes could not be refreshed. Please try again later.');
+          setOwnPublishedPosts(validPosts.map(post => ({ ...post, like_count: 0, viewer_liked: false, comment_count: commentCounts[post.id] || 0 })));
+        } else {
+          const engagementById = new Map<string, any>((engagementResult.data || []).map((item: any) => [item.post_id, item] as [string, any]));
+          setOwnPublishedPosts(validPosts.map(post => {
+            const engagement = engagementById.get(post.id) as any;
+            return { ...post, like_count: Number(engagement?.like_count || 0), viewer_liked: !!engagement?.viewer_liked, comment_count: commentCounts[post.id] || 0 };
+          }));
+        }
+      } catch (error: any) {
+        console.warn('Own published profile posts could not be loaded:', error?.message || error);
+        if (active) Alert.alert('Could not load your posts', 'Your profile is available, but your published posts could not be loaded. Please check your connection and try again.');
       }
     };
     void loadOwnPublishedPosts();
@@ -756,7 +886,7 @@ export default function App() {
     };
     loadDiscoverProfiles();
     return () => { active = false; };
-  }, [tab, debouncedProfileSearch]);
+  }, [tab, debouncedProfileSearch, mediaRefreshKey]);
 
   useEffect(() => {
     const videoCategories: SearchCategory[] = ['Videos', 'Reels', 'Trending', 'Funny', 'Vlogs', 'Cinema'];
@@ -801,7 +931,7 @@ export default function App() {
     };
     loadSearchVideos();
     return () => { active = false; };
-  }, [tab, searchCategory, debouncedProfileSearch]);
+  }, [tab, searchCategory, debouncedProfileSearch, mediaRefreshKey]);
 
 
   useEffect(() => {
@@ -848,15 +978,25 @@ export default function App() {
       }));
       const avatarMap = new Map(avatarEntries.filter((entry): entry is NonNullable<typeof entry> => entry !== null));
       const hydrated = await Promise.all(visibleRows.map(async (row: any) => {
-        const { data } = await supabase!.storage.from('usay-media').createSignedUrl(row.media_path, 3600);
         const author = authors.get(row.user_id);
-        if (!data?.signedUrl || !author) return null;
+        if (!author) return null;
+        const preview = await resolveProfileMediaPreview({
+          media_type: row.post_type === 'video' ? 'video' : 'image',
+          original_name: null,
+          storage_path: row.media_path,
+        }, storagePath => supabase!.storage.from('usay-media').createSignedUrl(storagePath, 3600));
+        if (preview.media.unavailable) {
+          console.warn('Public feed media preview could not be created:', row.media_path, preview.errorMessage || 'Missing signed URL');
+        }
         return { ...row, author, authorAvatar: avatarMap.get(row.user_id) || null,
-          media: { uri: data.signedUrl, type: row.post_type === 'video' ? 'video' : 'image', storagePath: row.media_path } as Media,
+          media: preview.media as Media,
           like_count: 0, viewer_liked: false, comment_count: 0 } as FeedPost;
       }));
       if (!active) return;
       const valid = hydrated.filter((post): post is FeedPost => post !== null);
+      if (valid.some(post => post.media.unavailable)) {
+        Alert.alert('Some feed media unavailable', 'Some public post previews could not be opened. The posts remain in your feed; try refreshing later.');
+      }
       if (valid.length) {
         const [engagement, commentCounts, reactionsResult] = await Promise.all([
           supabase!.rpc('get_profile_post_engagement', { target_post_ids: valid.map(post => post.id) }),
@@ -884,7 +1024,7 @@ export default function App() {
     };
     void loadPublicFeed();
     return () => { active = false; };
-  }, [tab, postsRefreshKey]);
+  }, [tab, postsRefreshKey, mediaRefreshKey]);
 
   useEffect(() => {
     if (tab !== 'Live' || !supabase) return;
@@ -920,7 +1060,7 @@ export default function App() {
       active = false;
       void supabase?.removeChannel(channel);
     };
-  }, [tab]);
+  }, [tab, mediaRefreshKey]);
 
   useEffect(() => {
     if (!selectedProfile || !supabase) return;
@@ -947,12 +1087,18 @@ export default function App() {
       if (mediaResult.error) Alert.alert('Could not load profile media', mediaResult.error.message);
       const rows = (mediaResult.data || []) as CloudMediaRow[];
       const hydrated = await Promise.all(rows.map(async row => {
-        const { data, error } = await supabase!.storage.from('usay-media').createSignedUrl(row.storage_path, 60 * 60);
-        if (error || !data?.signedUrl) return null;
-        return { kind: row.kind, position: row.position, media: { uri: data.signedUrl, type: row.media_type, name: row.original_name || undefined, storagePath: row.storage_path } as Media };
+        const { media, errorMessage } = await resolveProfileMediaPreview(row, storagePath =>
+          supabase!.storage.from('usay-media').createSignedUrl(storagePath, 60 * 60));
+        if (media.unavailable) {
+          console.warn('Other profile media preview could not be created:', row.storage_path, errorMessage || 'Missing signed URL');
+        }
+        return { kind: row.kind, position: row.position, media: media as Media };
       }));
       if (!active) return;
-      const valid = hydrated.filter((item): item is NonNullable<typeof item> => item !== null);
+      if (hydrated.some(item => item.media.unavailable)) {
+        Alert.alert('Some profile media unavailable', 'Some saved photos or videos could not be previewed. Their gallery positions are preserved; try refreshing later.');
+      }
+      const valid = hydrated;
       setOtherProfileMedia({
         avatar: valid.find(item => item.kind === 'avatar')?.media || null,
         covers: valid.filter(item => item.kind === 'cover').sort((a,b) => a.position-b.position).map(item => item.media).slice(0,3),
@@ -961,12 +1107,21 @@ export default function App() {
       if (postsResult.error) Alert.alert('Could not load published posts', postsResult.error.message);
       const publishedRows = (postsResult.data || []).filter((row: any) => !!row.media_path);
       const publishedHydrated = await Promise.all(publishedRows.map(async (row: any) => {
-        const { data: signed, error: signedError } = await supabase!.storage.from('usay-media').createSignedUrl(row.media_path, 60 * 60);
-        if (signedError || !signed?.signedUrl) return null;
-        return { ...row, media: { uri: signed.signedUrl, type: row.post_type === 'video' ? 'video' : 'image', storagePath: row.media_path } as Media } as PublishedPost;
+        const preview = await resolveProfileMediaPreview({
+          media_type: row.post_type === 'video' ? 'video' : 'image',
+          original_name: null,
+          storage_path: row.media_path,
+        }, storagePath => supabase!.storage.from('usay-media').createSignedUrl(storagePath, 60 * 60));
+        if (preview.media.unavailable) {
+          console.warn('Other published post media URL could not be created:', row.media_path, preview.errorMessage || 'Missing signed URL');
+        }
+        return { ...row, media: preview.media as Media } as PublishedPost;
       }));
       if (!active) return;
-      const validPublishedPosts = publishedHydrated.filter((post): post is PublishedPost => post !== null);
+      const validPublishedPosts = publishedHydrated;
+      if (validPublishedPosts.some(post => post.media.unavailable)) {
+        Alert.alert('Some posts unavailable', 'Some published post previews could not be opened. The posts remain listed; try refreshing later.');
+      }
       if (validPublishedPosts.length) {
         const engagementResult = await supabase!.rpc('get_profile_post_engagement', { target_post_ids: validPublishedPosts.map(post => post.id) });
         if (!active) return;
@@ -995,7 +1150,7 @@ export default function App() {
     };
     loadOtherProfile();
     return () => { active = false; };
-  }, [selectedProfile?.id, followedUserIds]);
+  }, [selectedProfile?.id, followedUserIds, mediaRefreshKey]);
 
   const toggleFollow = async (profile: PublicProfile) => {
     if (!supabase || followBusyIds.includes(profile.id)) return;
@@ -1665,80 +1820,146 @@ export default function App() {
 
   const saveProfile = async () => {
     const client = supabase;
-    if (!client) {
-      Alert.alert('Cloud not configured', 'Connect Supabase before saving profile changes.');
+    if (!client || savingProfileLock.current) {
+      if (!client) Alert.alert('Cloud not configured', 'Connect Supabase before saving profile changes.');
       return;
     }
     const cleanName = name.trim();
     const cleanUsername = username.trim().replace(/[@#]/g, '').toLowerCase();
     const cleanWebsite = website.trim();
-    if (!cleanName || cleanName.length > 40) {
-      Alert.alert('Check display name', 'Enter a display name between 1 and 40 characters.');
-      return;
-    }
-    if (!/^[a-z0-9_]{3,25}$/.test(cleanUsername)) {
-      Alert.alert('Check username', 'Username must be 3–25 characters and use only lowercase letters, numbers, or underscores.');
-      return;
-    }
-    const normalizedUsername = cleanUsername.replace(/[^a-z0-9]/g, '');
-    const reservedUsernames = new Set(['meei', 'meeiapp', 'meeiofficial', 'meeisvip', 'svipteam', 'meeimoderation', 'meeimoderationteam', 'moderation', 'moderationteam']);
-    if (/^meei[0-9]+$/.test(normalizedUsername) || reservedUsernames.has(normalizedUsername)) {
-      Alert.alert('Username reserved', 'This username is reserved for the official MEEi or Moderation Team account. Please choose another username.');
-      return;
-    }
-    if (bio.trim().length > 300) {
-      Alert.alert('Bio too long', 'Your bio can contain up to 300 characters.');
-      return;
-    }
     const cleanBusinessName = businessName.trim();
     const cleanBusinessCategory = businessCategory.trim();
-    if (accountType === 'business' && (!cleanBusinessName || !cleanBusinessCategory)) {
-      Alert.alert('Business details required', 'Enter your business name and category before switching to a professional business account.');
-      return;
-    }
-    if (cleanBusinessName.length > 80 || cleanBusinessCategory.length > 60 || businessDescription.trim().length > 500) {
-      Alert.alert('Business details too long', 'Business name: 80 characters, category: 60, description: 500.');
-      return;
-    }
-    if (cleanWebsite && !/^(https?:\/\/)?([\w-]+\.)+[a-z]{2,}(\/[^\s]*)?$/i.test(cleanWebsite)) {
-      Alert.alert('Check website', 'Enter a valid website address.');
-      return;
-    }
-    const { data: authData, error: sessionError } = await client.auth.getSession();
-    if (sessionError) {
-      Alert.alert('Profile not saved', sessionError.message);
-      return;
-    }
-    const userId = authData.session?.user.id;
-    if (!userId) {
-      Alert.alert('Sign in required', 'Please sign in again before saving your profile.');
-      return;
-    }
-    const { error } = await client.from('profiles').update({
-      display_name: cleanName,
+    const validationError = validateProfile({
+      name: cleanName,
       username: cleanUsername,
-      bio: bio.trim(),
-      website_url: cleanWebsite || null,
-      profession_category: occupation.trim() || null,
-      account_type: accountType,
-      business_name: accountType === 'business' ? cleanBusinessName : null,
-      business_category: accountType === 'business' ? cleanBusinessCategory : null,
-      business_description: accountType === 'business' ? businessDescription.trim() || null : null,
-      is_private: isPrivateAccount,
-      country_code: homeCountryCode,
-      country_name: homeCountryName,
-      activity_status: activity.toLowerCase(),
-      updated_at: new Date().toISOString(),
-    }).eq('id', userId);
-    if (error) {
-      Alert.alert('Profile not saved', error.message);
+      bio,
+      accountType,
+      businessName: cleanBusinessName,
+      businessCategory: cleanBusinessCategory,
+      businessDescription,
+      website: cleanWebsite,
+    });
+    if (validationError) {
+      Alert.alert(validationError.title, validationError.message);
       return;
     }
-    setUsername(cleanUsername);
-    setHomeCountrySearch('');
-    setEditing(false);
-    Alert.alert('Profile saved', 'Your profile details have been saved.');
+    savingProfileLock.current = true;
+    setSavingProfile(true);
+    try {
+      const { data: authData, error: sessionError } = await client.auth.getSession();
+      if (sessionError) throw sessionError;
+      const userId = authData.session?.user.id;
+      if (!userId) throw new Error('Please sign in again before saving your profile.');
+      if (!isProfileSessionOwner(userId, loadedProfileUserId) || profileLoadStatus !== 'ready') {
+        if (userId !== loadedProfileUserId) setProfileLoadAttempt(value => value + 1);
+        throw new Error('Your signed-in account or profile changed. We are refreshing your profile; please review it before saving again.');
+      }
+      const updatePayload = buildProfileUpdate({
+        name: cleanName,
+        username: cleanUsername,
+        bio,
+        website: cleanWebsite,
+        occupation,
+        accountType,
+        businessName: cleanBusinessName,
+        businessCategory: cleanBusinessCategory,
+        businessDescription,
+        isPrivateAccount,
+        countryCode: homeCountryCode,
+        countryName: homeCountryName,
+        activity,
+      }, new Date().toISOString());
+      const { data: updatedProfile, error } = await client.from('profiles')
+        .update(updatePayload).eq('id', userId).select('id').maybeSingle();
+      if (error) throw error;
+      if (!updatedProfile) throw new Error('Your profile could not be found or updated. Please sign in again and retry.');
+      setUsername(cleanUsername);
+      setHomeCountrySearch('');
+      setEditing(false);
+      Alert.alert('Profile saved', 'Your profile details have been saved.');
+    } catch (error: any) {
+      Alert.alert('Profile not saved', error?.message || 'Please check your connection and try again.');
+    } finally {
+      savingProfileLock.current = false;
+      setSavingProfile(false);
+    }
   };
+
+  const refreshOwnMediaGallery = async (
+    client: NonNullable<typeof supabase>,
+    userId: string,
+    kind: 'avatar' | 'cover' | 'post',
+    shouldApply: () => boolean = () => true
+  ) => {
+    const { data: rows, error } = await client.from('profile_media')
+      .select('id, kind, position, storage_path, media_type, original_name')
+      .eq('user_id', userId).eq('kind', kind).order('position', { ascending: true });
+    if (error) throw error;
+    const hydrated = await Promise.all(((rows || []) as CloudMediaRow[]).map(async row => {
+      const { media, errorMessage: signedError } = await resolveProfileMediaPreview(row, storagePath =>
+        client.storage.from('usay-media').createSignedUrl(storagePath, 60 * 60));
+      if (media.unavailable) {
+        console.warn('Profile media preview could not be refreshed:', row.storage_path, signedError || 'Missing signed URL');
+      }
+      return { position: row.position, media: media as Media };
+    }));
+    // Re-check the authenticated owner after the asynchronous media lookups.
+    // A session switch must never apply one account's gallery to another account.
+    const { data: sessionData, error: sessionError } = await client.auth.getSession();
+    if (sessionError) throw sessionError;
+    if (sessionData.session?.user.id !== userId || !isProfileSessionOwner(userId, loadedProfileUserId)) {
+      throw new Error('The signed-in account or loaded profile changed while media was refreshing. Please reload your profile and try again.');
+    }
+    // A refresh may finish after the account or visible tab changes. Callers
+    // can invalidate the result so stale signed URLs never overwrite new state.
+    if (shouldApply()) {
+      if (kind === 'avatar') setAvatar(hydrated[0]?.media || null);
+      if (kind === 'cover') setCovers(hydrated.map(item => item.media).slice(0, 3));
+      if (kind === 'post') setPosts(hydrated.map(item => item.media).slice(0, 3));
+    }
+    return (rows || []) as CloudMediaRow[];
+  };
+
+  useEffect(() => {
+    if (!supabase || !currentUserId || tab !== 'Profile' || mediaRefreshKey === 0) return;
+    let active = true;
+    const userId = currentUserId;
+    const client = supabase;
+    const shouldApply = () => active && currentUserId === userId && tab === 'Profile';
+    const refreshOwnGalleries = async () => {
+      const results = await Promise.allSettled((['avatar', 'cover', 'post'] as const).map(kind =>
+        refreshOwnMediaGallery(client, userId, kind, shouldApply)
+      ));
+      results.forEach((result, index) => {
+        if (result.status === 'rejected') {
+          console.warn('Profile media URL refresh failed:', ['avatar', 'cover', 'post'][index], result.reason);
+        }
+      });
+    };
+    void refreshOwnGalleries();
+    return () => { active = false; };
+  }, [currentUserId, tab, mediaRefreshKey]);
+
+  useEffect(() => {
+    if (!supabase || mediaRefreshKey === 0 || !viewer?.storagePath) return;
+    let active = true;
+    const client = supabase;
+    const media = viewer;
+    const refreshOpenViewer = async () => {
+      const { media: refreshed, errorMessage } = await resolveProfileMediaPreview({
+        storage_path: media.storagePath!,
+        media_type: media.type,
+        original_name: media.name || null,
+      }, storagePath => client.storage.from('usay-media').createSignedUrl(storagePath, 60 * 60));
+      if (!active || viewer !== media) return;
+      if (refreshed.unavailable) {
+        console.warn('Open media viewer URL could not be refreshed:', media.storagePath, errorMessage || 'Missing signed URL');
+      }
+      setViewer(refreshed as Media);
+    };
+    void refreshOpenViewer();
+    return () => { active = false; };
+  }, [mediaRefreshKey]);
 
   const chooseMedia = async (kind: 'avatar' | 'cover' | 'post', index?: number) => {
     if (kind === 'cover' && covers.length >= 3 && index === undefined) {
@@ -1749,79 +1970,157 @@ export default function App() {
       Alert.alert('Posts gallery full', 'You can add up to 3 post media files.');
       return;
     }
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) {
-      Alert.alert('Permission needed', 'Allow MEEi to access your phone gallery.');
+
+    // Hold the gallery lock from before opening the picker until the upload is
+    // fully saved/cleaned up, so removal/reordering cannot stale the target slot.
+    const galleryLockKey = `${kind}:gallery`;
+    if (mediaUploadLocks.current.has(galleryLockKey) ||
+        Array.from(mediaUploadLocks.current).some(key => key.startsWith(`${kind}:`))) {
+      Alert.alert('Gallery update in progress', 'Please wait for the current gallery update to finish.');
       return;
     }
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: kind === 'avatar' ? ['images'] : ['images', 'videos'],
-      allowsEditing: kind === 'avatar',
-      aspect: kind === 'avatar' ? [1, 1] : undefined,
-      quality: 0.85,
-      videoMaxDuration: 60,
-    });
-    if (result.canceled || !result.assets?.[0]) return;
-    const a = result.assets[0];
-    const type = a.type === 'video' ? 'video' : 'image';
-    if (type === 'video' && typeof a.fileSize === 'number' && a.fileSize > 50 * 1024 * 1024) {
-      Alert.alert('Video size limit', 'Please choose a video that is 50 MB or smaller.');
-      return;
-    }
-    const client = supabase;
-    if (!client) {
-      Alert.alert('Cloud not configured', 'Connect Supabase before uploading profile media.');
-      return;
-    }
-    const { data: authData } = await client.auth.getSession();
-    const userId = authData.session?.user.id;
-    if (!userId) {
-      Alert.alert('Sign in required', 'Please sign in before uploading profile media.');
-      return;
-    }
+    mediaUploadLocks.current.add(galleryLockKey);
+
+    let uploadedStoragePath: string | null = null;
+    let mediaMetadataSaved = false;
     try {
+      let targetPosition = 0;
+      let result: Awaited<ReturnType<typeof ImagePicker.launchImageLibraryAsync>>;
+      try {
+        const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (!permission.granted) {
+          Alert.alert('Permission needed', 'Allow MEEi to access your phone gallery.');
+          return;
+        }
+        result = await ImagePicker.launchImageLibraryAsync({
+          mediaTypes: kind === 'avatar' ? ['images'] : ['images', 'videos'],
+          allowsEditing: kind === 'avatar',
+          aspect: kind === 'avatar' ? [1, 1] : undefined,
+          quality: 0.85,
+          videoMaxDuration: 60,
+        });
+      } catch (error: any) {
+        Alert.alert('Could not open gallery', error?.message || 'Please check your gallery permission and try again.');
+        return;
+      }
+      if (result.canceled || !result.assets?.[0]) return;
+      const a = result.assets[0];
+      const type = a.type === 'video' ? 'video' : 'image';
+      if (typeof a.fileSize === 'number' && a.fileSize > 50 * 1024 * 1024) {
+        Alert.alert('File size limit', 'Please choose a photo or video that is 50 MB or smaller.');
+        return;
+      }
+      setUploadingMediaKinds(old => ({ ...old, [kind]: true }));
+      const client = supabase;
+      if (!client) {
+        Alert.alert('Cloud not configured', 'Connect Supabase before uploading profile media.');
+        return;
+      }
+      const { data: authData, error: sessionError } = await client.auth.getSession();
+      if (sessionError) throw sessionError;
+      const userId = authData.session?.user.id;
+      if (!userId) {
+        Alert.alert('Sign in required', 'Please sign in before uploading profile media.');
+        return;
+      }
+      if (!isProfileSessionOwner(userId, currentUserId) || profileLoadStatus !== 'ready') {
+        if (userId !== currentUserId) setProfileLoadAttempt(value => value + 1);
+        throw new Error('Your signed-in account or profile changed. Please wait for your profile to refresh before uploading media.');
+      }
+      const existingRows = kind === 'avatar' ? [] : await refreshOwnMediaGallery(client, userId, kind);
+      if (kind === 'avatar') {
+        targetPosition = 0;
+      } else {
+        const orderedPositions = existingRows.map(row => row.position);
+        const visibleMedia = index === undefined ? undefined : (kind === 'cover' ? covers[index] : posts[index]);
+        const visibleRow = visibleMedia?.storagePath
+          ? existingRows.find(row => row.storage_path === visibleMedia.storagePath)
+          : undefined;
+        if (index !== undefined && !visibleRow) {
+          throw new Error('This gallery item could not be matched to its saved record. Refresh your profile and try again.');
+        }
+        targetPosition = visibleRow?.position ?? [0, 1, 2].find(position => !orderedPositions.includes(position)) ?? -1;
+        if (targetPosition < 0) {
+          Alert.alert('Gallery full', 'Remove an existing item before adding another.');
+          return;
+        }
+      }
+
       const mimeType = a.mimeType || (type === 'video' ? 'video/mp4' : 'image/jpeg');
       const extension = mimeType.split('/')[1]?.replace('jpeg', 'jpg').split(';')[0] || (type === 'video' ? 'mp4' : 'jpg');
       const fileResponse = await fetch(a.uri);
       if (!fileResponse.ok) throw new Error('Could not read the selected media from this device.');
       const fileData = await fileResponse.arrayBuffer();
+      if (fileData.byteLength > 50 * 1024 * 1024) throw new Error('Photo or video must be 50 MB or smaller.');
       const storagePath = `${userId}/${kind}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${extension}`;
       const { error: uploadError } = await client.storage.from('usay-media').upload(storagePath, fileData, {
         contentType: mimeType,
         upsert: false,
       });
       if (uploadError) throw uploadError;
+      uploadedStoragePath = storagePath;
 
-      const position = kind === 'avatar' ? 0 : (index ?? (kind === 'cover' ? covers.length : posts.length));
-      const { data: previous } = await client.from('profile_media')
-        .select('storage_path').eq('user_id', userId).eq('kind', kind).eq('position', position).maybeSingle();
-      const { error: saveError } = await client.from('profile_media').upsert({
-        user_id: userId,
-        kind,
-        position,
-        storage_path: storagePath,
-        media_type: type,
-        original_name: a.fileName ?? null,
-        updated_at: new Date().toISOString(),
-      }, { onConflict: 'user_id,kind,position' });
-      if (saveError) {
-        await client.storage.from('usay-media').remove([storagePath]);
-        throw saveError;
-      }
-      if (previous?.storage_path) await client.storage.from('usay-media').remove([previous.storage_path]);
       const { data: signed, error: signedError } = await client.storage.from('usay-media').createSignedUrl(storagePath, 60 * 60);
       if (signedError || !signed?.signedUrl) throw signedError || new Error('Could not create a media preview URL.');
-      const media: Media = { uri: signed.signedUrl, type, name: a.fileName ?? undefined, size: a.fileSize ?? undefined, storagePath };
-      if (kind === 'avatar') setAvatar(media);
-      if (kind === 'cover') setCovers(old => index === undefined
-        ? [...old, media].slice(0, 3)
-        : old.map((m, i) => i === index ? media : m));
-      if (kind === 'post') setPosts(old => index === undefined
-        ? [...old, media].slice(0, 3)
-        : old.map((m, i) => i === index ? media : m));
+
+      const { data: previous, error: previousError } = await client.from('profile_media')
+        .select('storage_path').eq('user_id', userId).eq('kind', kind).eq('position', targetPosition).maybeSingle();
+      if (previousError) throw previousError;
+
+      const mediaRecord = {
+        user_id: userId,
+        kind,
+        position: targetPosition,
+        storage_path: storagePath,
+        media_type: type as 'image' | 'video',
+        original_name: a.fileName ?? null,
+        updated_at: new Date().toISOString(),
+      };
+      if (previous?.storage_path) {
+        // Compare-and-swap the exact row we inspected. If another device changed
+        // this slot meanwhile, do not overwrite its newer media.
+        const { data: replacedRow, error: replaceError } = await client.from('profile_media')
+          .update(buildProfileMediaUpdate(mediaRecord)).eq('user_id', userId).eq('kind', kind)
+          .eq('position', targetPosition).eq('storage_path', previous.storage_path)
+          .select('id').maybeSingle();
+        if (replaceError) throw replaceError;
+        if (!replacedRow) throw new Error('This gallery slot changed on another device. Refresh your profile and try again.');
+      } else {
+        // Insert-only for an empty slot: a concurrent upload must hit the unique
+        // slot constraint instead of silently replacing another device's upload.
+        const { data: insertedRow, error: insertError } = await client.from('profile_media')
+          .insert(mediaRecord).select('id').maybeSingle();
+        if (insertError) throw insertError;
+        if (!insertedRow) throw new Error('Your media could not be saved. Please refresh and try again.');
+      }
+      mediaMetadataSaved = true;
+
+      if (previous?.storage_path) {
+        const { error: cleanupError } = await client.storage.from('usay-media').remove([previous.storage_path]);
+        if (cleanupError) console.warn('Previous profile media cleanup failed:', cleanupError.message);
+      }
+      await refreshOwnMediaGallery(client, userId, kind);
       Alert.alert('Uploaded', 'Your media is now saved to your MEEi account.');
     } catch (error: any) {
-      Alert.alert('Upload failed', error?.message || 'Please try again.');
+      if (mediaMetadataSaved) {
+        Alert.alert('Media saved', 'Your media was saved, but the gallery could not refresh. Reopen your profile to see the latest version.');
+      } else {
+        Alert.alert('Upload failed', error?.message || 'Please try again.');
+      }
+    } finally {
+      if (uploadedStoragePath && !mediaMetadataSaved) {
+        try {
+          const client = supabase;
+          if (client) {
+            const { error: cleanupError } = await client.storage.from('usay-media').remove([uploadedStoragePath]);
+            if (cleanupError) console.warn('Failed profile upload left an orphaned storage file:', cleanupError.message);
+          }
+        } catch (cleanupError: any) {
+          console.warn('Failed profile upload cleanup threw an error:', cleanupError?.message || cleanupError);
+        }
+      }
+      mediaUploadLocks.current.delete(galleryLockKey);
+      setUploadingMediaKinds(old => ({ ...old, [kind]: false }));
     }
   };
 
@@ -1829,36 +2128,89 @@ export default function App() {
     const client = supabase;
     const media = kind === 'cover' ? covers[index] : posts[index];
     if (!client || !media) return;
-    const { data: authData } = await client.auth.getSession();
-    const userId = authData.session?.user.id;
-    if (!userId) return;
-    const { error } = await client.from('profile_media').delete()
-      .eq('user_id', userId).eq('kind', kind).eq('position', index);
-    if (error) {
-      Alert.alert('Could not remove media', error.message);
+
+    const galleryLockKey = `${kind}:gallery`;
+    const hasGalleryMutation = Array.from(mediaUploadLocks.current).some(key => key.startsWith(`${kind}:`));
+    if (hasGalleryMutation) {
+      Alert.alert('Gallery update in progress', 'Please wait for the current media update to finish.');
       return;
     }
-    if (media.storagePath) await client.storage.from('usay-media').remove([media.storagePath]);
-    if (kind === 'cover') {
-      const next = covers.filter((_, i) => i !== index);
-      setCovers(next);
+    mediaUploadLocks.current.add(galleryLockKey);
+    try {
+      const { data: authData, error: sessionError } = await client.auth.getSession();
+      if (sessionError) throw sessionError;
+      const userId = authData.session?.user.id;
+      if (!userId) {
+        Alert.alert('Session expired', 'Please sign in again before removing media.');
+        return;
+      }
+      if (!isProfileSessionOwner(userId, currentUserId) || profileLoadStatus !== 'ready') {
+        if (userId !== currentUserId) setProfileLoadAttempt(value => value + 1);
+        throw new Error('Your signed-in account or profile changed. Please wait for your profile to refresh before removing media.');
+      }
+
+      // Remove the owned metadata row first; storage cleanup must never run before this succeeds.
+      if (!media.storagePath) throw new Error('This media item has no saved storage reference. Refresh your profile and try again.');
+      const { data: deletedRow, error: deleteError } = await client.from('profile_media').delete()
+        .eq('user_id', userId).eq('kind', kind).eq('storage_path', media.storagePath)
+        .select('id').maybeSingle();
+      if (deleteError) throw deleteError;
+      if (!deletedRow) throw new Error('This media item was already changed. Refresh your profile and try again.');
+
+      let storageCleanupFailed = false;
+      if (media.storagePath) {
+        const { error: storageError } = await client.storage.from('usay-media').remove([media.storagePath]);
+        if (storageError) {
+          storageCleanupFailed = true;
+          console.warn('Removed profile media metadata but storage cleanup failed:', storageError.message);
+        }
+      }
+
+      const currentItems = kind === 'cover' ? covers : posts;
+      const next = currentItems.filter((_, i) => i !== index);
+      if (kind === 'cover') setCovers(next);
+      else setPosts(next);
+
+      // Do not compact across an item whose preview failed: its database row
+      // still occupies a slot even though the media cannot currently be opened.
+      if (next.some(item => item.unavailable)) {
+        const cleanupNote = storageCleanupFailed
+          ? ' Its old storage file could not be cleaned up.'
+          : '';
+        Alert.alert(
+          'Media removed',
+          'The selected item was removed. Other saved items were left in their existing slots because one or more previews are unavailable.' + cleanupNote
+        );
+        return;
+      }
+
+      // Compact positions from left to right so each destination slot is already free.
       for (let position = 0; position < next.length; position++) {
         const item = next[position];
+        if (!item.storagePath) continue;
         const { error: reorderError } = await client.from('profile_media')
           .update({ position, updated_at: new Date().toISOString() })
-          .eq('user_id', userId).eq('kind', 'cover').eq('storage_path', item.storagePath || '');
-        if (reorderError) Alert.alert('Gallery update warning', reorderError.message);
+          .eq('user_id', userId).eq('kind', kind).eq('storage_path', item.storagePath);
+        if (reorderError) {
+          console.warn('Profile media position update failed:', reorderError.message);
+          try {
+            await refreshOwnMediaGallery(client, userId, kind);
+          } catch (refreshError: any) {
+            console.warn('Profile media gallery refresh failed:', refreshError?.message || refreshError);
+            Alert.alert('Gallery needs refresh', 'The media was removed, but the latest gallery could not be loaded. Please reopen your profile before making another change.');
+          }
+          Alert.alert('Gallery update warning', 'The media was removed, but some positions could not be compacted. The gallery has been reloaded; please retry after checking it.');
+          break;
+        }
       }
-    } else {
-      const next = posts.filter((_, i) => i !== index);
-      setPosts(next);
-      for (let position = 0; position < next.length; position++) {
-        const item = next[position];
-        const { error: reorderError } = await client.from('profile_media')
-          .update({ position, updated_at: new Date().toISOString() })
-          .eq('user_id', userId).eq('kind', 'post').eq('storage_path', item.storagePath || '');
-        if (reorderError) Alert.alert('Gallery update warning', reorderError.message);
+
+      if (storageCleanupFailed) {
+        Alert.alert('Media removed', 'The media was removed from your profile, but its old storage file could not be cleaned up.');
       }
+    } catch (error: any) {
+      Alert.alert('Could not remove media', error?.message || 'Please try again.');
+    } finally {
+      mediaUploadLocks.current.delete(galleryLockKey);
     }
   };
 
@@ -1867,25 +2219,36 @@ export default function App() {
     import('react-native').then(({ Linking }) => Linking.openURL(url).catch(() => Alert.alert('Website', 'This website link could not be opened.')));
   };
 
-  const MediaTile = ({ media, onPress, onRemove, label }: {
-    media?: Media; onPress: () => void; onRemove?: () => void; label: string;
+  const MediaTile = ({ media, onPress, onRemove, label, uploading = false }: {
+    media?: Media; onPress: () => void; onRemove?: () => void; label: string; uploading?: boolean;
   }) => (
-    <Pressable onPress={media ? () => setViewer(media) : onPress} style={s.tile}>
-      {media?.type === 'image'
-        ? <Image source={{ uri: media.uri }} style={s.tileImage} />
-        : media?.type === 'video'
-          ? <View style={s.videoTile}><Ionicons name="play-circle" size={30} color={C.cyan} /><Text style={s.videoText}>VIDEO</Text></View>
-          : <><Ionicons name="add-circle-outline" size={25} color={C.cyan} /><Text style={s.tileLabel}>{label}</Text></>}
-      {media && onRemove ? <Pressable onPress={onRemove} style={s.remove}><Ionicons name="close" size={14} color="#fff" /></Pressable> : null}
+    <Pressable disabled={uploading} onPress={media && !media.unavailable ? () => setViewer(media) : onPress} style={s.tile}>
+      {media?.unavailable
+        ? <View style={s.videoTile}><Ionicons name="alert-circle-outline" size={26} color={C.cyan} /><Text style={s.videoText}>PREVIEW UNAVAILABLE</Text></View>
+        : media?.type === 'image'
+          ? <Image source={{ uri: media.uri }} style={s.tileImage} />
+          : media?.type === 'video'
+            ? <View style={s.videoTile}><Ionicons name="play-circle" size={30} color={C.cyan} /><Text style={s.videoText}>VIDEO</Text></View>
+            : <><Ionicons name="add-circle-outline" size={25} color={C.cyan} /><Text style={s.tileLabel}>{label}</Text></>}
+      {media && onRemove && !uploading ? <Pressable onPress={onRemove} style={s.remove}><Ionicons name="close" size={14} color="#fff" /></Pressable> : null}
+      {uploading && <View style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, borderRadius: 12, backgroundColor: 'rgba(8,18,30,0.72)', alignItems: 'center', justifyContent: 'center', gap: 7 }}>
+        <ActivityIndicator size="small" color="#FFFFFF" />
+        <Text style={{ color: '#FFFFFF', fontSize: 11, fontWeight: '700' }}>Uploading…</Text>
+      </View>}
     </Pressable>
   );
 
   const PublishedPostTile = ({ post, onPress, onLike, onComments }: { post: PublishedPost; onPress: () => void; onLike: () => void; onComments: () => void }) => (
     <View style={s.publishedTile}>
-      <Pressable onPress={onPress}>
-        {post.media.type === 'image'
-          ? <Image source={{ uri: post.media.uri }} style={s.publishedImage} />
-          : <View style={s.publishedVideo}><Ionicons name="play-circle" size={34} color="#FFFFFF"/><Text style={s.videoText}>VIDEO</Text></View>}
+      <Pressable disabled={!!post.media.unavailable} onPress={onPress}>
+        {post.media.unavailable
+          ? <View style={[s.publishedVideo, { backgroundColor: C.panel, alignItems: 'center', justifyContent: 'center' }]}>
+              <Ionicons name="alert-circle-outline" size={28} color={C.muted}/>
+              <Text style={[s.videoText, { color: C.muted }]}>PREVIEW UNAVAILABLE</Text>
+            </View>
+          : post.media.type === 'image'
+            ? <Image source={{ uri: post.media.uri }} style={s.publishedImage} />
+            : <View style={s.publishedVideo}><Ionicons name="play-circle" size={34} color="#FFFFFF"/><Text style={s.videoText}>VIDEO</Text></View>}
       </Pressable>
       {!!post.caption && <Text style={s.publishedCaption} numberOfLines={2}>{post.caption}</Text>}
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
@@ -1910,17 +2273,19 @@ export default function App() {
       <View style={s.top}><Text style={s.pageTitle}>MEEi</Text></View>
       <Animated.View style={[s.identity, { paddingTop: coverRevealProgress.interpolate({ inputRange: [0, 1], outputRange: [92, 282] }) }]}>
         <Animated.View style={[s.coverBackdrop, { height: coverRevealProgress.interpolate({ inputRange: [0, 1], outputRange: [235, 450] }) }]}>
-          {covers[0]?.type === 'image' ? <Image source={{uri:covers[0].uri}} style={s.coverBackdropImage}/> :
-            covers[0]?.type === 'video' ? <ProfileCoverVideo uri={covers[0].uri} /> :
+          {covers[0]?.type === 'image' && !covers[0]?.unavailable ? <Image source={{uri:covers[0].uri}} style={s.coverBackdropImage}/> :
+            covers[0]?.type === 'video' && !covers[0]?.unavailable ? <ProfileCoverVideo uri={covers[0].uri} /> :
             <View style={s.coverBackdropEmpty}/>}
           <View style={s.coverBackdropShade}/>
-          {isOwnProfile && <Pressable onPress={() => chooseMedia('cover')} style={s.coverEdit}><Ionicons name="camera" size={15} color="#FFFFFF"/></Pressable>}
+          {isOwnProfile && <Pressable disabled={uploadingMediaKinds.cover} onPress={() => chooseMedia('cover')} style={s.coverEdit}>{uploadingMediaKinds.cover ? <ActivityIndicator size="small" color="#FFFFFF"/> : <Ionicons name="camera" size={15} color="#FFFFFF"/>}</Pressable>}
+          {isOwnProfile && uploadingMediaKinds.cover && <View pointerEvents="none" style={{ position: 'absolute', left: 0, right: 0, bottom: 18, alignItems: 'center' }}><View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: 'rgba(8,18,30,0.76)', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20 }}><ActivityIndicator size="small" color="#FFFFFF"/><Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '700' }}>Uploading cover…</Text></View></View>}
           {!!covers.length && <Pressable onPress={() => setCoverExpanded(true)} style={s.coverViewTap}/>}
         </Animated.View>
         <Animated.View {...avatarPan.panHandlers}>
-        <Pressable onPress={() => isOwnProfile ? chooseMedia('avatar') : undefined} style={s.avatarWrap}>
-          {avatar ? <Image source={{uri:avatar.uri}} style={s.avatar} /> : <View style={s.avatarFallback}><Ionicons name="person" size={38} color={C.cyan}/></View>}
-          {isOwnProfile && <View style={s.camera}><Ionicons name="camera" size={13} color="#fff"/></View>}
+        <Pressable disabled={uploadingMediaKinds.avatar} onPress={() => isOwnProfile ? chooseMedia('avatar') : undefined} style={s.avatarWrap}>
+          {avatar && !avatar.unavailable ? <Image source={{uri:avatar.uri}} style={s.avatar} /> : <View style={s.avatarFallback}><Ionicons name="person" size={38} color={C.cyan}/></View>}
+          {isOwnProfile && <View style={s.camera}>{uploadingMediaKinds.avatar ? <ActivityIndicator size="small" color="#FFFFFF"/> : <Ionicons name="camera" size={13} color="#fff"/>}</View>}
+          {isOwnProfile && uploadingMediaKinds.avatar && <View pointerEvents="none" style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, borderRadius: 60, backgroundColor: 'rgba(8,18,30,0.58)', alignItems: 'center', justifyContent: 'center' }}><ActivityIndicator size="large" color="#FFFFFF"/><Text style={{ color: '#FFFFFF', fontSize: 10, fontWeight: '700', marginTop: 5 }}>Uploading</Text></View>}
         </Pressable>
         </Animated.View>
         <View style={s.nameLine}><Text style={s.name}>{name}</Text></View>
@@ -1976,7 +2341,7 @@ export default function App() {
         </View>
         {!!posts.length && <View style={s.section}>
           <View style={s.sectionHeading}><Text style={s.sectionTitle}>Featured media</Text><Text style={s.coverCount}>{posts.length}/3</Text></View>
-          <View style={s.mediaRow}>{[0,1,2].map(i => <MediaTile key={i} label="Add media" media={posts[i]} onPress={() => chooseMedia('post', i)} onRemove={posts[i] ? () => removeMedia('post', i) : undefined}/>)}</View>
+          <View style={s.mediaRow}>{[0,1,2].map(i => <MediaTile key={i} label="Add media" media={posts[i]} onPress={() => chooseMedia('post', i)} onRemove={posts[i] ? () => removeMedia('post', i) : undefined} uploading={uploadingMediaKinds.post}/>)}</View>
         </View>}
         <View style={s.section}>
           <Text style={s.sectionTitle}>About</Text>
@@ -2010,14 +2375,19 @@ export default function App() {
       </View>
       <View style={s.identity}>
 <Animated.View style={[s.coverBackdrop, { height: coverRevealProgress.interpolate({ inputRange: [0, 1], outputRange: [190, 420] }) }]}>
-          {otherProfileMedia.covers[0]?.type === 'image' ? <Image source={{uri:otherProfileMedia.covers[0].uri}} style={s.coverBackdropImage}/> :
-            otherProfileMedia.covers[0]?.type === 'video' ? <ProfileCoverVideo uri={otherProfileMedia.covers[0].uri} /> : <View style={s.coverBackdropEmpty}/>}
+          {otherProfileMedia.covers[0] && !otherProfileMedia.covers[0].unavailable && !!otherProfileMedia.covers[0].uri
+            ? otherProfileMedia.covers[0].type === 'image'
+              ? <Image source={{uri:otherProfileMedia.covers[0].uri}} style={s.coverBackdropImage}/>
+              : <ProfileCoverVideo uri={otherProfileMedia.covers[0].uri} />
+            : <View style={s.coverBackdropEmpty}/>}
           <View style={s.coverBackdropShade}/>
           {!!otherProfileMedia.covers.length && <Pressable onPress={() => setOtherCoverExpanded(true)} style={s.coverViewTap}/>}
         </Animated.View>
         <Animated.View {...avatarPan.panHandlers} style={{ transform: [{ translateY: avatarDrag }] }}>
-        <Pressable onPress={() => otherProfileMedia.avatar && setViewer(otherProfileMedia.avatar)} style={s.avatarWrap}>
-          {otherProfileMedia.avatar ? <Image source={{uri:otherProfileMedia.avatar.uri}} style={s.avatar}/> : <View style={s.avatarFallback}><Ionicons name="person" size={38} color={C.cyan}/></View>}
+        <Pressable onPress={() => otherProfileMedia.avatar && !otherProfileMedia.avatar.unavailable && !!otherProfileMedia.avatar.uri && setViewer(otherProfileMedia.avatar)} style={s.avatarWrap}>
+          {otherProfileMedia.avatar && !otherProfileMedia.avatar.unavailable && !!otherProfileMedia.avatar.uri
+            ? <Image source={{uri:otherProfileMedia.avatar.uri}} style={s.avatar}/>
+            : <View style={s.avatarFallback}><Ionicons name="person" size={38} color={C.cyan}/></View>}
         </Pressable>
         </Animated.View>
         <View style={s.nameLine}><Text style={s.name}>{selectedProfile.display_name}</Text></View>
@@ -2065,8 +2435,31 @@ export default function App() {
   };
 
 
-  const PublicFeedScreen = () => (
-    <ScrollView contentContainerStyle={s.feedScroll} showsVerticalScrollIndicator={false}>
+  const PublicFeedScreen = () => {
+    const [viewportHeight, setViewportHeight] = useState(0);
+    const [feedScrollY, setFeedScrollY] = useState(0);
+    const [feedPostTops, setFeedPostTops] = useState<Record<string, number>>({});
+    const [videoVisibility, setVideoVisibility] = useState<Record<string, number>>({});
+    const reportVideoVisibility = useCallback((id: string, ratio: number) => {
+      setVideoVisibility(previous => {
+        if (previous[id] === ratio) return previous;
+        if (ratio <= 0) {
+          if (!(id in previous)) return previous;
+          const next = { ...previous };
+          delete next[id];
+          return next;
+        }
+        return { ...previous, [id]: ratio };
+      });
+    }, []);
+    const activeVideoId = selectActiveVideo(videoVisibility);
+    return <ScrollView
+      contentContainerStyle={s.feedScroll}
+      showsVerticalScrollIndicator={false}
+      scrollEventThrottle={16}
+      onLayout={event => setViewportHeight(event.nativeEvent.layout.height)}
+      onScroll={event => setFeedScrollY(event.nativeEvent.contentOffset.y)}
+    >
       <View style={s.feedHeader}>
         <View><Text style={s.pageTitle}>MEEi</Text><Text style={s.searchSubtitle}>Your community, your feed</Text></View>
         <Pressable style={s.searchHeaderIcon} onPress={() => setTab('Search')}><Ionicons name="search" size={20} color={C.cyan}/></Pressable>
@@ -2078,7 +2471,11 @@ export default function App() {
       </View>
       {loadingFeed ? <View style={s.searchEmpty}><Text style={s.hint}>Loading your feed…</Text></View> :
         feedPosts.length === 0 ? <View style={s.searchEmpty}><Ionicons name="newspaper-outline" size={38} color={C.cyan}/><Text style={s.sectionTitle}>Your feed is ready</Text><Text style={s.hint}>Public posts from creators will appear here.</Text><Pressable onPress={() => setTab('Search')} style={[s.primary,{paddingHorizontal:22,flex:0}]}><Text style={s.primaryText}>Discover creators</Text></Pressable></View> :
-        feedPosts.map(post => <View key={post.id} style={s.feedPost}>
+        feedPosts.map(post => <View
+          key={post.id}
+          style={s.feedPost}
+          onLayout={event => setFeedPostTops(old => ({ ...old, [post.id]: event.nativeEvent.layout.y }))}
+        >
           <View style={s.feedPostHeader}>
             <Pressable style={{flexDirection:'row',alignItems:'center',gap:10,flex:1}} onPress={() => setSelectedProfile(post.author)}>
               <View style={s.personAvatar}>{post.authorAvatar?.type === 'image' ? <Image source={{uri:post.authorAvatar.uri}} style={{width:'100%',height:'100%',borderRadius:24}}/> : <Ionicons name="person" size={21} color={C.cyan}/>}</View>
@@ -2092,8 +2489,22 @@ export default function App() {
             ])} style={{padding:8}}><Ionicons name="ellipsis-horizontal" size={21} color={C.text}/></Pressable>
           </View>
           {!!post.caption && <Text style={s.feedCaption}>{post.caption}</Text>}
-          {post.post_type === 'video' ? <FeedVideoMedia uri={post.media.uri} onPress={() => setViewer(post.media)}/> :
-            <Pressable onPress={() => setViewer(post.media)}><Image source={{uri:post.media.uri}} style={s.feedMedia} resizeMode="cover"/></Pressable>}
+          {post.media.unavailable
+            ? <View style={[s.feedMedia, { minHeight: 180, backgroundColor: C.panel, alignItems: 'center', justifyContent: 'center' }]}>
+                <Ionicons name="alert-circle-outline" size={30} color={C.muted}/>
+                <Text style={[s.videoText, { color: C.muted }]}>PREVIEW UNAVAILABLE</Text>
+              </View>
+            : post.post_type === 'video' ? <FeedVideoMedia
+                id={post.id}
+                uri={post.media.uri}
+                onPress={() => setViewer(post.media)}
+                postTop={feedPostTops[post.id] ?? -1}
+                scrollY={feedScrollY}
+                viewportHeight={viewportHeight}
+                active={activeVideoId === post.id}
+                onVisibilityChange={reportVideoVisibility}
+              /> :
+                <Pressable onPress={() => setViewer(post.media)}><Image source={{uri:post.media.uri}} style={s.feedMedia} resizeMode="cover"/></Pressable>}
           <View style={s.feedActions}>
             <Pressable onPress={() => void togglePublishedPostLike(post,false)} style={s.feedAction}><Ionicons name={post.viewer_liked?'heart':'heart-outline'} size={23} color={post.viewer_liked?'#E64D72':C.text}/><Text style={s.feedActionText}>{post.like_count}</Text></Pressable>
             <Pressable onPress={() => openPostComments(post)} style={s.feedAction}><Ionicons name="chatbubble-outline" size={21} color={C.text}/><Text style={s.feedActionText}>{post.comment_count}</Text></Pressable>
@@ -2109,10 +2520,27 @@ export default function App() {
             {Object.entries(postReactionSummaries[post.id]?.counts || {}).sort((a,b) => b[1]-a[1]).slice(0,4).map(([emoji,count]) => <Pressable key={emoji} onPress={() => setReactionPostId(post.id)} style={{ flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 7, paddingVertical: 4, borderRadius: 13, backgroundColor: postReactionSummaries[post.id]?.mine === emoji ? '#E7F4FF' : '#F7F9FB', borderWidth: postReactionSummaries[post.id]?.mine === emoji ? 1 : 0, borderColor: '#9DD6F4' }}><Text style={{ fontSize: 14 }}>{emoji}</Text><Text style={{ color: C.muted, fontSize: 10, fontWeight: '700' }}>{count}</Text></Pressable>)}
           </View>
         </View>)}
-    </ScrollView>
-  );
+    </ScrollView>;
+  };
 
   const DiscoverScreen = () => {
+    const [viewportHeight, setViewportHeight] = useState(0);
+    const [scrollY, setScrollY] = useState(0);
+    const [reelsGridTop, setReelsGridTop] = useState(0);
+    const [videoVisibility, setVideoVisibility] = useState<Record<string, number>>({});
+    const reportVideoVisibility = useCallback((id: string, ratio: number) => {
+      setVideoVisibility(previous => {
+        if (previous[id] === ratio) return previous;
+        if (ratio <= 0) {
+          if (!(id in previous)) return previous;
+          const next = { ...previous };
+          delete next[id];
+          return next;
+        }
+        return { ...previous, [id]: ratio };
+      });
+    }, []);
+    const activeVideoId = selectActiveVideo(videoVisibility);
     const query = profileSearch.trim().replace(/^[@#]+/, '').toLowerCase();
     const filteredProfiles = publicProfiles.filter(profile =>
       (!query ||
@@ -2133,7 +2561,13 @@ export default function App() {
       setViewer({ uri, type: 'video', storagePath: video.media_path });
     };
     const peopleMode = searchCategory === 'People' || searchCategory === 'Creators';
-    return <ScrollView contentContainerStyle={s.discoverScroll} keyboardShouldPersistTaps="handled">
+    return <ScrollView
+      contentContainerStyle={s.discoverScroll}
+      keyboardShouldPersistTaps="handled"
+      scrollEventThrottle={16}
+      onLayout={event => setViewportHeight(event.nativeEvent.layout.height)}
+      onScroll={event => setScrollY(event.nativeEvent.contentOffset.y)}
+    >
       <View style={s.searchHeader}>
         <View><Text style={s.pageTitle}>MEEi</Text><Text style={s.searchSubtitle}>Discover something new</Text></View>
         <View style={s.searchHeaderIcon}><Ionicons name="sparkles" size={20} color={C.cyan}/></View>
@@ -2168,7 +2602,21 @@ export default function App() {
         </View>
         {loadingVideos || (filteredVideos.length > 0 && Object.keys(videoUrls).length === 0) ? <View style={s.searchEmpty}><Text style={s.hint}>Finding videos for you…</Text></View> :
           filteredVideos.length === 0 ? <View style={s.searchEmpty}><Ionicons name="videocam-outline" size={34} color={C.cyan}/><Text style={s.sectionTitle}>Nothing here yet</Text><Text style={s.hint}>Public {searchCategory.toLowerCase()} will appear here as creators share them.</Text></View> :
-          <View style={s.reelsGrid}>{filteredVideos.slice(0, 12).map(video => <SearchReelTile key={video.id} uri={videoUrls[video.id]} caption={video.caption || 'MEEi video'} views={video.view_count || 0} onPress={() => openSearchVideo(video)}/>)}</View>}
+          <View style={s.reelsGrid} onLayout={event => setReelsGridTop(event.nativeEvent.layout.y)}>
+            {filteredVideos.slice(0, 12).map(video => <SearchReelTile
+              key={video.id}
+              id={video.id}
+              uri={videoUrls[video.id]}
+              caption={video.caption || 'MEEi video'}
+              views={video.view_count || 0}
+              onPress={() => openSearchVideo(video)}
+              gridTop={reelsGridTop}
+              scrollY={scrollY}
+              viewportHeight={viewportHeight}
+              active={activeVideoId === video.id}
+              onVisibilityChange={reportVideoVisibility}
+            />)}
+          </View>}
       </>}
     </ScrollView>;
   };
@@ -2399,6 +2847,19 @@ export default function App() {
     <View style={s.simple}><Text style={s.pageTitle}>{title}</Text><View style={s.card}><Text style={s.sectionTitle}>{subtitle}</Text><Text style={s.hint}>This section will be connected to MEEi accounts and services in the next build step.</Text></View></View>
   );
 
+  if (profileLoadStatus !== 'ready') {
+    return (
+      <View style={{ flex: 1, backgroundColor: C.bg, alignItems: 'center', justifyContent: 'center', padding: 28, gap: 14 }}>
+        <StatusBar barStyle={themeMode === 'dark' ? 'light-content' : 'dark-content'} backgroundColor={C.bg}/>
+        {profileLoadStatus === 'loading' ? (
+          <><ActivityIndicator size="large" color={C.cyan}/><Text style={{ color: C.text, fontSize: 15, fontWeight: '700' }}>Loading your MEEi profile…</Text></>
+        ) : (
+          <><Text style={{ color: C.text, fontSize: 19, fontWeight: '900', textAlign: 'center' }}>Profile unavailable</Text><Text style={{ color: C.muted, fontSize: 13, textAlign: 'center', lineHeight: 20 }}>{profileLoadError || 'Your profile could not be loaded.'}</Text><Pressable accessibilityRole="button" onPress={() => setProfileLoadAttempt(value => value + 1)} style={{ backgroundColor: C.pink, borderRadius: 12, paddingHorizontal: 28, paddingVertical: 13 }}><Text style={{ color: '#FFFFFF', fontWeight: '800' }}>Retry</Text></Pressable></>
+        )}
+      </View>
+    );
+  }
+
   return (
     <View style={s.root}>
       <StatusBar barStyle="dark-content" backgroundColor={C.bg}/>
@@ -2613,7 +3074,7 @@ export default function App() {
           <Text style={s.hint}>{isPrivateAccount ? 'New followers must be approved before they can view your private content.' : 'Anyone signed in can discover and follow your public profile.'}</Text>
           <Text style={s.fieldLabel}>Activity status</Text>
           <View style={s.activityGrid}>{['Available','Busy','Work','Drive','Gym','School','College'].map(x=><Pressable key={x} onPress={()=>setActivity(x)} style={[s.activityChip,activity===x&&s.activityActive]}><Text style={[s.activityText,activity===x&&{color:C.cyan}]}>{x}</Text></Pressable>)}</View>
-          <Pressable style={s.primary} onPress={saveProfile}><Text style={s.primaryText}>Save profile</Text></Pressable>
+          <Pressable style={[s.primary, savingProfile && { opacity: 0.6 }]} disabled={savingProfile} onPress={saveProfile}><Text style={s.primaryText}>{savingProfile ? 'Saving…' : 'Save profile'}</Text></Pressable>
         </ScrollView></View>
       </Modal>
       <Modal visible={coverExpanded} transparent animationType="fade" onRequestClose={()=>setCoverExpanded(false)}>
@@ -2665,8 +3126,9 @@ export default function App() {
       <PostReactionPicker visible={!!reactionPostId} onClose={() => setReactionPostId(null)} onSelect={emoji => { if (reactionPostId) void togglePostReaction(reactionPostId, emoji); }}/>
       <Modal visible={!!viewer} transparent animationType="fade" onRequestClose={()=>setViewer(null)}>
         <View style={s.viewer}><Pressable style={s.viewerClose} onPress={()=>setViewer(null)}><Ionicons name="close" size={26} color="#fff"/></Pressable>
-          {viewer?.type === 'image' ? <Image source={{uri:viewer.uri}} resizeMode="contain" style={{width:'100%',height:'82%'}}/> :
-            <CoverMediaSlide media={viewer!}/>}
+          {viewer?.type === 'image' && !viewer.unavailable && !!viewer.uri
+            ? <Image source={{uri:viewer.uri}} resizeMode="contain" style={{width:'100%',height:'82%'}}/>
+            : viewer ? <CoverMediaSlide media={viewer}/> : null}
         </View>
       </Modal>
     </View>
@@ -2747,15 +3209,15 @@ const createStyles = (palette: typeof LIGHT_C) => {
   searchBox:{minHeight:48,borderWidth:1,borderColor:C.border,borderRadius:14,paddingHorizontal:13,flexDirection:'row',alignItems:'center',gap:9,backgroundColor:C.panel2},
   searchInput:{flex:1,color:C.text,fontSize:14,paddingVertical:10},searchCategories:{gap:8,paddingVertical:3},
   searchCategory:{paddingHorizontal:15,paddingVertical:9,borderRadius:20,borderWidth:1,borderColor:C.border,backgroundColor:C.panel},
-  searchCategoryActive:{backgroundColor:'#EAF5FF',borderColor:'#9DD6F4'},searchCategoryText:{color:C.muted,fontSize:12,fontWeight:'700'},searchCategoryTextActive:{color:C.cyan},
+  searchCategoryActive:{backgroundColor:C.accentSoft,borderColor:C.accentBorder},searchCategoryText:{color:C.muted,fontSize:12,fontWeight:'700'},searchCategoryTextActive:{color:C.cyan},
   videoSearchRow:{flexDirection:'row',alignItems:'center',gap:12,paddingVertical:10,borderBottomWidth:1,borderBottomColor:C.border},
   videoSearchThumb:{width:78,height:88,borderRadius:12,backgroundColor:'#7BBCE0',alignItems:'center',justifyContent:'center'},
   searchComingSoon:{alignItems:'center',justifyContent:'center',paddingVertical:45,gap:10},
   personRow:{flexDirection:'row',alignItems:'center',gap:10,paddingVertical:12,borderBottomWidth:1,borderBottomColor:C.border},
-  personAvatar:{width:46,height:46,borderRadius:23,backgroundColor:'#EAF5FF',alignItems:'center',justifyContent:'center'},
-  personDetails:{flex:1,gap:2},personName:{color:C.text,fontSize:14,fontWeight:'800'},personUsername:{color:C.muted,fontSize:11},personBio:{color:'#526B7D',fontSize:11},
+  personAvatar:{width:46,height:46,borderRadius:23,backgroundColor:C.accentSoft,alignItems:'center',justifyContent:'center'},
+  personDetails:{flex:1,gap:2},personName:{color:C.text,fontSize:14,fontWeight:'800'},personUsername:{color:C.muted,fontSize:11},personBio:{color:C.subtleText,fontSize:11},
   followButton:{minWidth:84,paddingHorizontal:12,paddingVertical:9,borderRadius:10,backgroundColor:C.pink,alignItems:'center'},
-  followingButton:{backgroundColor:'#EAF5FF',borderWidth:1,borderColor:'#CDE8FA'},
+  followingButton:{backgroundColor:C.accentSoft,borderWidth:1,borderColor:C.accentBorder},
   followButtonText:{color:'#FFFFFF',fontSize:11,fontWeight:'800'},followingButtonText:{color:C.cyan},
   profileScroll:{paddingBottom:24,gap:0}, profileBody:{paddingHorizontal:16,gap:16},
   coverCarousel:{height:190,width:'100%',backgroundColor:C.panel2},
@@ -2763,7 +3225,7 @@ const createStyles = (palette: typeof LIGHT_C) => {
   coverImage:{width:'100%',height:'100%',resizeMode:'cover'},
   coverVideo:{width:'100%',height:'100%',alignItems:'center',justifyContent:'center',backgroundColor:'#6FAFD0',gap:6},
   coverVideoText:{color:'#FFFFFF',fontSize:10,fontWeight:'900',letterSpacing:1},
-  coverEmpty:{backgroundColor:'#EAF5FF',gap:8},coverEmptyText:{color:C.cyan,fontSize:12,fontWeight:'800'},
+  coverEmpty:{backgroundColor:C.accentSoft,gap:8},coverEmptyText:{color:C.cyan,fontSize:12,fontWeight:'800'},
   coverRemove:{position:'absolute',top:12,right:14,width:30,height:30,borderRadius:15,backgroundColor:'#0008',alignItems:'center',justifyContent:'center'},
   dragHint:{color:C.muted,fontSize:10,marginTop:9},section:{backgroundColor:C.panel,borderRadius:18,padding:14,gap:12,borderWidth:1,borderColor:C.border},
   sectionHeading:{flexDirection:'row',alignItems:'center',justifyContent:'space-between'},
@@ -2775,9 +3237,9 @@ const createStyles = (palette: typeof LIGHT_C) => {
   coverHeader:{flexDirection:'row',alignItems:'center',justifyContent:'space-between'},
   eyebrow:{color:C.cyan,fontSize:9,fontWeight:'900',letterSpacing:1.5},sectionTitle:{color:C.text,fontSize:16,fontWeight:'900'},
   mutedSmall:{color:C.muted,fontSize:11,marginTop:3},coverCount:{color:C.cyan,fontWeight:'800',fontSize:12},
-  businessTag:{flexDirection:'row',alignItems:'center',gap:5,marginTop:5,paddingHorizontal:10,paddingVertical:5,borderRadius:12,backgroundColor:'#EAF5FF'},businessTagText:{color:C.cyan,fontSize:10,fontWeight:'800'},businessInfo:{alignItems:'center',gap:4,marginTop:7,maxWidth:'90%'},businessName:{color:C.text,fontSize:15,fontWeight:'900'},
-  commentsBackdrop:{flex:1,backgroundColor:'#0007',justifyContent:'flex-end'},commentsSheet:{height:'72%',backgroundColor:C.panel,borderTopLeftRadius:22,borderTopRightRadius:22,paddingHorizontal:18,paddingTop:16,paddingBottom:20},commentsHeader:{flexDirection:'row',alignItems:'center',justifyContent:'space-between',paddingBottom:10,borderBottomWidth:1,borderBottomColor:C.border},commentsPostCaption:{color:C.muted,fontSize:12,paddingTop:9},commentsList:{flex:1},commentRow:{flexDirection:'row',alignItems:'flex-start',gap:10},commentAvatar:{width:32,height:32,borderRadius:16,backgroundColor:'#EAF5FF',alignItems:'center',justifyContent:'center'},commentAvatarText:{color:C.cyan,fontSize:13,fontWeight:'800'},commentAuthor:{color:C.text,fontSize:12,fontWeight:'800'},commentUsername:{color:C.muted,fontSize:10,fontWeight:'500'},commentBody:{color:C.text,fontSize:13,lineHeight:18},commentComposer:{flexDirection:'row',alignItems:'center',gap:9,borderTopWidth:1,borderTopColor:C.border,paddingTop:10},commentInput:{flex:1,minHeight:42,maxHeight:92,borderWidth:1,borderColor:C.border,borderRadius:16,paddingHorizontal:13,paddingVertical:9,color:C.text,fontSize:13},commentSend:{width:40,height:40,borderRadius:20,backgroundColor:C.cyan,alignItems:'center',justifyContent:'center'},
-  mediaRow:{flexDirection:'row',gap:8},publishedTile:{width:118,gap:5},publishedImage:{width:118,height:132,borderRadius:12,backgroundColor:'#EAF5FF'},publishedVideo:{width:118,height:132,borderRadius:12,backgroundColor:'#6FAFD0',alignItems:'center',justifyContent:'center',gap:4},publishedCaption:{color:C.muted,fontSize:10,lineHeight:14},tile:{flex:1,aspectRatio:.9,borderRadius:13,borderWidth:1,borderColor:'#D8EAF7',borderStyle:'dashed',backgroundColor:C.panel2,alignItems:'center',justifyContent:'center',overflow:'hidden'},
+  businessTag:{flexDirection:'row',alignItems:'center',gap:5,marginTop:5,paddingHorizontal:10,paddingVertical:5,borderRadius:12,backgroundColor:C.accentSoft},businessTagText:{color:C.cyan,fontSize:10,fontWeight:'800'},businessInfo:{alignItems:'center',gap:4,marginTop:7,maxWidth:'90%'},businessName:{color:C.text,fontSize:15,fontWeight:'900'},
+  commentsBackdrop:{flex:1,backgroundColor:'#0007',justifyContent:'flex-end'},commentsSheet:{height:'72%',backgroundColor:C.panel,borderTopLeftRadius:22,borderTopRightRadius:22,paddingHorizontal:18,paddingTop:16,paddingBottom:20},commentsHeader:{flexDirection:'row',alignItems:'center',justifyContent:'space-between',paddingBottom:10,borderBottomWidth:1,borderBottomColor:C.border},commentsPostCaption:{color:C.muted,fontSize:12,paddingTop:9},commentsList:{flex:1},commentRow:{flexDirection:'row',alignItems:'flex-start',gap:10},commentAvatar:{width:32,height:32,borderRadius:16,backgroundColor:C.accentSoft,alignItems:'center',justifyContent:'center'},commentAvatarText:{color:C.cyan,fontSize:13,fontWeight:'800'},commentAuthor:{color:C.text,fontSize:12,fontWeight:'800'},commentUsername:{color:C.muted,fontSize:10,fontWeight:'500'},commentBody:{color:C.text,fontSize:13,lineHeight:18},commentComposer:{flexDirection:'row',alignItems:'center',gap:9,borderTopWidth:1,borderTopColor:C.border,paddingTop:10},commentInput:{flex:1,minHeight:42,maxHeight:92,borderWidth:1,borderColor:C.border,borderRadius:16,paddingHorizontal:13,paddingVertical:9,color:C.text,fontSize:13},commentSend:{width:40,height:40,borderRadius:20,backgroundColor:C.cyan,alignItems:'center',justifyContent:'center'},
+  mediaRow:{flexDirection:'row',gap:8},publishedTile:{width:118,gap:5},publishedImage:{width:118,height:132,borderRadius:12,backgroundColor:C.accentSoft},publishedVideo:{width:118,height:132,borderRadius:12,backgroundColor:'#6FAFD0',alignItems:'center',justifyContent:'center',gap:4},publishedCaption:{color:C.muted,fontSize:10,lineHeight:14},tile:{flex:1,aspectRatio:.9,borderRadius:13,borderWidth:1,borderColor:'#D8EAF7',borderStyle:'dashed',backgroundColor:C.panel2,alignItems:'center',justifyContent:'center',overflow:'hidden'},
   tileImage:{width:'100%',height:'100%'},tileLabel:{color:C.muted,fontSize:10,marginTop:5,fontWeight:'700'},
   videoTile:{alignItems:'center',justifyContent:'center',gap:4},videoText:{color:C.cyan,fontSize:9,fontWeight:'900'},
   remove:{position:'absolute',top:5,right:5,width:23,height:23,borderRadius:12,backgroundColor:'#0009',alignItems:'center',justifyContent:'center'},
@@ -2794,13 +3256,13 @@ const createStyles = (palette: typeof LIGHT_C) => {
   camera:{position:'absolute',right:-1,bottom:0,width:27,height:27,borderRadius:14,backgroundColor:C.pink,borderWidth:2,borderColor:C.panel,alignItems:'center',justifyContent:'center'},
   nameLine:{flexDirection:'row',alignItems:'center',gap:6},name:{color:C.text,fontSize:21,fontWeight:'900'},
   verified:{width:17,height:17,borderRadius:9,backgroundColor:C.cyan,alignItems:'center',justifyContent:'center'},
-  username:{color:C.muted,fontSize:12,marginTop:4},bio:{color:'#526B7D',fontSize:12,lineHeight:18,textAlign:'center',marginTop:8,maxWidth:310},
+  username:{color:C.muted,fontSize:12,marginTop:4},bio:{color:C.subtleText,fontSize:12,lineHeight:18,textAlign:'center',marginTop:8,maxWidth:310},
   websiteLine:{flexDirection:'row',alignItems:'center',gap:6,marginTop:8},website:{color:C.cyan,fontSize:12,fontWeight:'700'},
   stats:{flexDirection:'row',borderTopWidth:1,borderBottomWidth:1,borderColor:C.border,paddingVertical:14},
   stat:{flex:1,alignItems:'center'},statNum:{color:C.text,fontSize:17,fontWeight:'900'},statLabel:{color:C.muted,fontSize:10,marginTop:4},
   actions:{flexDirection:'row',gap:9},primary:{flex:1,minHeight:44,borderRadius:13,backgroundColor:C.pink,alignItems:'center',justifyContent:'center',flexDirection:'row',gap:7},
   primaryText:{color:'#fff',fontWeight:'800',fontSize:13},secondary:{flex:1,minHeight:44,borderRadius:13,backgroundColor:C.panel2,borderWidth:1,borderColor:C.border,alignItems:'center',justifyContent:'center',flexDirection:'row',gap:7},
-  secondaryText:{color:C.text,fontSize:13,fontWeight:'800'},infoLine:{flexDirection:'row',alignItems:'center',gap:10},infoText:{color:'#526B7D',fontSize:12},
+  secondaryText:{color:C.text,fontSize:13,fontWeight:'800'},infoLine:{flexDirection:'row',alignItems:'center',gap:10},infoText:{color:C.subtleText,fontSize:12},
   footerNote:{color:C.muted,fontSize:10,lineHeight:15,paddingHorizontal:3},nav:{height:72,backgroundColor:C.panel,borderTopWidth:1,borderColor:C.border,flexDirection:'row',alignItems:'center',justifyContent:'space-around',paddingTop:2,paddingBottom:6},
   navItem:{flex:1,alignItems:'center',justifyContent:'center',gap:3,paddingBottom:8},navCreateItem:{flex:1,alignItems:'center',justifyContent:'center',gap:2,paddingBottom:3},navCreateButton:{width:45,height:42,borderRadius:15,backgroundColor:C.pink,alignItems:'center',justifyContent:'center',marginTop:-15,shadowColor:C.pink,shadowOpacity:0.24,shadowRadius:7,elevation:4},navLabel:{fontSize:9,color:C.muted,fontWeight:'700'},
   createMenuBackdrop:{flex:1,backgroundColor:'#0008',justifyContent:'flex-end'},createMenuSheet:{backgroundColor:C.panel,borderTopLeftRadius:25,borderTopRightRadius:25,paddingHorizontal:20,paddingTop:12,paddingBottom:30,gap:5},createMenuHandle:{width:42,height:4,borderRadius:3,backgroundColor:'#D8E1E8',alignSelf:'center',marginBottom:10},createMenuHeader:{flexDirection:'row',alignItems:'center',justifyContent:'space-between',marginBottom:12},createMenuOption:{flexDirection:'row',alignItems:'center',gap:13,paddingVertical:12,borderBottomWidth:1,borderBottomColor:'#F0F3F5'},createMenuIcon:{width:46,height:46,borderRadius:15,alignItems:'center',justifyContent:'center'},createMenuText:{flex:1,gap:3},createMenuTitle:{color:C.text,fontSize:14,fontWeight:'900'},createMenuSubtitle:{color:C.muted,fontSize:11},

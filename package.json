@@ -8,7 +8,8 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test:unit": "node --test tests/*.test.cjs"
   },
   "dependencies": {
     "expo": "~54.0.0",
@@ -28,7 +29,7 @@
     "react-native-url-polyfill": "^2.0.0",
     "expo-video": "~3.0.14",
     "@react-native-async-storage/async-storage": "2.2.0",
-    "expo-audio": "~1.0.14",
+    "expo-audio": "~1.1.1",
     "expo-speech-recognition": "sdk-54",
     "expo-notifications": "~0.32.15",
     "expo-dev-client": "~6.0.21",
@@ -38,11 +39,17 @@
     "@config-plugins/react-native-webrtc": "^13.0.0",
     "livekit-client": "^2.25.0",
     "expo-contacts": "~15.0.11",
-    "expo-localization": "~17.0.9"
+    "expo-localization": "~17.0.9",
+    "expo-asset": "~12.0.14"
   },
   "devDependencies": {
     "babel-preset-expo": "~54.0.12",
     "typescript": "~5.9.2",
     "@types/react": "~19.1.10"
+  },
+  "overrides": {
+    "image-size": "npm:image-size-next@1.2.2",
+    "decode-uri-component": "0.5.1",
+    "postcss": "8.5.23"
   }
 }

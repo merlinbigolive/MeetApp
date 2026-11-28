@@ -1,0 +1,20 @@
+export type AppearanceMode = 'system' | 'light' | 'dark';
+export type MEEiBasePalette = {
+  bg: string;
+  panel: string;
+  panel2: string;
+  text: string;
+  muted: string;
+  subtleText: string;
+  accentSoft: string;
+  accentBorder: string;
+  pink: string;
+  cyan: string;
+  border: string;
+  success: string;
+  danger: string;
+};
+export const LIGHT_C: Readonly<MEEiBasePalette>;
+export const DARK_C: Readonly<MEEiBasePalette>;
+export function isAppearanceMode(value: unknown): value is AppearanceMode;
+export function resolveBasePalette(mode: AppearanceMode, systemColorScheme: 'light' | 'dark' | null | undefined): Readonly<MEEiBasePalette>;
