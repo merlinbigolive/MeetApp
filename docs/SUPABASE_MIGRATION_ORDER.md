@@ -28,27 +28,28 @@ The final script also removes known permissive direct-insert policies and revoke
 
 ## Shared rate-limit helper and messaging / Live PK guards
 
-First install the base schema and the feature foundations required by the scripts. In particular:
+First install the base schema and the feature foundations required by the scripts:
 
 - `supabase_messaging_setup.sql` creates the messaging tables.
 - `supabase_voice_messages_setup.sql` adds voice-message metadata and the private `usay-chat-audio` bucket.
 - `supabase_global_account_blocking_setup.sql` defines `public.is_blocked_for_current_user(uuid)`.
 - `supabase_live_discovery_setup.sql` provides the Live session foundation required by the LiveKit room and Live PK schema.
 - `supabase_meei_livekit_room_setup.sql` adds the server-generated LiveKit room mapping.
-- `supabase_meei_live_pk_battle_core.sql` creates the Live PK schema/RPCs and defines the public rate-limit wrapper for Live PK actions. Apply it after the Live session foundation and after the private rate-limit helper exists.
 
-After those foundations, apply the shared rate-limit scripts in this exact order:
+The Live PK core also depends on the private rate-limit helper, so it is **not** part of the pre-rate-limit foundation stage. Install it at step 6 below, after the initial helper and the messaging/conversation guards exist.
+
+After those base and feature foundations, apply the shared rate-limit scripts in this exact order:
 
 1. `supabase_meei_live_chat_rate_limit_hardening.sql` — creates the private rate-limit table and initial helper.
 2. `supabase_meei_livekit_action_rate_limits.sql` — extends the shared action allowlist/helper.
 3. `supabase_meei_profile_video_search_rate_limits.sql` — installs profile/video search callers using the helper and block check.
 4. `supabase_meei_messaging_send_guard.sql` — requires messaging tables, voice columns/bucket, global-block helper, and the shared rate-limit helper.
 5. `supabase_meei_conversation_creation_guard.sql` — adds the conversation trigger and redefines the shared helper/constraint again.
-6. `supabase_meei_live_pk_battle_core.sql` — if not already applied as a feature foundation, apply it here; it defines Live PK RPCs and a public rate-limit wrapper that calls the private helper.
+6. `supabase_meei_live_pk_battle_core.sql` — creates Live PK schema/RPCs and its public rate-limit wrapper; apply after the Live session foundation and after the private helper exists.
 7. `supabase_meei_live_pk_rate_limits.sql` — reasserts the public wrapper's supported action limits.
 8. `supabase_meei_rate_limit_action_allowlist_fix.sql` — **must be last**; synchronizes the private table CHECK constraint and private helper with every supported wrapper action.
 
-Several intermediate scripts intentionally redefine `private.consume_user_rate_limit(text, integer, integer)`, the public rate-limit wrapper, and/or `private.meei_user_rate_limits_action_key_check` with different action sets. Never apply one of those older definitions after step 8. If any such migration must be rerun later, rerun step 8 last and repeat the validation. The Live PK core is listed in the shared sequence to make its wrapper dependency explicit; do not apply it twice unnecessarily if it was already installed as a feature foundation.
+Several intermediate scripts intentionally redefine `private.consume_user_rate_limit(text, integer, integer)`, the public rate-limit wrapper, and/or `private.meei_user_rate_limits_action_key_check` with different action sets. Never apply one of those older definitions after step 8. If any such migration must be rerun later, rerun step 8 last and repeat the validation. If the Live PK core was already installed during an earlier deployment, do not apply it twice unnecessarily; still preserve the final allowlist synchronization as the last migration whenever an earlier helper/constraint definition is rerun.
 
 ## Validation gates before production
 
