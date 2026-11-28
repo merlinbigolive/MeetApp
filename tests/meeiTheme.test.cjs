@@ -14,6 +14,7 @@ test('preserves the approved white default palette', () => {
   assert.equal(LIGHT_C.pink, '#258FEA');
   assert.equal(LIGHT_C.subtleText, '#526B7D');
   assert.equal(LIGHT_C.accentSoft, '#EAF5FF');
+  assert.equal(LIGHT_C.accentBorder, '#9DD6F4');
 });
 
 test('preserves the existing dark appearance palette', () => {
@@ -23,6 +24,7 @@ test('preserves the existing dark appearance palette', () => {
   assert.equal(DARK_C.pink, '#49A9F5');
   assert.equal(DARK_C.subtleText, '#B7C7D5');
   assert.equal(DARK_C.accentSoft, '#1D3548');
+  assert.equal(DARK_C.accentBorder, '#315A73');
 });
 
 test('system appearance follows the OS and defaults safely to light', () => {
