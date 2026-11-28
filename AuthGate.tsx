@@ -107,10 +107,12 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
     setBusy(true);
     setMessage('');
     try {
-      const { error } = await client.auth.signInWithOtp({
-        phone: cleanPhone,
-        options: { shouldCreateUser: mode === 'signup' },
-      });
+      const { error } = phoneCodeSent
+        ? await client.auth.resend({ type: 'sms', phone: cleanPhone })
+        : await client.auth.signInWithOtp({
+            phone: cleanPhone,
+            options: { shouldCreateUser: mode === 'signup' },
+          });
       if (error) setMessage(error.message);
       else {
         setPhone(cleanPhone);
@@ -160,7 +162,10 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
     setBusy(true);
     setMessage('');
     try {
-      const { error } = await client.auth.updateUser({ email: cleanEmail });
+      const currentEmail = normalizeEmail(session.user.email || '');
+      const { error } = currentEmail === cleanEmail
+        ? await client.auth.resend({ type: 'email_change', email: cleanEmail })
+        : await client.auth.updateUser({ email: cleanEmail });
       if (error) setMessage(error.message);
       else {
         setEmail(cleanEmail);
