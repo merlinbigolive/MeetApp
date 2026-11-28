@@ -7,6 +7,7 @@ export type MEEiBasePalette = {
   muted: string;
   subtleText: string;
   accentSoft: string;
+  accentBorder: string;
   pink: string;
   cyan: string;
   border: string;
