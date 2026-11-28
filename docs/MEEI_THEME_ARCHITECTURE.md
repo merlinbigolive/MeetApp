@@ -5,7 +5,7 @@
 - The default appearance remains the existing white/light palette.
 - The existing dark appearance and System / Light / Dark setting remain supported.
 - Both base palettes are centralized in `meeiTheme.js`; `App.tsx` consumes the shared resolver.
-- Profile secondary text and soft-accent surfaces use semantic `subtleText` and `accentSoft` tokens in both appearances.
+- Profile secondary text and soft-accent surfaces use semantic `subtleText`, `accentSoft`, and `accentBorder` tokens in both appearances.
 - Persisted appearance values are validated before being applied. Unknown or stale values fall back to the System default.
 - This foundation does not unlock, preview as owned, or activate any paid cosmetic.
 
