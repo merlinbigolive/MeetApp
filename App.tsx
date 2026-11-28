@@ -18,6 +18,7 @@ import { validateProfile } from './profileValidation';
 import { selectActiveVideo } from './videoPlayback';
 import { buildProfileMediaUpdate, buildProfileUpdate, isProfileSessionOwner, mapProfileRecord, resolveProfileCountry, resolveProfileMediaPreview } from './profilePersistence';
 import LiveBroadcastModal from './LiveBroadcastModal';
+import { DARK_C, LIGHT_C, isAppearanceMode, resolveBasePalette } from './meeiTheme';
 
 type Media = { uri: string; type: 'image' | 'video'; name?: string; size?: number; mimeType?: string; storagePath?: string; unavailable?: boolean };
 type CloudMediaRow = { id: string; kind: 'avatar' | 'cover' | 'post'; position: number; storage_path: string; media_type: 'image' | 'video'; original_name: string | null; };
@@ -46,16 +47,6 @@ Notifications.setNotificationHandler({
   handleNotification: async () => ({ shouldShowBanner: true, shouldShowList: true, shouldPlaySound: true, shouldSetBadge: false }),
 });
 
-const LIGHT_C = {
-  bg: '#FFFFFF', panel: '#FFFFFF', panel2: '#F4F9FD', text: '#172B3A',
-  muted: '#718096', pink: '#258FEA', cyan: '#43B8E8', border: '#E5EDF4',
-  success: '#22A06B', danger: '#D64545'
-};
-const DARK_C = {
-  bg: '#0B1420', panel: '#121F2D', panel2: '#1A2A3A', text: '#EAF3FA',
-  muted: '#9AAFC0', pink: '#49A9F5', cyan: '#65C7EF', border: '#2A3D50',
-  success: '#4BC58C', danger: '#FF7373'
-};
 let C = LIGHT_C;
 
 function LongVideoPreview({ uri }: { uri: string }) {
@@ -360,7 +351,7 @@ const getCountryDisplayName = (countryCode: string, localeTag?: string) => {
 export default function App() {
   const systemColorScheme = useColorScheme();
   const [themeMode, setThemeMode] = useState<'system' | 'light' | 'dark'>('system');
-  const activePalette = themeMode === 'system' ? (systemColorScheme === 'dark' ? DARK_C : LIGHT_C) : themeMode === 'dark' ? DARK_C : LIGHT_C;
+  const activePalette = resolveBasePalette(themeMode, systemColorScheme);
   C = activePalette;
   s = createStyles(activePalette);
   const setAppearanceMode = (mode: 'system' | 'light' | 'dark') => {
@@ -491,7 +482,7 @@ export default function App() {
   useEffect(() => {
     let active = true;
     AsyncStorage.getItem('@meei/appearance_mode').then(saved => {
-      if (active && (saved === 'system' || saved === 'light' || saved === 'dark')) setThemeMode(saved);
+      if (active && isAppearanceMode(saved)) setThemeMode(saved);
     }).catch(error => console.warn('Appearance preference could not be loaded:', error));
     return () => { active = false; };
   }, []);
