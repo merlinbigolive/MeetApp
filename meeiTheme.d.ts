@@ -5,6 +5,8 @@ export type MEEiBasePalette = {
   panel2: string;
   text: string;
   muted: string;
+  subtleText: string;
+  accentSoft: string;
   pink: string;
   cyan: string;
   border: string;
