@@ -5,7 +5,8 @@
 --   3. supabase_meei_profile_video_search_rate_limits.sql
 --   4. supabase_meei_messaging_send_guard.sql
 --   5. supabase_meei_conversation_creation_guard.sql
---   6. supabase_meei_live_pk_rate_limits.sql
+--   6. supabase_meei_live_pk_battle_core.sql (if not already installed)
+--   7. supabase_meei_live_pk_rate_limits.sql
 -- This MUST be the final migration that changes private.consume_user_rate_limit
 -- or private.meei_user_rate_limits_action_key_check. Several earlier setup
 -- scripts redefine the helper/constraint with smaller allowlists; re-running
